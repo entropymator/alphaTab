@@ -57,7 +57,7 @@ export class Gp3To5Importer extends ScoreImporter {
 
     // NOTE: General Midi only defines percussion instruments from 35-81
     // Guitar Pro 5 allowed GS extensions (27-34 and 82-87)
-    // GP7-8 do not have all these definitions anymore, this lookup ensures some fallback 
+    // GP7-8 do not have all these definitions anymore, this lookup ensures some fallback
     // (even if they are not correct)
     // we can support this properly in future when we allow custom alphaTex articulation definitions
     // then we don't need to rely on GP specifics anymore but handle things on export/import
@@ -1571,12 +1571,13 @@ export class GpBinaryHelpers {
      * @returns
      */
     public static gpReadStringByteLength(data: IReadable, length: number, encoding: string): string {
-        const stringLength: number = data.readByte();
-        const s: string = GpBinaryHelpers.gpReadString(data, stringLength, encoding);
-        if (stringLength < length) {
-            data.skip(length - stringLength);
-        }
-        return s;
+        // Fixed-width string field: 1 length byte + `length` data bytes, decoded
+        // up to min(stringLength, length). Always consumes 1 + length bytes.
+        const stringLength = data.readByte();
+        const fieldBytes = new Uint8Array(length);
+        data.read(fieldBytes, 0, length);
+        const effectiveLength = Math.min(stringLength, length);
+        return IOHelper.toString(fieldBytes.subarray(0, effectiveLength), encoding);
     }
 }
 
