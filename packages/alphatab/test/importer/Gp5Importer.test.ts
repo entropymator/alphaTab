@@ -12,6 +12,8 @@ import { BeamDirection } from '@coderline/alphatab/rendering/utils/BeamDirection
 import { GpImporterTestHelper } from 'test/importer/GpImporterTestHelper';
 import { Clef } from '@coderline/alphatab/model/Clef';
 import { PercussionMapper } from '@coderline/alphatab/model/PercussionMapper';
+import { EndOfReaderError, OverflowError } from '@coderline/alphatab/io/IReadable';
+import { TestPlatform } from 'test/TestPlatform';
 
 describe('Gp5ImporterTest', () => {
     it('score-info', async () => {
@@ -580,7 +582,7 @@ describe('Gp5ImporterTest', () => {
 
         const raw = new Uint8Array(fieldSize + 2);
         raw[0] = overlongHint;
-        for(let i = 0; i < fieldSize; i++) {
+        for (let i = 0; i < fieldSize; i++) {
             raw[i + 1] = 0x41;
         }
         raw[fieldSize + 1] = sentinelByte;
@@ -591,5 +593,50 @@ describe('Gp5ImporterTest', () => {
         expect(result).toBe('A'.repeat(fieldSize));
         expect(buffer.position).toBe(1 + fieldSize);
         expect(buffer.readByte()).toBe(sentinelByte);
+    });
+
+    describe('corrupt', () => {
+        async function corruptTest(intToWrite: number, offset: number, expectedOverflowLabel: string) {
+            const buffer = await TestPlatform.loadFile(`test-data/corrupt/healthy.gp5`);
+
+            buffer[offset + 0] = (intToWrite >> 0) & 0xff;
+            buffer[offset + 1] = (intToWrite >> 8) & 0xff;
+            buffer[offset + 2] = (intToWrite >> 16) & 0xff;
+            buffer[offset + 3] = (intToWrite >> 24) & 0xff;
+
+            const importer = GpImporterTestHelper.prepareImporterWithBytes(buffer, new Settings());
+
+            try {
+                importer.readScore();
+                throw new Error('Expected readScore to fail with an OverflowError');
+            } catch (e) {
+                if (e instanceof OverflowError) {
+                    expect((e as OverflowError).message).toContain(expectedOverflowLabel);
+                    return;
+                }
+                throw e;
+            }
+        }
+
+        it('max-bar-count', async () => await corruptTest(5000, 1235, 'bar count'));
+
+        it('max-track-count', async () => await corruptTest(300, 1239, 'track count'));
+
+        it('notice-lines-count', async () => await corruptTest(5000, 82, 'notice line count'));
+
+        it('beat-count', async () => await corruptTest(200, 1460, 'beat count'));
+
+        it('tremolo-count', async () => await corruptTest(500, 1584, 'tremolo bar point count'));
+
+        it('bend-count', async () => await corruptTest(500, 1479, 'note bend point count'));
+        it('eof', async () => {
+            let buffer = await TestPlatform.loadFile(`test-data/corrupt/healthy.gp5`);
+
+            buffer = buffer.slice(0, buffer.length / 2);
+
+            const importer = GpImporterTestHelper.prepareImporterWithBytes(buffer, new Settings());
+
+            expect(()=> importer.readScore()).toThrow(EndOfReaderError);
+        });
     });
 });
