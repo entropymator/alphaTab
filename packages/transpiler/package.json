@@ -1,10 +1,16 @@
 {
     "name": "@coderline/alphatab-transpiler",
-    "version": "1.8.2",
+    "version": "1.8.3",
     "type": "module",
     "description": "The transpiler toolkit to translate alphaTab to C# and Kotlin",
     "private": true,
     "scripts": {
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test-web": "npm run test"
+    },
+    "devDependencies": {
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.7"
     }
 }

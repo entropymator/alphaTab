@@ -1,13 +1,14 @@
+import type { EventEmitterOfT } from '@coderline/alphatab/EventEmitter';
 import { Logger } from '@coderline/alphatab/Logger';
 import { ScoreSubElement } from '@coderline/alphatab/model/Score';
 import { type ICanvas, TextAlign } from '@coderline/alphatab/platform/ICanvas';
-import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 import type { TextGlyph } from '@coderline/alphatab/rendering/glyphs/TextGlyph';
 import type { RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import { ScoreLayout } from '@coderline/alphatab/rendering/layout/ScoreLayout';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
 import type { MasterBarsRenderers } from '@coderline/alphatab/rendering/staves/MasterBarsRenderers';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
+import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 
 /**
  * Base layout for page and parchment style layouts where we have an endless
@@ -21,11 +22,18 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
 
     private _reuseViewPort: boolean = false;
 
+    private _preSystemPartialIds: string[] = [];
+    private _systemPartialIds: string[] = [];
+
     protected doLayoutAndRender(renderHints: RenderHints | undefined): void {
         let y: number = this.pagePadding![1];
         this.width = this.renderer.width;
         this._allMasterBarRenderers = [];
+        this._preSystemPartialIds = [];
+        this._systemPartialIds = [];
+
         this._reuseViewPort = renderHints?.reuseViewport ?? false;
+        this._systems = [];
 
         //
         // 1. Score Info
@@ -38,11 +46,11 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
         y = this._layoutAndRenderChordDiagrams(y, -1);
         //
         // 4. One result per StaffSystem
-        y = this._layoutAndRenderScore(y);
+        y = this._layoutAndRenderScore(y, this.firstBarIndex);
 
         y = this.layoutAndRenderBottomScoreInfo(y);
 
-        y = this.layoutAndRenderAnnotation(y);
+        y = this._layoutAndRenderAnnotation(y);
 
         this.height = (y + this.pagePadding![3]) * this.renderer.settings.display.scale;
     }
@@ -50,6 +58,15 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
     protected override registerPartial(args: RenderFinishedEventArgs, callback: (canvas: ICanvas) => void): void {
         args.reuseViewport = this._reuseViewPort;
         super.registerPartial(args, callback);
+    }
+
+    protected reregisterPartial(id: string) {
+        const args = this.getExistingPartialArgs(id);
+        if (!args) {
+            return;
+        }
+        args.reuseViewport = this._reuseViewPort;
+        (this.renderer.partialLayoutFinished as EventEmitterOfT<RenderFinishedEventArgs>).trigger(args);
     }
 
     public get supportsResize(): boolean {
@@ -62,6 +79,58 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
             x += this._systems[0].accoladeWidth;
         }
         return x;
+    }
+
+    public override doUpdateForBars(renderHints: RenderHints): boolean {
+        this._reuseViewPort = renderHints.reuseViewport ?? false;
+        const firstModifiedMasterBar = renderHints.firstChangedMasterBar!;
+
+        // first update existing systems as needed
+        const systemIndex = this._systems.findIndex(s => {
+            const first = s.masterBarsRenderers[0].masterBar.index;
+            const last = s.masterBarsRenderers[s.masterBarsRenderers.length - 1].masterBar.index;
+            return first <= firstModifiedMasterBar && firstModifiedMasterBar <= last;
+        });
+
+        if (systemIndex === -1 || !this.renderer.settings.core.enableLazyLoading) {
+            return false;
+        }
+
+        // Bars from the start of the re-layouted system onward will be re-registered during the
+        // paint pass. Clear their old entries from the preserved BoundsLookup so registration
+        // produces a clean, complete lookup after this render finishes.
+        const firstRebuiltBarIndex = this._systems[systemIndex].masterBarsRenderers[0].masterBar.index;
+        this.renderer.boundsLookup!.clearFromMasterBar(firstRebuiltBarIndex);
+
+        // for now we do a full relayout from the first modified masterbar
+        // there is a lot of room for even more performant updates, but they come
+        // at a risk that features break.
+        // e.g. we could only shift systems where the content didn't change,
+        // but we might still have ties/slurs which have to be updated.
+        const removeSystems = this._systems.splice(systemIndex, this._systems.length - systemIndex);
+        this._systemPartialIds.splice(systemIndex, this._systemPartialIds.length - systemIndex);
+        const system = removeSystems[0];
+        let y = system.y;
+        const firstBarIndex = system.masterBarsRenderers[0].masterBar.index;
+
+        // signal all partials which didn't change
+        for (const preSystemPartial of this._preSystemPartialIds) {
+            this.reregisterPartial(preSystemPartial);
+        }
+        for (let i = 0; i < systemIndex; i++) {
+            this.reregisterPartial(this._systemPartialIds[i]);
+        }
+
+        // new partials for all other prats
+        y = this._layoutAndRenderScore(y, firstBarIndex);
+
+        y = this.layoutAndRenderBottomScoreInfo(y);
+
+        y = this._layoutAndRenderAnnotation(y);
+
+        this.height = (y + this.pagePadding![3]) * this.renderer.settings.display.scale;
+
+        return true;
     }
 
     public doResize(): void {
@@ -85,7 +154,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
 
         y = this.layoutAndRenderBottomScoreInfo(y);
 
-        y = this.layoutAndRenderAnnotation(y);
+        y = this._layoutAndRenderAnnotation(y);
 
         this.height = (y + this.pagePadding![3]) * this.renderer.settings.display.scale;
     }
@@ -115,6 +184,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
             canvas.textAlign = TextAlign.Center;
             this.tuningGlyph!.paint(0, 0, canvas);
         });
+        this._preSystemPartialIds.push(e.id);
 
         return y + tuningHeight;
     }
@@ -143,6 +213,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
             canvas.textAlign = TextAlign.Center;
             this.chordDiagrams!.paint(0, 0, canvas);
         });
+        this._preSystemPartialIds.push(e.id);
 
         return y + diagramHeight;
     }
@@ -197,6 +268,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
                     g.paint(0, 0, canvas);
                 }
             });
+            this._preSystemPartialIds.push(e.id);
         }
 
         return y + infoHeight;
@@ -205,6 +277,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
     private _resizeAndRenderScore(y: number, oldHeight: number): number {
         // if we have a fixed number of bars per row, we only need to refit them.
         const barsPerRowActive = this.getBarsPerSystem(0) > 0;
+        this._systemPartialIds = [];
         if (barsPerRowActive) {
             for (let i: number = 0; i < this._systems.length; i++) {
                 const system: StaffSystem = this._systems[i];
@@ -270,12 +343,10 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
         return y;
     }
 
-    private _layoutAndRenderScore(y: number): number {
-        const startIndex: number = this.firstBarIndex;
+    private _layoutAndRenderScore(y: number, startIndex: number): number {
         let currentBarIndex: number = startIndex;
         const endBarIndex: number = this.lastBarIndex;
 
-        this._systems = [];
         while (currentBarIndex <= endBarIndex) {
             // create system and align set proper coordinates
             const system: StaffSystem = this._createStaffSystem(currentBarIndex, endBarIndex);
@@ -317,6 +388,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
             // since we use partial drawing
             system.paint(0, -(args.y / this.renderer.settings.display.scale), canvas);
         });
+        this._systemPartialIds.push(args.id);
 
         // calculate coordinates for next system
         return height;
@@ -326,6 +398,11 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
      * Realignes the bars in this line according to the available space
      */
     private _fitSystem(system: StaffSystem): void {
+        // If a bar added late in the assembly introduced a shorter note than earlier bars, the
+        // earlier bars' spring constants (and the cached system widths / totals) are stale.
+        // Reconcile now - it's a no-op when nothing changed.
+        system.reconcileMinDurationIfDirty();
+
         if (system.isFull || system.width > this._maxWidth || this.renderer.settings.display.justifyLastSystem) {
             this._scaleToWidth(system, this._maxWidth);
         } else {
@@ -334,40 +411,51 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
         system.finalizeSystem();
     }
 
+    /**
+     * Whether the layout honours the model's {@link Bar.displayScale} when distributing staff width.
+     * When `true` (Parchment, Page with `SystemsLayoutMode.UseModelLayout`), bars are weighted by
+     * `displayScale`. When `false` (Page with `SystemsLayoutMode.Automatic`), `displayScale` is ignored
+     * and bars are weighted by their natural content width produced by the built-in spacing engine.
+     * Prefix/postfix overhead (clef, key sig, time sig, barlines) is treated as fixed in both modes.
+     */
     protected abstract get shouldApplyBarScale(): boolean;
 
     private _scaleToWidth(system: StaffSystem, width: number): void {
         const staffWidth = width - system.accoladeWidth;
         const shouldApplyBarScale = this.shouldApplyBarScale;
 
-        const totalScale = system.totalBarDisplayScale;
-
-        // NOTE: it currently delivers best results if we evenly distribute the available space across bars
-        // scaling bars relatively to their computed width, rather causes distortions whenever bars have
-        // pre-beat glyphs.
-
-        // most precise scaling would come if we use the contents (voiceContainerGlyph) width as a calculation
-        // factor. but this would make the calculation additionally complex with not much gain.
-
-        const difference: number = width - system.computedWidth;
-        const spacePerBar: number = difference / system.masterBarsRenderers.length;
+        // Industry fixed-overhead model (Behind Bars, Dorico, Finale, Sibelius, MuseScore, Guitar Pro):
+        // prefix/postfix glyphs (clef, key sig, time sig, barlines) are treated as fixed overhead and the
+        // remaining staff width is distributed across bars by a per-bar weight.
+        //
+        //   distributable = staffWidth - totalFixedOverhead
+        //   contentShare  = distributable / sum(weight)
+        //   bar.width     = bar.maxFixedOverhead + weight * contentShare
+        //
+        // The weight depends on the layout mode:
+        //   - shouldApplyBarScale=true  -> weight = bar.displayScale (model-driven, matches Guitar Pro)
+        //                                  displayScale defaults to 1, so an unset value behaves identically
+        //                                  to an explicit 1 (GP omits the property when not customized).
+        //   - shouldApplyBarScale=false -> weight = natural content width (automatic, ignores displayScale)
+        //
+        // Per-bar maxFixedOverhead / maxContentWidth and the system-wide totals are maintained incrementally
+        // in StaffSystem._applyLayoutAndUpdateWidth / revertLastBar so this pass can apply directly.
+        const weightTotal = shouldApplyBarScale ? system.totalBarDisplayScale : system.totalContentWidth;
+        const distributable = Math.max(0, staffWidth - system.totalFixedOverhead);
+        const contentShare = weightTotal > 0 ? distributable / weightTotal : 0;
 
         for (const s of system.allStaves) {
             s.resetSharedLayoutData();
 
-            // scale the bars by keeping their respective ratio size
             let w = 0;
-            for (const renderer of s.barRenderers) {
+            for (let i = 0; i < s.barRenderers.length; i++) {
+                const renderer = s.barRenderers[i];
+                const mb = system.masterBarsRenderers[i];
                 renderer.x = w;
                 renderer.y = s.topPadding + s.topOverflow;
 
-                let actualBarWidth: number;
-                if (shouldApplyBarScale) {
-                    const barDisplayScale = system.getBarDisplayScale(renderer);
-                    actualBarWidth = (barDisplayScale * staffWidth) / totalScale;
-                } else {
-                    actualBarWidth = renderer.computedWidth + spacePerBar;
-                }
+                const weight = shouldApplyBarScale ? system.getBarDisplayScale(renderer) : mb.maxContentWidth;
+                const actualBarWidth = mb.maxFixedOverhead + weight * contentShare;
 
                 renderer.scaleToWidth(actualBarWidth);
                 w += renderer.width;

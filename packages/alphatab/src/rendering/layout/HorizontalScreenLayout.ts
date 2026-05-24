@@ -44,6 +44,14 @@ export class HorizontalScreenLayout extends ScoreLayout {
     public doResize(): void {
         // not supported
     }
+    
+    public override doUpdateForBars(_renderHints: RenderHints): boolean {
+        // not supported yet, modifications likely cause anyhow full updates
+        // as we do not optimize effect bands yet. with effect bands being more 
+        // isolated in bars we could try updating dynamically
+        return false;
+    }
+
 
     protected doLayoutAndRender(renderHints: RenderHints | undefined): void {
         const score: Score = this.renderer.score!;
@@ -61,6 +69,11 @@ export class HorizontalScreenLayout extends ScoreLayout {
 
         endBarIndex = Math.min(score.masterBars.length - 1, Math.max(0, endBarIndex));
         this._system = this.createEmptyStaffSystem(0);
+        // Each bar in horizontal layout is sized independently (by bar.displayWidth or the bar's
+        // intrinsic width), so there is no shared staff width to distribute across bars. Keep each
+        // bar's spring constants referenced against its own local minimum-duration so rendering
+        // matches the historical per-bar behaviour.
+        this._system.shareMinDurationAcrossBars = false;
         this._system.isLast = true;
         this._system.x = this.pagePadding![0];
         this._system.y = this.pagePadding![1];
@@ -150,7 +163,7 @@ export class HorizontalScreenLayout extends ScoreLayout {
         }
 
         this.height = this.layoutAndRenderBottomScoreInfo(this.height);
-        this.height = this.layoutAndRenderAnnotation(this.height);
+        this.height = this._layoutAndRenderAnnotation(this.height);
 
         this.height += this.pagePadding![3];
 

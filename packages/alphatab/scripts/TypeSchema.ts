@@ -302,9 +302,9 @@ export function getTypeWithNullableInfo(
             fillBaseInfoFrom(node);
         } else if (node.isUnion()) {
             for (const t of node.types) {
-                if ((t.flags & ts.TypeFlags.Null) !== 0) {
+                if (t === checker.getNullType()) {
                     typeInfo.isNullable = true;
-                } else if ((t.flags & ts.TypeFlags.Undefined) !== 0) {
+                } else if (t === checker.getUndefinedType()) {
                     typeInfo.isOptional = true;
                 } else if (!mainType) {
                     fillBaseInfoFrom(t);
@@ -407,7 +407,7 @@ function findModule(type: ts.Type, options: ts.CompilerOptions) {
         for (const decl of type.symbol.declarations) {
             const file = decl.getSourceFile();
             if (file) {
-                const relative = path.relative(path.join(path.resolve(options.baseUrl!)), path.resolve(file.fileName));
+                const relative = path.relative(path.dirname(options.configFilePath as string), path.resolve(file.fileName));
                 return toImportPath(relative);
             }
         }
