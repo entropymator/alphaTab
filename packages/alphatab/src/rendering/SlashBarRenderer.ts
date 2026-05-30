@@ -5,6 +5,7 @@ import type { Voice } from '@coderline/alphatab/model/Voice';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { LineBarRenderer } from '@coderline/alphatab/rendering//LineBarRenderer';
 import { NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
+import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { ScoreTimeSignatureGlyph } from '@coderline/alphatab/rendering/glyphs/ScoreTimeSignatureGlyph';
 import { SpacingGlyph } from '@coderline/alphatab/rendering/glyphs/SpacingGlyph';
 import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
@@ -76,8 +77,29 @@ export class SlashBarRenderer extends LineBarRenderer {
 
     public override doLayout(): void {
         super.doLayout();
+        // Scalar overflow only. Per-group skyline contributions are emitted
+        // from populateBarLocalSkyline once `getBeatX` returns post-scale x.
         if (this.voiceContainer.tupletGroups.size > 0) {
             this.registerOverflowTop(this.tupletSize);
+        }
+    }
+
+    protected override populateBarLocalSkyline(): void {
+        super.populateBarLocalSkyline();
+        if (!this.bar.isEmpty) {
+            this.populateBeamingSkyline();
+        }
+        if (this.voiceContainer.tupletGroups.size > 0) {
+            for (const groups of this.voiceContainer.tupletGroups.values()) {
+                for (const group of groups) {
+                    if (group.beats.length === 0) {
+                        continue;
+                    }
+                    const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
+                    const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
+                    this.insertSkylineTop(xStart, xEnd, this.tupletSize);
+                }
+            }
         }
     }
 

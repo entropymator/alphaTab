@@ -17,6 +17,7 @@ import { MultiVoiceContainerGlyph } from '@coderline/alphatab/rendering/glyphs/M
 import { ContinuationTieGlyph, type ITieGlyph, type TieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
 import { MultiBarRestBeatContainerGlyph } from '@coderline/alphatab/rendering/MultiBarRestBeatContainerGlyph';
 import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
+import { BarLocalSkyline, StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 import { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
@@ -137,6 +138,45 @@ export class BarRendererBase {
     public beatEffectsMinY = Number.NaN;
     public beatEffectsMaxY = Number.NaN;
 
+    /**
+     * Per-beat effect overflow magnitudes captured during {@link doLayout} via
+     * {@link registerBeatEffectOverflowsForBeat}. The renderer-local x of each
+     * beat is only final after {@link scaleToWidth}, so we keep the beat
+     * reference and resolve `getBeatContainer(beat).x` in
+     * {@link populateBarLocalSkyline}.
+     */
+    private _pendingBeatEffectRanges: {
+        beat: Beat;
+        minY: number;
+        maxY: number;
+    }[] = [];
+
+    private _barLocalSkyline: BarLocalSkyline | null = null;
+
+    /**
+     * Per-bar local skyline tracking the renderer-local above/below-staff
+     * envelope of every non-effect-band glyph anchored in this bar. Lazy
+     * allocated against the {@link ScoreLayout.skylinePool}. Inserts use
+     * renderer-local x coordinates so the skyline remains independent of
+     * the renderer's final position within the staff line.
+     */
+    public get barLocalSkyline(): BarLocalSkyline {
+        if (!this._barLocalSkyline) {
+            this._barLocalSkyline = new BarLocalSkyline(
+                0,
+                Number.MAX_SAFE_INTEGER,
+                this.scoreRenderer.layout!.skylinePool
+            );
+        }
+        return this._barLocalSkyline;
+    }
+
+    /** Reset the bar-local skyline (returns segments to the pool). */
+    public resetBarLocalSkyline(): void {
+        this._barLocalSkyline?.reset();
+        this._pendingBeatEffectRanges = [];
+    }
+
     public get topOverflow() {
         return this._contentTopOverflow + this.topEffects.height;
     }
@@ -196,6 +236,17 @@ export class BarRendererBase {
         }
     }
 
+    /**
+     * Range-aware sibling of {@link registerBeatEffectOverflows} that also
+     * captures the beat container's renderer-local x range. The captured
+     * range is flushed into the {@link barLocalSkyline} from
+     * {@link calculateOverflows} once the renderer's {@link height} is final.
+     */
+    public registerBeatEffectOverflowsForBeat(beat: Beat, minY: number, maxY: number): void {
+        this.registerBeatEffectOverflows(minY, maxY);
+        this._pendingBeatEffectRanges.push({ beat, minY, maxY });
+    }
+
     public registerOverflowTop(topOverflow: number): boolean {
         topOverflow = Math.ceil(topOverflow);
         if (topOverflow > this._contentTopOverflow) {
@@ -212,6 +263,53 @@ export class BarRendererBase {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Range-aware sibling of {@link registerOverflowTop}: also inserts the
+     * placed rect into the {@link barLocalSkyline}. Intended for callers that
+     * run AFTER {@link scaleToWidth} (e.g. ties from {@link finalizeRenderer})
+     * where final post-scale x positions are known. doLayout-time call sites
+     * use the scalar {@link registerOverflowTop} and let
+     * {@link populateBarLocalSkyline} emit the per-x skyline data.
+     */
+    public registerOverflowRangeTop(xStart: number, xEnd: number, topHeight: number): boolean {
+        const changed = this.registerOverflowTop(topHeight);
+        if (topHeight > 0 && xEnd > xStart) {
+            this.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, topHeight, 0);
+        }
+        return changed;
+    }
+
+    /**
+     * Range-aware sibling of {@link registerOverflowBottom}: also inserts the
+     * placed rect into the {@link barLocalSkyline}. See
+     * {@link registerOverflowRangeTop} for when to use this vs. the scalar API.
+     */
+    public registerOverflowRangeBottom(xStart: number, xEnd: number, bottomHeight: number): boolean {
+        const changed = this.registerOverflowBottom(bottomHeight);
+        if (bottomHeight > 0 && xEnd > xStart) {
+            this.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, bottomHeight, 0);
+        }
+        return changed;
+    }
+
+    /**
+     * Insert a placed rect into the {@link barLocalSkyline} without touching
+     * the scalar overflow. Used by {@link populateBarLocalSkyline} where the
+     * scalar overflows have already been registered at doLayout time and we
+     * only need the per-x skyline contribution at the final scaled position.
+     */
+    protected insertSkylineTop(xStart: number, xEnd: number, topHeight: number): void {
+        if (topHeight > 0 && xEnd > xStart) {
+            this.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, topHeight, 0);
+        }
+    }
+
+    protected insertSkylineBottom(xStart: number, xEnd: number, bottomHeight: number): void {
+        if (bottomHeight > 0 && xEnd > xStart) {
+            this.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, bottomHeight, 0);
+        }
     }
 
     /**
@@ -240,6 +338,12 @@ export class BarRendererBase {
 
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
+
+        // Positions are now final for this renderer. Rebuild the bar-local
+        // skyline so its per-x ranges reflect the post-scale layout. The
+        // scalar overflows are independent and already settled at doLayout
+        // time (where they must be ready for `calculateHeightForAccolade`).
+        this.populateBarLocalSkyline();
     }
 
     public get resources(): RenderingResources {
@@ -294,6 +398,10 @@ export class BarRendererBase {
     public afterStaffBarReverted() {
         this.topEffects.afterStaffBarReverted();
         this.bottomEffects.afterStaffBarReverted();
+        // Do NOT reset the bar-local skyline here: this hook fires on the
+        // bars that REMAIN on a staff after a revert, whose content (and
+        // therefore vertical envelope) is unchanged. Resetting would discard
+        // valid skyline state that no later pass re-populates.
         this._registerStaffOverflow();
     }
 
@@ -364,13 +472,13 @@ export class BarRendererBase {
 
                 const bottomOverflow = tieBottom - barBottom;
                 if (bottomOverflow > 0) {
-                    if (this.registerOverflowBottom(bottomOverflow)) {
+                    if (this.registerOverflowRangeBottom(tie.x, tie.x + tie.width, bottomOverflow)) {
                         didChangeOverflows = true;
                     }
                 }
                 const topOverflow = tieTop - barTop;
                 if (topOverflow < 0) {
-                    if (this.registerOverflowTop(topOverflow * -1)) {
+                    if (this.registerOverflowRangeTop(tie.x, tie.x + tie.width, topOverflow * -1)) {
                         didChangeOverflows = true;
                     }
                 }
@@ -426,6 +534,7 @@ export class BarRendererBase {
         this._postBeatGlyphs.renderer = this;
         this.topEffects.doLayout();
         this.bottomEffects.doLayout();
+        this.resetBarLocalSkyline();
 
         if (this.bar.simileMark === SimileMark.SecondOfDouble) {
             this.canWrap = false;
@@ -455,6 +564,15 @@ export class BarRendererBase {
         this.calculateOverflows(0, this.height);
     }
 
+    /**
+     * Scalar-only overflow registration. Runs at {@link doLayout} /
+     * {@link reLayout} time when y-bounds are known but x positions still
+     * depend on the system fit. Aggregates the worst-case above/below-staff
+     * extent into the scalar `_contentTopOverflow` / `_contentBottomOverflow`
+     * so {@link calculateHeightForAccolade} and downstream consumers see
+     * correct totals BEFORE {@link scaleToWidth} runs. Per-x skyline data is
+     * emitted later by {@link populateBarLocalSkyline} once positions settle.
+     */
     protected calculateOverflows(_rendererTop: number, rendererBottom: number) {
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
@@ -504,6 +622,104 @@ export class BarRendererBase {
         const beatEffectsMaxY = this.beatEffectsMaxY;
         if (!Number.isNaN(beatEffectsMaxY) && beatEffectsMaxY > rendererBottom) {
             this.registerOverflowBottom(beatEffectsMaxY - rendererBottom);
+        }
+    }
+
+    /**
+     * Rebuild the bar-local skyline from the renderer's now-final glyph
+     * positions. Called from {@link scaleToWidth} after voice container,
+     * post-beat glyphs and beam helpers have been re-aligned. Subclasses
+     * override and chain to super to add their own element categories
+     * (beam-helpers, tuplet brackets, multi-voice rest collisions).
+     *
+     * This is the single place where per-x skyline data is emitted; the
+     * scalar overflow numbers are independent and were settled earlier in
+     * {@link calculateOverflows}.
+     */
+    protected populateBarLocalSkyline(): void {
+        this.barLocalSkyline.reset();
+
+        const rendererBottom = this.height;
+
+        const preBeatGlyphs = this._preBeatGlyphs.glyphs;
+        if (preBeatGlyphs) {
+            for (const g of preBeatGlyphs) {
+                const topY = g.getBoundingBoxTop();
+                if (topY < 0) {
+                    this.insertSkylineTop(g.x, g.x + g.width, topY * -1);
+                }
+                const bottomY = g.getBoundingBoxBottom();
+                if (bottomY > rendererBottom) {
+                    this.insertSkylineBottom(g.x, g.x + g.width, bottomY - rendererBottom);
+                }
+            }
+        }
+
+        const postBeatGlyphs = this._postBeatGlyphs.glyphs;
+        if (postBeatGlyphs) {
+            const postX = this._postBeatGlyphs.x;
+            for (const g of postBeatGlyphs) {
+                const topY = g.getBoundingBoxTop();
+                if (topY < 0) {
+                    this.insertSkylineTop(postX + g.x, postX + g.x + g.width, topY * -1);
+                }
+                const bottomY = g.getBoundingBoxBottom();
+                if (bottomY > rendererBottom) {
+                    this.insertSkylineBottom(
+                        postX + g.x,
+                        postX + g.x + g.width,
+                        bottomY - rendererBottom
+                    );
+                }
+            }
+        }
+
+        // Per-beat content extents from the voice container. We use each
+        // beat's NoteHead extent (PreNotes..PostNotes) rather than the beat
+        // container's full slot width — the slot includes spring spacing
+        // between beats which isn't actually drawn on.
+        const v = this.voiceContainer;
+        const voiceX = v.x;
+        for (const beatGlyphs of v.beatGlyphs.values()) {
+            for (const beatContainer of beatGlyphs) {
+                const containerTop = beatContainer.getBoundingBoxTop();
+                const containerBottom = beatContainer.getBoundingBoxBottom();
+                const topOver = !Number.isNaN(containerTop) && containerTop < 0;
+                const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
+                if (!topOver && !botOver) {
+                    continue;
+                }
+                const base = voiceX + beatContainer.x;
+                const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
+                const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
+                if (xEnd <= xStart) {
+                    continue;
+                }
+                if (topOver) {
+                    this.insertSkylineTop(xStart, xEnd, containerTop * -1);
+                }
+                if (botOver) {
+                    this.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
+                }
+            }
+        }
+
+        // Per-beat effect overflows (articulations, fermatas, tremolo, etc.)
+        // captured during chord glyph layout. Resolve each beat's final x
+        // from its beat container now.
+        for (const r of this._pendingBeatEffectRanges) {
+            const container = this.getBeatContainer(r.beat);
+            if (!container) {
+                continue;
+            }
+            const xStart = voiceX + container.x;
+            const xEnd = xStart + container.width;
+            if (r.minY < 0) {
+                this.insertSkylineTop(xStart, xEnd, r.minY * -1);
+            }
+            if (r.maxY > rendererBottom) {
+                this.insertSkylineBottom(xStart, xEnd, r.maxY - rendererBottom);
+            }
         }
     }
 

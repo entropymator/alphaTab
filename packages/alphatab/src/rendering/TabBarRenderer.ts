@@ -6,6 +6,7 @@ import type { Voice } from '@coderline/alphatab/model/Voice';
 import { TabRhythmMode } from '@coderline/alphatab/NotationSettings';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
+import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { SpacingGlyph } from '@coderline/alphatab/rendering/glyphs/SpacingGlyph';
 import { TabBeatContainerGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatContainerGlyph';
 import type { TabBeatGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatGlyph';
@@ -121,6 +122,9 @@ export class TabBarRenderer extends LineBarRenderer {
 
         super.doLayout();
 
+        // Scalar overflow registration only (bar-wide string overflow + tuplet
+        // height). Per-x skyline contributions are emitted later by
+        // populateBarLocalSkyline once positions are final.
         const hasNoteOnTopString = this.minString === 0;
         if (hasNoteOnTopString) {
             this.registerOverflowTop(this.lineSpacing / 2);
@@ -134,6 +138,68 @@ export class TabBarRenderer extends LineBarRenderer {
             this._hasTuplets = this.voiceContainer.tupletGroups.size > 0;
             if (this._hasTuplets) {
                 this.registerOverflowBottom(this.settings.notation.rhythmHeight + this.tupletSize);
+            }
+        }
+    }
+
+    protected override populateBarLocalSkyline(): void {
+        super.populateBarLocalSkyline();
+        if (this.bar.isEmpty) {
+            return;
+        }
+        if (this.rhythmMode !== TabRhythmMode.Hidden) {
+            this.populateBeamingSkyline();
+        }
+        // Tab digits ride on each string line; the half-line space taken by
+        // the digit only appears WHERE a note actually sits. Register the
+        // string-line overflow per-beat at its notehead extent rather than
+        // bar-wide so the skyline tracks the real envelope.
+        // Top tab line = highest pitch string = the LAST entry in `tuning`
+        // (alphaTab encodes `note.string` as 1..tuning.length where the
+        // largest value is the top staff line).
+        const stringCount = this.bar.staff.tuning.length;
+        const halfLine = this.lineSpacing / 2;
+        for (const voice of this.bar.voices) {
+            if (voice.isEmpty) {
+                continue;
+            }
+            for (const beat of voice.beats) {
+                let hasTop = false;
+                let hasBottom = false;
+                for (const note of beat.notes) {
+                    if (note.string === stringCount) {
+                        hasTop = true;
+                    } else if (note.string === 1) {
+                        hasBottom = true;
+                    }
+                }
+                if (!hasTop && !hasBottom) {
+                    continue;
+                }
+                const xStart = this.getBeatX(beat, BeatXPosition.PreNotes);
+                const xEnd = this.getBeatX(beat, BeatXPosition.PostNotes);
+                if (xEnd <= xStart) {
+                    continue;
+                }
+                if (hasTop) {
+                    this.insertSkylineTop(xStart, xEnd, halfLine);
+                }
+                if (hasBottom) {
+                    this.insertSkylineBottom(xStart, xEnd, halfLine);
+                }
+            }
+        }
+        if (this._hasTuplets) {
+            const tupletHeight = this.settings.notation.rhythmHeight + this.tupletSize;
+            for (const groups of this.voiceContainer.tupletGroups.values()) {
+                for (const group of groups) {
+                    if (group.beats.length === 0) {
+                        continue;
+                    }
+                    const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
+                    const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
+                    this.insertSkylineBottom(xStart, xEnd, tupletHeight);
+                }
             }
         }
     }

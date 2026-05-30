@@ -161,7 +161,7 @@ export class TabNoteChordGlyph extends Glyph {
             }
 
             if (!Number.isNaN(minEffectY)) {
-                this.renderer.registerBeatEffectOverflows(minEffectY, maxEffectY);
+                this.renderer.registerBeatEffectOverflowsForBeat(this.beat, minEffectY, maxEffectY);
             }
         }
 

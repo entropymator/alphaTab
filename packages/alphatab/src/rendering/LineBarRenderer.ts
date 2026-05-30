@@ -884,11 +884,10 @@ export abstract class LineBarRenderer extends BarRendererBase {
     }
 
     protected calculateBeamingOverflows(rendererTop: number, rendererBottom: number) {
-        let maxNoteY = 0;
-        let minNoteY = 0;
-
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
+                let topY = 0;
+                let bottomY = 0;
                 if (!this.shouldPaintBeamingHelper(h)) {
                     // beam is not drawn, but a rest-only tuplet still draws a bracket
                     // anchored to the rest glyph bounds and needs overflow reserved.
@@ -902,19 +901,13 @@ export abstract class LineBarRenderer extends BarRendererBase {
                                 this.getRestY(tupletFirst, NoteYPosition.Top),
                                 this.getRestY(tupletLast, NoteYPosition.Top)
                             );
-                            const topY = restTop - this.tupletSize - this.tupletOffset;
-                            if (topY < maxNoteY) {
-                                maxNoteY = topY;
-                            }
+                            topY = restTop - this.tupletSize - this.tupletOffset;
                         } else {
                             const restBottom = Math.max(
                                 this.getRestY(tupletFirst, NoteYPosition.Bottom),
                                 this.getRestY(tupletLast, NoteYPosition.Bottom)
                             );
-                            const bottomY = restBottom + this.tupletSize + this.tupletOffset;
-                            if (bottomY > minNoteY) {
-                                minNoteY = bottomY;
-                            }
+                            bottomY = restBottom + this.tupletSize + this.tupletOffset;
                         }
                     }
                 }
@@ -924,40 +917,26 @@ export abstract class LineBarRenderer extends BarRendererBase {
                     const direction = this.getBeamDirection(h);
                     const flagOverflow = this.smuflMetrics.stemFlagOffsets.get(h.beats[0].duration)!;
                     if (direction === BeamDirection.Up) {
-                        let topY = this.getFlagTopY(h.beats[0], direction) - flagOverflow;
+                        topY = this.getFlagTopY(h.beats[0], direction) - flagOverflow;
                         if (h.hasTuplet && tupletDirection === direction) {
                             topY -= this.tupletSize + this.tupletOffset;
                         }
-                        if (topY < maxNoteY) {
-                            maxNoteY = topY;
-                        }
 
                         if (h.hasTuplet && tupletDirection !== direction) {
-                            let bottomY = this.getFlagBottomY(h.beats[0], tupletDirection);
+                            bottomY = this.getFlagBottomY(h.beats[0], tupletDirection);
                             bottomY += this.tupletSize + this.tupletOffset;
-
-                            if (bottomY > minNoteY) {
-                                minNoteY = bottomY;
-                            }
                         }
 
                         // bottom handled via beat container bBox
                     } else {
-                        let bottomY = this.getFlagBottomY(h.beats[0], direction) + flagOverflow;
+                        bottomY = this.getFlagBottomY(h.beats[0], direction) + flagOverflow;
                         if (h.hasTuplet && tupletDirection === direction) {
                             bottomY += this.tupletSize + this.tupletOffset;
                         }
-                        if (bottomY > minNoteY) {
-                            minNoteY = bottomY;
-                        }
 
                         if (h.hasTuplet && tupletDirection !== direction) {
-                            let topY = this.getFlagTopY(h.beats[0], tupletDirection);
+                            topY = this.getFlagTopY(h.beats[0], tupletDirection);
                             topY -= this.tupletSize + this.tupletOffset;
-
-                            if (topY < maxNoteY) {
-                                maxNoteY = topY;
-                            }
                         }
 
                         // top handled via beat container bBox
@@ -972,56 +951,140 @@ export abstract class LineBarRenderer extends BarRendererBase {
                     const tupletDirection = this.getTupletBeamDirection(h);
 
                     if (direction === BeamDirection.Up) {
-                        let topY = Math.min(drawingInfo.startY, drawingInfo.endY);
+                        topY = Math.min(drawingInfo.startY, drawingInfo.endY);
                         if (h.hasTuplet && tupletDirection === direction) {
                             topY -= this.tupletSize + this.tupletOffset;
                         }
 
-                        if (topY < maxNoteY) {
-                            maxNoteY = topY;
-                        }
-
-                        let bottomY: number = this.voiceContainer.getLowestNoteY(
-                            h.beatOfLowestNote,
-                            NoteYPosition.Bottom
-                        );
+                        bottomY = this.voiceContainer.getLowestNoteY(h.beatOfLowestNote, NoteYPosition.Bottom);
                         if (h.hasTuplet && tupletDirection !== direction) {
                             bottomY += this.tupletSize + this.tupletOffset;
-                        }
-
-                        if (bottomY > minNoteY) {
-                            minNoteY = bottomY;
                         }
                     } else {
-                        let bottomY = Math.max(drawingInfo.startY, drawingInfo.endY);
-
+                        bottomY = Math.max(drawingInfo.startY, drawingInfo.endY);
                         if (h.hasTuplet && tupletDirection === direction) {
                             bottomY += this.tupletSize + this.tupletOffset;
                         }
 
-                        if (bottomY > minNoteY) {
-                            minNoteY = bottomY;
-                        }
-
-                        let topY: number = this.voiceContainer.getHighestNoteY(h.beatOfHighestNote, NoteYPosition.Top);
+                        topY = this.voiceContainer.getHighestNoteY(h.beatOfHighestNote, NoteYPosition.Top);
                         if (h.hasTuplet && tupletDirection !== direction) {
                             topY -= this.tupletSize + this.tupletOffset;
-                        }
-
-                        if (topY < maxNoteY) {
-                            maxNoteY = topY;
                         }
                     }
                 }
+
+                // Scalar overflow registration — runs at doLayout time so the
+                // staff-overflow totals are available to
+                // `calculateHeightForAccolade`. The per-x skyline contribution
+                // is emitted later by `populateBeamingSkyline` once
+                // `scaleToWidth` has settled beat positions.
+                if (topY < rendererTop) {
+                    this.registerOverflowTop(Math.abs(topY));
+                }
+                if (bottomY > rendererBottom) {
+                    this.registerOverflowBottom(Math.abs(bottomY) - rendererBottom);
+                }
             }
         }
+    }
 
-        if (maxNoteY < rendererTop) {
-            this.registerOverflowTop(Math.abs(maxNoteY));
-        }
+    /**
+     * Per-beam-helper skyline emission. Mirrors the y-bound computation in
+     * {@link calculateBeamingOverflows} but emits an `(xStart..xEnd, height)`
+     * insert into the bar-local skyline at each beam's actual beat-span,
+     * using post-scale {@link getBeatX} values. Called from
+     * {@link populateBarLocalSkyline} after {@link scaleToWidth}.
+     */
+    protected populateBeamingSkyline(): void {
+        const rendererTop = 0;
+        const rendererBottom = this.height;
+        for (const v of this.helpers.beamHelpers) {
+            for (const h of v) {
+                let topY = 0;
+                let bottomY = 0;
+                if (!this.shouldPaintBeamingHelper(h)) {
+                    if (h.hasTuplet && h.isRestBeamHelper) {
+                        const tupletGroup = h.beats[0].tupletGroup!;
+                        const tupletFirst = tupletGroup.beats[0];
+                        const tupletLast = tupletGroup.beats[tupletGroup.beats.length - 1];
+                        const tupletDirection = this.getTupletBeamDirection(h);
+                        if (tupletDirection === BeamDirection.Up) {
+                            const restTop = Math.min(
+                                this.getRestY(tupletFirst, NoteYPosition.Top),
+                                this.getRestY(tupletLast, NoteYPosition.Top)
+                            );
+                            topY = restTop - this.tupletSize - this.tupletOffset;
+                        } else {
+                            const restBottom = Math.max(
+                                this.getRestY(tupletFirst, NoteYPosition.Bottom),
+                                this.getRestY(tupletLast, NoteYPosition.Bottom)
+                            );
+                            bottomY = restBottom + this.tupletSize + this.tupletOffset;
+                        }
+                    }
+                } else if (h.beats.length === 1 && h.beats[0].duration >= Duration.Half) {
+                    const tupletDirection = this.getTupletBeamDirection(h);
+                    const direction = this.getBeamDirection(h);
+                    const flagOverflow = this.smuflMetrics.stemFlagOffsets.get(h.beats[0].duration)!;
+                    if (direction === BeamDirection.Up) {
+                        topY = this.getFlagTopY(h.beats[0], direction) - flagOverflow;
+                        if (h.hasTuplet && tupletDirection === direction) {
+                            topY -= this.tupletSize + this.tupletOffset;
+                        }
+                        if (h.hasTuplet && tupletDirection !== direction) {
+                            bottomY = this.getFlagBottomY(h.beats[0], tupletDirection);
+                            bottomY += this.tupletSize + this.tupletOffset;
+                        }
+                    } else {
+                        bottomY = this.getFlagBottomY(h.beats[0], direction) + flagOverflow;
+                        if (h.hasTuplet && tupletDirection === direction) {
+                            bottomY += this.tupletSize + this.tupletOffset;
+                        }
+                        if (h.hasTuplet && tupletDirection !== direction) {
+                            topY = this.getFlagTopY(h.beats[0], tupletDirection);
+                            topY -= this.tupletSize + this.tupletOffset;
+                        }
+                    }
+                } else {
+                    const direction = this.getBeamDirection(h);
+                    this.ensureBeamDrawingInfo(h, direction);
+                    const drawingInfo = h.drawingInfos.get(direction)!;
+                    const tupletDirection = this.getTupletBeamDirection(h);
+                    if (direction === BeamDirection.Up) {
+                        topY = Math.min(drawingInfo.startY, drawingInfo.endY);
+                        if (h.hasTuplet && tupletDirection === direction) {
+                            topY -= this.tupletSize + this.tupletOffset;
+                        }
+                        bottomY = this.voiceContainer.getLowestNoteY(h.beatOfLowestNote, NoteYPosition.Bottom);
+                        if (h.hasTuplet && tupletDirection !== direction) {
+                            bottomY += this.tupletSize + this.tupletOffset;
+                        }
+                    } else {
+                        bottomY = Math.max(drawingInfo.startY, drawingInfo.endY);
+                        if (h.hasTuplet && tupletDirection === direction) {
+                            bottomY += this.tupletSize + this.tupletOffset;
+                        }
+                        topY = this.voiceContainer.getHighestNoteY(h.beatOfHighestNote, NoteYPosition.Top);
+                        if (h.hasTuplet && tupletDirection !== direction) {
+                            topY -= this.tupletSize + this.tupletOffset;
+                        }
+                    }
+                }
 
-        if (minNoteY > rendererBottom) {
-            this.registerOverflowBottom(Math.abs(minNoteY) - rendererBottom);
+                if (topY >= rendererTop && bottomY <= rendererBottom) {
+                    continue;
+                }
+                const firstBeat = h.beats[0];
+                const lastBeat = h.beats[h.beats.length - 1];
+                const xStart = this.getBeatX(firstBeat, BeatXPosition.PreNotes);
+                const xEnd = this.getBeatX(lastBeat, BeatXPosition.PostNotes);
+                if (topY < rendererTop) {
+                    this.insertSkylineTop(xStart, xEnd, Math.abs(topY));
+                }
+                if (bottomY > rendererBottom) {
+                    this.insertSkylineBottom(xStart, xEnd, Math.abs(bottomY) - rendererBottom);
+                }
+            }
         }
     }
 

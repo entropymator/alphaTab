@@ -33,7 +33,6 @@ export class MultiBarRestGlyph extends Glyph {
 
         const numberGlyphTop = smufl.glyphTop.get(this._numberGlyph[0])!;
         this.renderer.registerOverflowTop(Math.abs(this._numberTop) + numberGlyphTop);
-
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {

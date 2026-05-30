@@ -7,6 +7,8 @@ import {
     type EffectBandInfo,
     EffectBandMode
 } from '@coderline/alphatab/rendering/BarRendererFactory';
+import { StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
+import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import type { StaffTrackGroup } from '@coderline/alphatab/rendering/staves/StaffTrackGroup';
@@ -206,6 +208,62 @@ export class RenderStaff {
         }
     }
 
+    private _systemSkyline: StaffSystemSkyline | null = null;
+
+    /**
+     * Per-staff skyline assembled from this staff's per-renderer
+     * {@link BarLocalSkyline} instances during {@link finalizeStaff}.
+     * Carries the above/below envelope of every non-effect-band glyph on
+     * this staff line for use by effect placement and future collision work.
+     */
+    public get systemSkyline(): StaffSystemSkyline {
+        if (!this._systemSkyline) {
+            const pool = this.system.layout.renderer.layout!.skylinePool;
+            this._systemSkyline = new StaffSystemSkyline(
+                this.staffIndex,
+                this.system.index,
+                0,
+                Number.MAX_SAFE_INTEGER,
+                pool
+            );
+        }
+        return this._systemSkyline;
+    }
+
+    /**
+     * Fold a single renderer's bar-local skyline into the staff-system skyline
+     * at the renderer's line-local x range. Called from within the existing
+     * finalize loop so we do not need a second pass over the renderer list.
+     * Walks each child Skyline's segments and re-inserts them at the
+     * renderer's `renderer.x` offset, preserving per-x precision.
+     */
+    private _unionBarLocalIntoStaffSkyline(renderer: BarRendererBase): void {
+        const sky = this.systemSkyline;
+        const baseX = renderer.x;
+        const bar = renderer.barLocalSkyline;
+        bar.upSky.forEachSegment((xStart, xEnd, height) => {
+            if (height > 0) {
+                sky.insertPlaced(StaffSide.Top, baseX + xStart, baseX + xEnd, height, 0);
+            }
+        });
+        bar.downSky.forEachSegment((xStart, xEnd, height) => {
+            if (height > 0) {
+                sky.insertPlaced(StaffSide.Bottom, baseX + xStart, baseX + xEnd, height, 0);
+            }
+        });
+    }
+
+    /**
+     * Reset the staff-system skyline and every renderer's bar-local skyline.
+     * Used by re-layout paths that invalidate previously placed content.
+     */
+    public resetSkylines(): void {
+        this._systemSkyline?.reset();
+        for (const renderer of this.barRenderers) {
+            renderer.resetBarLocalSkyline();
+        }
+    }
+
     /**
      * Performs an early calculation of the expected staff height for the size calculation in the
      * accolade (e.g. for braces). This typically happens after the first bar renderers were created
@@ -234,8 +292,17 @@ export class RenderStaff {
 
         this.height = 0;
 
+        // The staff-system skyline is folded into the existing finalize
+        // loop below: each renderer's bar-local skyline is unioned into
+        // the staff skyline after the renderer has finalized (so tie
+        // inserts on the bar-local skyline are captured). Each renderer's
+        // x and width are already final by this point (`_scaleToWidth` ran
+        // earlier in the pipeline).
+        this.systemSkyline.reset();
+
         // 1st pass: let all renderers finalize themselves, this might cause
-        // changes in the overflows
+        // changes in the overflows. Fold each renderer's bar-local skyline
+        // into the staff skyline as we go — no second pass needed.
         let needsSecondPass = false;
         let topOverflow: number = this.topOverflow;
         for (const renderer of this.barRenderers) {
@@ -244,6 +311,7 @@ export class RenderStaff {
                 needsSecondPass = true;
             }
             this.height = Math.max(this.height, renderer.height);
+            this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
         // 2nd pass: move renderers to correct position respecting the new overflows
@@ -254,9 +322,13 @@ export class RenderStaff {
                 renderer.y = this.topPadding + topOverflow;
             }
 
-            // finalize again (to align ties)
+            // Re-finalize (to align ties) and re-fold each bar-local skyline
+            // into a fresh staff skyline so the final envelope reflects the
+            // post-tie geometry.
+            this.systemSkyline.reset();
             for (const renderer of this.barRenderers) {
                 renderer.finalizeRenderer();
+                this._unionBarLocalIntoStaffSkyline(renderer);
             }
         }
 

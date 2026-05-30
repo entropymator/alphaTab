@@ -20,6 +20,7 @@ import type { RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import { SlurRegistry } from '@coderline/alphatab/rendering/layout/SlurRegistry';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
 import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
+import { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/SkylineSegmentPool';
 import { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 import { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import type { BeamingRuleLookup } from '@coderline/alphatab/rendering/utils/BeamingRuleLookup';
@@ -52,6 +53,12 @@ export abstract class ScoreLayout {
     public renderer: ScoreRenderer;
     public width: number = 0;
     public height: number = 0;
+
+    /**
+     * Shared pool for {@link SkylineSegment} instances reused across all
+     * bar-local and per-staff skylines built during a layout cycle.
+     */
+    public readonly skylinePool: SkylineSegmentPool = new SkylineSegmentPool();
 
     public multiBarRestInfo: Map<number, number[]> | null = null;
 
