@@ -20,6 +20,7 @@ import type { RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import { SlurRegistry } from '@coderline/alphatab/rendering/layout/SlurRegistry';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
 import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
+import { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/SkylineSegmentPool';
 import { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 import { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import type { BeamingRuleLookup } from '@coderline/alphatab/rendering/utils/BeamingRuleLookup';
@@ -52,6 +53,8 @@ export abstract class ScoreLayout {
     public renderer: ScoreRenderer;
     public width: number = 0;
     public height: number = 0;
+
+    public readonly skylinePool: SkylineSegmentPool = new SkylineSegmentPool();
 
     public multiBarRestInfo: Map<number, number[]> | null = null;
 
@@ -125,7 +128,7 @@ export abstract class ScoreLayout {
 
     private _lazyPartials: Map<string, LazyPartial> = new Map<string, LazyPartial>();
 
-    protected getExistingPartialArgs(id:string): RenderFinishedEventArgs|undefined {
+    protected getExistingPartialArgs(id: string): RenderFinishedEventArgs | undefined {
         return this._lazyPartials.has(id) ? this._lazyPartials.get(id)!.args : undefined;
     }
 

@@ -35,6 +35,7 @@ injectStyles(
     .at-test-comparer { position: relative; }
     .at-test-comparer .slider-handle {
         position: absolute;
+        top: 0;
         bottom: 0;
         width: 40px;
         transform: translateX(-50%);
@@ -77,8 +78,7 @@ injectStyles(
         box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35), 0 0 0 1.5px rgba(0, 0, 0, 0.12);
     }
     .at-test-comparer .expected,
-    .at-test-comparer .actual,
-    .at-test-comparer .diff {
+    .at-test-comparer .actual {
         background: #fff;
         border: 1px solid red;
         position: absolute;
@@ -96,11 +96,6 @@ injectStyles(
         top: 0;
         border-left: 1px solid red;
     }
-    .at-test-comparer .diff {
-        display: none;
-        left: 0;
-    }
-    .at-test-card.accepted .diff,
     .at-test-card.accepted .expected,
     .at-test-card.accepted .actual { border-color: green; }
     body.hide-accepted .at-test-card.accepted { display: none; }
@@ -163,7 +158,6 @@ injectStyles(
 interface TestResult {
     originalFile: string;
     newFile: string | Uint8Array;
-    diffFile: string | Uint8Array;
     accepted?: true;
 }
 
@@ -260,13 +254,11 @@ export class TestResultsApp implements Mountable {
             <div class="at-test-card">
                 <h5 class="at-test-card-title">${result.originalFile}</h5>
                 <div class="at-test-controls">
-                    <label><input type="checkbox" class="diff-toggle" /> Show Diff</label>
                     <button type="button" class="btn accept">Accept</button>
                 </div>
                 <div class="at-test-comparer">
                     <div class="expected"><img alt="expected" /></div>
                     <div class="actual"><img alt="actual" /></div>
-                    <div class="diff"><img alt="diff" /></div>
                     <div class="slider-handle"></div>
                 </div>
             </div>
@@ -274,16 +266,13 @@ export class TestResultsApp implements Mountable {
         const comparer = card.querySelector<HTMLElement>('.at-test-comparer')!;
         const ex = comparer.querySelector<HTMLElement>('.expected')!;
         const ac = comparer.querySelector<HTMLElement>('.actual')!;
-        const df = comparer.querySelector<HTMLElement>('.diff')!;
         const handle = comparer.querySelector<HTMLElement>('.slider-handle')!;
         const exImg = ex.querySelector<HTMLImageElement>('img')!;
         const acImg = ac.querySelector<HTMLImageElement>('img')!;
-        const dfImg = df.querySelector<HTMLImageElement>('img')!;
 
         await Promise.allSettled([
             loadImage(exImg, result.originalFile),
             loadImage(acImg, result.newFile),
-            loadImage(dfImg, result.diffFile)
         ]);
 
         const width = Math.max(exImg.width, acImg.width);
@@ -294,8 +283,6 @@ export class TestResultsApp implements Mountable {
         ex.style.height = `${height}px`;
         ac.style.width = `${width / 2}px`;
         ac.style.height = `${height}px`;
-        df.style.width = `${width}px`;
-        df.style.height = `${height}px`;
 
         handle.style.left = `${width / 2}px`;
         handle.style.setProperty('--knob-margin-top', `${height / 2 - 20}px`);
@@ -311,9 +298,6 @@ export class TestResultsApp implements Mountable {
             handle.style.left = `${x}px`;
             ac.style.width = `${width - x}px`;
         });
-        card.querySelector<HTMLInputElement>('.diff-toggle')!.onchange = e => {
-            df.style.display = (e.target as HTMLInputElement).checked ? 'block' : 'none';
-        };
         const acceptBtn = card.querySelector<HTMLButtonElement>('.accept')!;
         acceptBtn.onclick = async () => {
             acceptBtn.disabled = true;
@@ -360,15 +344,13 @@ export class TestResultsApp implements Mountable {
                     continue;
                 }
                 const path = entry.fullName.startsWith('test-data/') ? entry.fullName : `test-data/${entry.fullName}`;
-                const key = `${path.replace('.diff.png', '').replace('.new.png', '')}.png`;
+                const key = `${path.replace('.new.png', '')}.png`;
                 let result = grouped.get(key);
                 if (!result) {
-                    result = { originalFile: key, newFile: '', diffFile: '' };
+                    result = { originalFile: key, newFile: '' };
                     grouped.set(key, result);
                 }
-                if (entry.fullName.endsWith('.diff.png')) {
-                    result.diffFile = entry.data;
-                } else if (entry.fullName.endsWith('.new.png')) {
+                if (entry.fullName.endsWith('.new.png')) {
                     result.newFile = entry.data;
                 }
             }

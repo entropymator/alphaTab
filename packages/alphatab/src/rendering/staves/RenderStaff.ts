@@ -7,6 +7,8 @@ import {
     type EffectBandInfo,
     EffectBandMode
 } from '@coderline/alphatab/rendering/BarRendererFactory';
+import { EffectSystemPlacement } from '@coderline/alphatab/rendering/EffectSystemPlacement';
+import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import type { StaffTrackGroup } from '@coderline/alphatab/rendering/staves/StaffTrackGroup';
@@ -206,6 +208,48 @@ export class RenderStaff {
         }
     }
 
+    private _systemSkyline: StaffSystemSkyline | null = null;
+    private _effectPlacement: EffectSystemPlacement | null = null;
+
+    public get effectPlacement(): EffectSystemPlacement {
+        if (!this._effectPlacement) {
+            this._effectPlacement = new EffectSystemPlacement(this);
+        }
+        return this._effectPlacement;
+    }
+
+    public get systemSkyline(): StaffSystemSkyline {
+        if (!this._systemSkyline) {
+            const pool = this.system.layout.renderer.layout!.skylinePool;
+            this._systemSkyline = new StaffSystemSkyline(
+                this.staffIndex,
+                this.system.index,
+                0,
+                Number.MAX_SAFE_INTEGER,
+                pool
+            );
+        }
+        return this._systemSkyline;
+    }
+
+    private _unionBarLocalIntoStaffSkyline(renderer: BarRendererBase): void {
+        const sky = this.systemSkyline;
+        const baseX = renderer.x;
+        const bar = renderer.barLocalSkyline;
+        const pre = renderer.preBeatLocalSkyline;
+        const post = renderer.postBeatLocalSkyline;
+        // Post-beat segments live in post-beat-group-local coords; shift by the
+        // group's final x (settled by scaleToWidth) before unioning.
+        const postBaseX = baseX + renderer.postBeatGroupOffset;
+
+        sky.upSky.unionShifted(bar.upSky, baseX);
+        sky.downSky.unionShifted(bar.downSky, baseX);
+        sky.upSky.unionShifted(pre.upSky, baseX);
+        sky.downSky.unionShifted(pre.downSky, baseX);
+        sky.upSky.unionShifted(post.upSky, postBaseX);
+        sky.downSky.unionShifted(post.downSky, postBaseX);
+    }
+
     /**
      * Performs an early calculation of the expected staff height for the size calculation in the
      * accolade (e.g. for braces). This typically happens after the first bar renderers were created
@@ -234,34 +278,34 @@ export class RenderStaff {
 
         this.height = 0;
 
-        // 1st pass: let all renderers finalize themselves, this might cause
-        // changes in the overflows
-        let needsSecondPass = false;
-        let topOverflow: number = this.topOverflow;
+        this.systemSkyline.reset();
+
+        // Only renderer 0 ever yields continuations; hoist out of the per-renderer loop.
+        if (this.barRenderers.length > 0) {
+            this.barRenderers[0].registerMultiSystemSlurs(
+                this.system.layout!.slurRegistry.getAllContinuations(this.barRenderers[0])
+            );
+        }
+
         for (const renderer of this.barRenderers) {
-            renderer.registerMultiSystemSlurs(this.system.layout!.slurRegistry.getAllContinuations(renderer));
-            if (renderer.finalizeRenderer()) {
-                needsSecondPass = true;
+            renderer.finalizeOwnedTies();
+            renderer.finalizeEffectBandSpans();
+
+            if (renderer.tiesDirty) {
+                renderer.refreshSizes();
+                renderer.registerStaffOverflows();
+                renderer.clearTiesDirty();
             }
-            this.height = Math.max(this.height, renderer.height);
+            if (renderer.height > this.height) {
+                this.height = renderer.height;
+            }
+            this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
-        // 2nd pass: move renderers to correct position respecting the new overflows
-        if (needsSecondPass) {
-            topOverflow = this.topOverflow;
-            // shift all the renderers to the new position to match required spacing
-            for (const renderer of this.barRenderers) {
-                renderer.y = this.topPadding + topOverflow;
-            }
-
-            // finalize again (to align ties)
-            for (const renderer of this.barRenderers) {
-                renderer.finalizeRenderer();
-            }
-        }
+        this.effectPlacement.placeAndApply();
 
         if (this.height > 0) {
-            this.height += this.topPadding + topOverflow + this.bottomOverflow + this.bottomPadding;
+            this.height += this.topPadding + this.topOverflow + this.bottomOverflow + this.bottomPadding;
         }
 
         this.height = Math.ceil(this.height);

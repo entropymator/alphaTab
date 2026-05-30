@@ -319,12 +319,16 @@ export class DisplaySettings {
     public staffPaddingLeft: number = 2;
 
     /**
-     * The padding between individual effect bands.
+     * Clearance applied around each effect band on its staff-facing side:
+     * "bottom padding" for top bands (between the band and the staff or
+     * the band stacked below it) and "top padding" for bottom bands
+     * (mirrored). Also used as the inter-band gap when bands stack on
+     * the same side.
      * @since 1.7.0
      * @category Display
-     * @defaultValue `2`
+     * @defaultValue `5`
      */
-    public effectBandPaddingBottom = 2;
+    public effectBandPaddingBottom = 5;
 
     /**
      * The additional padding to apply between the staves of two separate tracks.
