@@ -41,35 +41,6 @@ export class Skyline {
         this._raiseRange(xStart, xEnd, outerEdgeHeight);
     }
 
-    /** Inter-staff gap: max over the overlap range of `this.heightAt(x) + other.heightAt(x)`. */
-    public meshDistance(other: Skyline): number {
-        const a: SkylineSegment[] = this._segments;
-        const b: SkylineSegment[] = other._segments;
-        let i: number = 0;
-        let j: number = 0;
-        let best: number = 0;
-        while (i < a.length - 1 && j < b.length - 1) {
-            const aStart: number = a[i].xStart;
-            const aEnd: number = a[i + 1].xStart;
-            const bStart: number = b[j].xStart;
-            const bEnd: number = b[j + 1].xStart;
-            const overlapStart: number = aStart > bStart ? aStart : bStart;
-            const overlapEnd: number = aEnd < bEnd ? aEnd : bEnd;
-            if (overlapStart < overlapEnd) {
-                const sum: number = a[i].height + b[j].height;
-                if (sum > best) {
-                    best = sum;
-                }
-            }
-            if (aEnd <= bEnd) {
-                i = i + 1;
-            } else {
-                j = j + 1;
-            }
-        }
-        return best;
-    }
-
     public union(other: Skyline): void {
         const o: SkylineSegment[] = other._segments;
         for (let k: number = 0; k < o.length - 1; k = k + 1) {
@@ -98,20 +69,11 @@ export class Skyline {
     }
 
     public reset(): void {
-        this._releaseAllInternal();
-        this._initBaseline();
-    }
-
-    /** Releases the baseline too — the instance is unusable afterward. */
-    public releaseAll(): void {
-        this._releaseAllInternal();
-    }
-
-    private _releaseAllInternal(): void {
         while (this._segments.length > 0) {
             const s: SkylineSegment = this._segments.pop()!;
             this._pool.release(s);
         }
+        this._initBaseline();
     }
 
     private _initBaseline(): void {

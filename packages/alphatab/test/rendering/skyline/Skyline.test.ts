@@ -170,30 +170,6 @@ describe('Skyline — union', () => {
     });
 });
 
-describe('Skyline — meshDistance', () => {
-    it('returns max over the overlap range of (a.h + b.h)', () => {
-        const downSky: Skyline = SkylineFixtures.newSkyline(0, 100);
-        const upSky: Skyline = SkylineFixtures.newSkyline(0, 100);
-        downSky.insert(10, 40, 3, 0);
-        upSky.insert(30, 60, 5, 0);
-        expect(downSky.meshDistance(upSky)).toBe(8);
-    });
-
-    it('returns 0 when neither skyline has any inserted content', () => {
-        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
-        const b: Skyline = SkylineFixtures.newSkyline(0, 100);
-        expect(a.meshDistance(b)).toBe(0);
-    });
-
-    it('returns the larger single-side height when the other is empty', () => {
-        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
-        const b: Skyline = SkylineFixtures.newSkyline(0, 100);
-        a.insert(10, 50, 4, 0);
-        expect(a.meshDistance(b)).toBe(4);
-        expect(b.meshDistance(a)).toBe(4);
-    });
-});
-
 describe('Skyline — reset', () => {
     it('returns segments to the pool and rebuilds the baseline', () => {
         const pool: SkylineSegmentPool = new SkylineSegmentPool();

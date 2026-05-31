@@ -19,7 +19,6 @@ export class EffectBand extends Glyph {
     private _container: EffectBandContainer;
     public isEmpty: boolean = true;
 
-    public previousBand: EffectBand | null = null;
     public isLinkedToPrevious: boolean = false;
     public firstBeat: Beat | null = null;
     public lastBeat: Beat | null = null;
