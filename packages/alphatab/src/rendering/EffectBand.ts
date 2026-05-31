@@ -28,12 +28,6 @@ export class EffectBand extends Glyph {
     public voice: Voice;
     public info: EffectInfo;
 
-    /**
-     * Magnitude of the band's inner edge from the staff reference, set by
-     * {@link EffectSystemPlacement} during the staff finalize pass. Drives the
-     * conversion from skyline magnitude to renderer-local `band.y` and is the
-     * only piece of placement state the band carries between place + apply.
-     */
     public placedMagnitude: number = 0;
 
     public get container(): EffectBandContainer {
@@ -59,18 +53,6 @@ export class EffectBand extends Glyph {
         this.info.finalizeBand(this);
     }
 
-    /**
-     * Feeds the band's per-beat glyph extents into the bar's
-     * {@link BarLayoutingInfo} when the underlying effect has
-     * {@link EffectInfo.contributesToBeatSpacing} enabled. Each beat's
-     * spring is widened by the glyph's actual paint extent so the
-     * layout solver reserves room for effects that paint outside the
-     * beat's notation column (e.g. center-aligned fermata needs
-     * half-width clearance on each side of `onTimeX`).
-     *
-     * No-op for the default `contributesToBeatSpacing = false` so
-     * existing layouts that don't opt in are unaffected.
-     */
     public registerLayoutingInfo(layoutings: BarLayoutingInfo): void {
         if (!this.info.contributesToBeatSpacing) {
             return;
@@ -89,9 +71,7 @@ export class EffectBand extends Glyph {
                 if (!container) {
                     continue;
                 }
-                // glyph.x is still 0 at this lifecycle stage (set later
-                // by `_alignGlyph`), so getBoundingBoxLeft/Right return
-                // the extent relative to the glyph's anchor.
+                // glyph.x is still 0 at this lifecycle stage (set later by `_alignGlyph`).
                 const preBeat = Math.max(0, -glyph.getBoundingBoxLeft());
                 const postBeat = Math.max(0, glyph.getBoundingBoxRight());
                 if (preBeat > 0 || postBeat > 0) {
@@ -161,18 +141,8 @@ export class EffectBand extends Glyph {
                 g.doLayout();
                 this._effectGlyphs[b.voice.index].set(b.index, g);
                 this._uniqueEffectGlyphs[b.voice.index].push(g);
-                // FullBar effects (sustain pedal, alternate endings, …)
-                // can also span multiple renderers when the same effect
-                // continues on the next bar. The Grouped* path tracks
-                // this via per-beat `canExpand`; for FullBar the unit is
-                // the bar itself, so a non-empty same-effect band in the
-                // previous renderer (whose last beat satisfies
-                // `canExpand`) is the bar-level equivalent. Marking the
-                // chain via {@link isLinkedToPrevious} lets
-                // {@link EffectSystemPlacement} treat the run as one
-                // block — otherwise each band's pad-widened skyline
-                // query overlaps the previous band's inserted rect and
-                // they stair-step up at every barline.
+                // FullBar chain link across renderers so EffectSystemPlacement keeps
+                // continuation bars at one magnitude.
                 if (this.renderer.index > 0 && b.index === 0) {
                     const previousContainer = this._container.previousContainer;
                     const previousBand = previousContainer?.getBand(b.voice, this.info.effectId);
@@ -274,24 +244,15 @@ export class EffectBand extends Glyph {
     }
 
     /**
-     * The band's renderer-local x range, used by
-     * {@link EffectSystemPlacement} to query the staff skyline. Spans the
-     * union of every per-voice {@link EffectGlyph}'s `(x, x+width)` rect, or
-     * the renderer's full width for {@link EffectBarGlyphSizing.FullBar}.
-     *
-     * Result is `null` when the band is empty.
+     * Renderer-local x range used by {@link EffectSystemPlacement}. Unions glyph
+     * paint extents (not `x`/`width` — many effect glyphs keep `width = 0`).
+     * Returns `null` when empty.
      */
     public computeLocalXRange(): { xStart: number; xEnd: number } | null {
         if (this.isEmpty) {
             return null;
         }
         if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
-            // The bar itself anchors the band, but the painted content
-            // may extend past either edge — e.g. right-aligned
-            // end-of-bar direction labels (`D.C. al Coda`) on a narrow
-            // bar overflow leftward. Union with each glyph's bbox so
-            // the skyline can detect that overflow and stack adjacent
-            // bars' bands vertically instead of overlapping them.
             let xStart = 0;
             let xEnd = this.renderer.width;
             for (const v of this._uniqueEffectGlyphs) {
@@ -308,12 +269,6 @@ export class EffectBand extends Glyph {
             }
             return { xStart, xEnd };
         }
-        // Use each glyph's paint extent (`getBoundingBoxLeft/Right`), not
-        // its rhythmic-spacing extent (`x` / `x + width`). Effect glyphs
-        // such as `BarTempoGlyph` keep `width = 0` to stay out of the
-        // bar's rod calculation but still paint a real text/symbol
-        // string — without this their band would collapse to a
-        // degenerate point and the skyline never sees them.
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
         for (const v of this._uniqueEffectGlyphs) {
@@ -328,14 +283,6 @@ export class EffectBand extends Glyph {
                 }
             }
         }
-        // Defensive: `max < min` (strict) so that a degenerate point range
-        // (= every glyph in the band reported a zero-width paint extent)
-        // is still accepted. Any glyph that paints over a real range
-        // should override `getBoundingBoxLeft/Right` so the band yields a
-        // proper rectangle; the strict comparison just keeps unfamiliar
-        // future zero-width effect glyphs working with the placement
-        // (`placeAbove` widens by `pad` so a degenerate range still gets
-        // a small skyline column).
         if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
             return null;
         }

@@ -43,18 +43,6 @@ export class LyricsGlyph extends EffectGlyph {
         this._maxLineWidth = maxWidth;
     }
 
-    /**
-     * Lyrics intentionally keep `this.width = 0` to stay out of the bar's
-     * rhythmic-spacing calculation (lyric horizontal extent is reserved
-     * separately via the overlay-rod system). The default `Glyph` bbox
-     * accessors would therefore return a zero-width range `(x, x)` and
-     * the per-x skyline would never see the lyric — breaking
-     * `bottomEffects.height` and the canvas's vertical allocation.
-     *
-     * Override to return the actual painted extent, accounting for
-     * `textAlign`: the longest line's measured width sets the bbox span,
-     * anchored relative to `this.x` according to the alignment.
-     */
     public override getBoundingBoxLeft(): number {
         switch (this.textAlign) {
             case TextAlign.Center:

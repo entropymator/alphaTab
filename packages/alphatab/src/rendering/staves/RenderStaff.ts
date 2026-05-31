@@ -212,12 +212,6 @@ export class RenderStaff {
     private _systemSkyline: StaffSystemSkyline | null = null;
     private _effectPlacement: EffectSystemPlacement | null = null;
 
-    /**
-     * Per-staff effect-band placement oracle that consumes the assembled
-     * {@link systemSkyline} to position every {@link EffectBand} on this
-     * staff line. Replaces the legacy `EffectBandSlot` / `EffectBandSizingInfo`
-     * row allocator.
-     */
     public get effectPlacement(): EffectSystemPlacement {
         if (!this._effectPlacement) {
             this._effectPlacement = new EffectSystemPlacement(this);
@@ -225,12 +219,6 @@ export class RenderStaff {
         return this._effectPlacement;
     }
 
-    /**
-     * Per-staff skyline assembled from this staff's per-renderer
-     * {@link BarLocalSkyline} instances during {@link finalizeStaff}.
-     * Carries the above/below envelope of every non-effect-band glyph on
-     * this staff line for use by effect placement and future collision work.
-     */
     public get systemSkyline(): StaffSystemSkyline {
         if (!this._systemSkyline) {
             const pool = this.system.layout.renderer.layout!.skylinePool;
@@ -245,13 +233,6 @@ export class RenderStaff {
         return this._systemSkyline;
     }
 
-    /**
-     * Fold a single renderer's bar-local skyline into the staff-system skyline
-     * at the renderer's line-local x range. Called from within the existing
-     * finalize loop so we do not need a second pass over the renderer list.
-     * Walks each child Skyline's segments and re-inserts them at the
-     * renderer's `renderer.x` offset, preserving per-x precision.
-     */
     private _unionBarLocalIntoStaffSkyline(renderer: BarRendererBase): void {
         const sky = this.systemSkyline;
         const baseX = renderer.x;
@@ -268,10 +249,6 @@ export class RenderStaff {
         });
     }
 
-    /**
-     * Reset the staff-system skyline and every renderer's bar-local skyline.
-     * Used by re-layout paths that invalidate previously placed content.
-     */
     public resetSkylines(): void {
         this._systemSkyline?.reset();
         for (const renderer of this.barRenderers) {
@@ -307,18 +284,10 @@ export class RenderStaff {
 
         this.height = 0;
 
-        // The staff-system skyline is folded into the existing finalize
-        // loop below: each renderer's bar-local skyline is unioned into
-        // the staff skyline after the renderer has finalized (so tie
-        // inserts on the bar-local skyline are captured). Each renderer's
-        // x and width are already final by this point (`_scaleToWidth` ran
-        // earlier in the pipeline).
+        // `_scaleToWidth` has settled each renderer's x/width by now.
         this.systemSkyline.reset();
         this.effectPlacement.reset();
 
-        // 1st pass: let all renderers finalize themselves (ties), this
-        // might cause changes in the overflows. Fold each renderer's
-        // bar-local skyline into the staff skyline as we go.
         let needsSecondPass = false;
         for (const renderer of this.barRenderers) {
             renderer.registerMultiSystemSlurs(this.system.layout!.slurRegistry.getAllContinuations(renderer));
@@ -329,23 +298,13 @@ export class RenderStaff {
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
-        // Place effect bands against the assembled staff skyline. This
-        // sets each renderer's `topEffects.height` / `bottomEffects.height`
-        // and re-registers staff overflows, so `this.topOverflow` /
-        // `this.bottomOverflow` reflect the new band stacks immediately
-        // afterwards.
         this.effectPlacement.placeAndApply();
 
         let topOverflow: number = this.topOverflow;
-        // Always shift renderers to the post-placement topOverflow so band
-        // y's, content overflow and renderer.y agree.
         for (const renderer of this.barRenderers) {
             renderer.y = this.topPadding + topOverflow;
         }
 
-        // 2nd pass: if ties asked for another finalize cycle, re-fold the
-        // bar-local skylines and re-run placement so band y's reflect the
-        // tie-adjusted skyline.
         if (needsSecondPass) {
             this.systemSkyline.reset();
             this.effectPlacement.reset();

@@ -2,12 +2,7 @@ import { StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline
 import { Skyline } from '@coderline/alphatab/rendering/skyline/Skyline';
 import type { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/SkylineSegmentPool';
 
-/**
- * Per-staff band heights consumed by the layout / inter-staff gap. Both
- * fields are non-negative magnitudes from the staff's top / bottom
- * reference edge outward.
- * @internal
- */
+/** @internal */
 export class StaffSystemBandHeights {
     public topAnnotationBandHeight: number;
     public bottomAnnotationBandHeight: number;
@@ -24,21 +19,8 @@ export class StaffSystemBandHeights {
 }
 
 /**
- * Per-staff-per-system Skyline pair used for system-level outside-staff
- * placement. Assembled by seeding per-bar envelope scalars (or unioning
- * shifted per-bar local skylines) across all bars on a staff line.
- *
- * Lifecycle:
- *   1. construct with `(staffIndex, systemIndex, xMin, xMax, pool)`.
- *   2. seed from per-bar scalars or via skyline union; both upSky and
- *      downSky start flat and are raised by `insertSeed` / shifted union
- *      from the per-bar local skylines.
- *   3. consumers (effect placement, future cross-staff spacing) call
- *      `place(side, ...)` to obtain a y, then `insertPlaced(side, ...)`
- *      to register the placed rect so subsequent placements stack.
- *   4. `computeBandHeights()` emits the per-side max heights.
- *   5. `releaseAll()` returns all segments back to the pool.
- *
+ * Skyline pair for system-level placement. Assembled by unioning per-bar
+ * local skylines shifted by `renderer.x`.
  * @internal
  */
 export class StaffSystemSkyline {
@@ -60,10 +42,6 @@ export class StaffSystemSkyline {
         this.downSky = new Skyline(xMin, xMax, pool);
     }
 
-    /**
-     * Seed step: raise upSky and downSky to the per-bar envelopes. Zero
-     * magnitudes are skipped to avoid pointless segment churn on empty bars.
-     */
     public insertSeed(xStart: number, xEnd: number, seedUp: number, seedDown: number): void {
         if (seedUp > 0) {
             this.upSky.insert(xStart, xEnd, seedUp, 0);
@@ -73,11 +51,6 @@ export class StaffSystemSkyline {
         }
     }
 
-    /**
-     * Place an element using the side-aware placement oracle. The returned
-     * magnitude is non-negative outward; caller translates to the element's
-     * local frame.
-     */
     public place(side: StaffSide, xStart: number, xEnd: number, intrinsicHeight: number, pad: number): number {
         if (side === StaffSide.Top) {
             return this.upSky.placeAbove(xStart, xEnd, intrinsicHeight, pad);
@@ -85,11 +58,6 @@ export class StaffSystemSkyline {
         return this.downSky.placeBelow(xStart, xEnd, intrinsicHeight, pad);
     }
 
-    /**
-     * Insert a placed rect. For point elements: one call. For span elements
-     * (slur, hairpin, …): called once per finalised geometry segment so the
-     * next element sees the actual span profile, not its bounding rectangle.
-     */
     public insertPlaced(
         side: StaffSide,
         xStart: number,
@@ -104,18 +72,15 @@ export class StaffSystemSkyline {
         }
     }
 
-    /** Emit the band-height scalars. */
     public computeBandHeights(): StaffSystemBandHeights {
         return new StaffSystemBandHeights(this.upSky.maxHeight(), this.downSky.maxHeight());
     }
 
-    /** Reset both child Skylines (keep baseline; segments returned to pool). */
     public reset(): void {
         this.upSky.reset();
         this.downSky.reset();
     }
 
-    /** Release ALL segments (including baselines) back to the pool. */
     public releaseAll(): void {
         this.upSky.releaseAll();
         this.downSky.releaseAll();

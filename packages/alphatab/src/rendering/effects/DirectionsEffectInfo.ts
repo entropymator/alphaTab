@@ -37,18 +37,10 @@ export class DirectionsEffectInfo extends EffectInfo {
     }
 
     public canExpand(_from: Beat, _to: Beat): boolean {
-        // Each bar carries its own independent direction set
-        // (`masterBar.directions`) rendered by its own
-        // `DirectionsContainerGlyph` — there's no continuous element
-        // to expand across bars. Returning `false` keeps the FullBar
-        // linked-chain heuristic in `EffectBand` from pinning adjacent
-        // direction bars to a shared y magnitude, so the per-x
-        // skyline placement (with the bbox overflow override) can
-        // stack them vertically when their texts collide.
+        // Each bar's directions are independent — no cross-bar chain to share a y.
         return false;
     }
     public override get placementCategory(): EffectBandPlacementCategory {
         return EffectBandPlacementCategory.SystemMarker;
     }
-
 }

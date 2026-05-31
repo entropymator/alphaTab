@@ -151,9 +151,7 @@ export class ScoreBarRenderer extends LineBarRenderer {
     public override applyLayoutingInfo(): boolean {
         const result = super.applyLayoutingInfo();
         if (result && this.bar.isMultiVoice) {
-            // Scalar overflow only: per-x skyline contributions for
-            // BarCollisionHelper-displaced rests are emitted later by
-            // populateBarLocalSkyline once final beat positions are known.
+            // Scalar overflow only; per-x emits later in populateBarLocalSkyline.
             const top: number = this.getScoreY(-2);
             const bottom: number = this.getScoreY(this.heightLineCount * 2);
             const minMax = this.helpers.collisionHelper.getBeatMinMaxY();
@@ -172,11 +170,7 @@ export class ScoreBarRenderer extends LineBarRenderer {
         if (!this.bar.isEmpty) {
             this.populateBeamingSkyline();
         }
-        // Multi-voice rest displacement is already reflected in each beat
-        // container's bounding box (the displaced rest glyph is a child),
-        // so the per-beat-container pass in super.populateBarLocalSkyline
-        // captures it. The scalar overflow from `applyLayoutingInfo` covers
-        // the staff-overflow scalar, leaving nothing to add here.
+        // Multi-voice rest displacement already lives in the beat container bbox; super captures it.
     }
 
     protected override getMinLineOfBeat(beat: Beat): number {

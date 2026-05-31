@@ -138,13 +138,7 @@ export class BarRendererBase {
     public beatEffectsMinY = Number.NaN;
     public beatEffectsMaxY = Number.NaN;
 
-    /**
-     * Per-beat effect overflow magnitudes captured during {@link doLayout} via
-     * {@link registerBeatEffectOverflowsForBeat}. The renderer-local x of each
-     * beat is only final after {@link scaleToWidth}, so we keep the beat
-     * reference and resolve `getBeatContainer(beat).x` in
-     * {@link populateBarLocalSkyline}.
-     */
+    /** Captured during {@link doLayout}; resolved to per-x ranges in {@link populateBarLocalSkyline}. */
     private _pendingBeatEffectRanges: {
         beat: Beat;
         minY: number;
@@ -154,11 +148,8 @@ export class BarRendererBase {
     private _barLocalSkyline: BarLocalSkyline | null = null;
 
     /**
-     * Per-bar local skyline tracking the renderer-local above/below-staff
-     * envelope of every non-effect-band glyph anchored in this bar. Lazy
-     * allocated against the {@link ScoreLayout.skylinePool}. Inserts use
-     * renderer-local x coordinates so the skyline remains independent of
-     * the renderer's final position within the staff line.
+     * Per-bar local skyline of every non-effect-band glyph's above/below-staff
+     * envelope (renderer-local x).
      */
     public get barLocalSkyline(): BarLocalSkyline {
         if (!this._barLocalSkyline) {
@@ -236,12 +227,7 @@ export class BarRendererBase {
         }
     }
 
-    /**
-     * Range-aware sibling of {@link registerBeatEffectOverflows} that also
-     * captures the beat container's renderer-local x range. The captured
-     * range is flushed into the {@link barLocalSkyline} from
-     * {@link calculateOverflows} once the renderer's {@link height} is final.
-     */
+    /** Range-aware sibling of {@link registerBeatEffectOverflows}. */
     public registerBeatEffectOverflowsForBeat(beat: Beat, minY: number, maxY: number): void {
         this.registerBeatEffectOverflows(minY, maxY);
         this._pendingBeatEffectRanges.push({ beat, minY, maxY });
@@ -265,14 +251,7 @@ export class BarRendererBase {
         return false;
     }
 
-    /**
-     * Range-aware sibling of {@link registerOverflowTop}: also inserts the
-     * placed rect into the {@link barLocalSkyline}. Intended for callers that
-     * run AFTER {@link scaleToWidth} (e.g. ties from {@link finalizeRenderer})
-     * where final post-scale x positions are known. doLayout-time call sites
-     * use the scalar {@link registerOverflowTop} and let
-     * {@link populateBarLocalSkyline} emit the per-x skyline data.
-     */
+    /** Post-{@link scaleToWidth} only: also inserts into the bar-local skyline. */
     public registerOverflowRangeTop(xStart: number, xEnd: number, topHeight: number): boolean {
         const changed = this.registerOverflowTop(topHeight);
         if (topHeight > 0 && xEnd > xStart) {
@@ -281,11 +260,6 @@ export class BarRendererBase {
         return changed;
     }
 
-    /**
-     * Range-aware sibling of {@link registerOverflowBottom}: also inserts the
-     * placed rect into the {@link barLocalSkyline}. See
-     * {@link registerOverflowRangeTop} for when to use this vs. the scalar API.
-     */
     public registerOverflowRangeBottom(xStart: number, xEnd: number, bottomHeight: number): boolean {
         const changed = this.registerOverflowBottom(bottomHeight);
         if (bottomHeight > 0 && xEnd > xStart) {
@@ -294,12 +268,6 @@ export class BarRendererBase {
         return changed;
     }
 
-    /**
-     * Insert a placed rect into the {@link barLocalSkyline} without touching
-     * the scalar overflow. Used by {@link populateBarLocalSkyline} where the
-     * scalar overflows have already been registered at doLayout time and we
-     * only need the per-x skyline contribution at the final scaled position.
-     */
     protected insertSkylineTop(xStart: number, xEnd: number, topHeight: number): void {
         if (topHeight > 0 && xEnd > xStart) {
             this.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, topHeight, 0);
@@ -339,10 +307,6 @@ export class BarRendererBase {
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
-        // Positions are now final for this renderer. Rebuild the bar-local
-        // skyline so its per-x ranges reflect the post-scale layout. The
-        // scalar overflows are independent and already settled at doLayout
-        // time (where they must be ready for `calculateHeightForAccolade`).
         this.populateBarLocalSkyline();
     }
 
@@ -381,10 +345,6 @@ export class BarRendererBase {
         const container = this.voiceContainer;
         container.registerLayoutingInfo(info);
 
-        // Let opt-in effect bands widen the beat springs so glyphs that
-        // paint outside their beat's notation column (center-aligned
-        // fermatas, …) reserve room in the rhythmic spacing. See
-        // {@link EffectInfo.contributesToBeatSpacing}.
         this.topEffects.registerLayoutingInfo(info);
         this.bottomEffects.registerLayoutingInfo(info);
 
@@ -403,16 +363,9 @@ export class BarRendererBase {
     }
 
     public afterStaffBarReverted() {
-        // Effect-band y assignments and container heights are re-derived
-        // from the staff skyline by {@link EffectSystemPlacement} on the
-        // next {@link RenderStaff.finalizeStaff} cycle, so this hook only
-        // needs to drop the stale heights here.
+        // Bar-local skylines stay — remaining bars' content is unchanged.
         this.topEffects.height = 0;
         this.bottomEffects.height = 0;
-        // Do NOT reset the bar-local skyline here: this hook fires on the
-        // bars that REMAIN on a staff after a revert, whose content (and
-        // therefore vertical envelope) is unchanged. Resetting would discard
-        // valid skyline state that no later pass re-populates.
         this._registerStaffOverflow();
     }
 
@@ -437,10 +390,6 @@ export class BarRendererBase {
         this.width = Math.ceil(this._postBeatGlyphs.x + this._postBeatGlyphs.width);
         this.computedWidth = this.width;
 
-        // Effect-band glyph alignment within each band still needs to
-        // happen here (so post-`applyLayoutingInfo` widths see correctly
-        // aligned glyphs); band placement / heights are derived later from
-        // the staff skyline by {@link EffectSystemPlacement}.
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
         this._registerStaffOverflow();
@@ -471,16 +420,14 @@ export class BarRendererBase {
         this._multiSystemSlurs = ties;
     }
 
+    /**
+     * Cross-bar arcs live on the start beat's renderer but paint across
+     * subsequent bars; slice the bezier bbox into each spanned bar's
+     * skyline. Tie Y is renderer-local (all renderers share `renderer.y`),
+     * X is staff-absolute.
+     */
     private _finalizeTies(ties: Iterable<ITieGlyph>): boolean {
         let didChangeOverflows = false;
-        // Cross-bar slurs/ties: the tie glyph is registered on the START
-        // beat's bar only, but its bezier may arc over several subsequent
-        // bars on the same staff. Slice the bezier's bounding box across
-        // every bar it overlaps so each bar's `barLocalSkyline` reflects
-        // the actual painted geometry. Without this, effect placement in
-        // the spanned bars wouldn't see the arc when the staff skyline is
-        // assembled from per-bar skylines via
-        // `_unionBarLocalIntoStaffSkyline`.
         const staffRenderers = this.staff ? this.staff.barRenderers : [this];
         for (const t of ties) {
             const tie = t as unknown as Glyph;
@@ -490,17 +437,10 @@ export class BarRendererBase {
                 continue;
             }
 
-            // Tie Y geometry is renderer-local (see TieGlyph
-            // `getBoundingBoxTop/Bottom` contract). All renderers in a
-            // staff share `renderer.y` (set as `topPadding + topOverflow`),
-            // so the same renderer-local top/bottom applies to every bar
-            // the arc spans.
             const tieTop = t.getBoundingBoxTop();
             const tieBottom = t.getBoundingBoxBottom();
             const tieTopOverflow = tieTop < 0 ? -tieTop : 0;
 
-            // X extent of the bezier is staff-absolute because cross-bar
-            // ties span multiple renderers.
             const tieLeftStaff = t.getBoundingBoxLeft();
             const tieRightStaff = t.getBoundingBoxRight();
 
@@ -517,14 +457,6 @@ export class BarRendererBase {
                 const tieBottomOverflow = tieBottom - target.height;
 
                 if (target === this) {
-                    // Owning renderer: also bumps the scalar overflow,
-                    // which `_registerStaffOverflow` propagates to
-                    // `staff.topOverflow` / `staff.bottomOverflow`. Since
-                    // all bars in the staff share `renderer.y` derived
-                    // from the staff-level overflow, the tie's maximum
-                    // contribution captured here is enough — the other
-                    // bars only need the bar-local skyline slice for
-                    // effect-band placement within their range.
                     if (tieTopOverflow > 0) {
                         if (this.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
                             didChangeOverflows = true;
@@ -581,11 +513,6 @@ export class BarRendererBase {
         this.staff!.registerOverflowBottom(this.bottomOverflow);
     }
 
-    /**
-     * Public re-export of {@link _registerStaffOverflow} used by
-     * {@link EffectSystemPlacement} after it derives the new container
-     * heights for this renderer from the staff skyline.
-     */
     public registerStaffOverflows(): void {
         this._registerStaffOverflow();
     }
@@ -634,15 +561,7 @@ export class BarRendererBase {
         this.calculateOverflows(0, this.height);
     }
 
-    /**
-     * Scalar-only overflow registration. Runs at {@link doLayout} /
-     * {@link reLayout} time when y-bounds are known but x positions still
-     * depend on the system fit. Aggregates the worst-case above/below-staff
-     * extent into the scalar `_contentTopOverflow` / `_contentBottomOverflow`
-     * so {@link calculateHeightForAccolade} and downstream consumers see
-     * correct totals BEFORE {@link scaleToWidth} runs. Per-x skyline data is
-     * emitted later by {@link populateBarLocalSkyline} once positions settle.
-     */
+    /** Scalar-only — per-x data lands later via {@link populateBarLocalSkyline}. */
     protected calculateOverflows(_rendererTop: number, rendererBottom: number) {
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
@@ -695,33 +614,17 @@ export class BarRendererBase {
         }
     }
 
-    /**
-     * Rebuild the bar-local skyline from the renderer's now-final glyph
-     * positions. Called from {@link scaleToWidth} after voice container,
-     * post-beat glyphs and beam helpers have been re-aligned. Subclasses
-     * override and chain to super to add their own element categories
-     * (beam-helpers, tuplet brackets, multi-voice rest collisions).
-     *
-     * This is the single place where per-x skyline data is emitted; the
-     * scalar overflow numbers are independent and were settled earlier in
-     * {@link calculateOverflows}.
-     */
+    /** Called by {@link scaleToWidth}; subclasses override + chain to super. */
     protected populateBarLocalSkyline(): void {
         this.barLocalSkyline.reset();
 
         const rendererBottom = this.height;
 
+        // Paint extent (`getBoundingBoxLeft/Right`), not rhythmic-spacing extent
+        // — many glyphs keep `width = 0` while painting over a real range.
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
             for (const g of preBeatGlyphs) {
-                // Use the glyph's paint extent (`getBoundingBoxLeft/Right`),
-                // not its rhythmic-spacing extent (`x` / `x + width`) —
-                // many glyphs deliberately set `width = 0` to opt out of
-                // rod-based bar-width calculations but still paint over a
-                // real range (slurs, tempo marks, ...). The default
-                // implementation collapses to the spacing extent so glyphs
-                // that haven't overridden the accessors keep their old
-                // behaviour.
                 const topY = g.getBoundingBoxTop();
                 if (topY < 0) {
                     this.insertSkylineTop(g.getBoundingBoxLeft(), g.getBoundingBoxRight(), topY * -1);
@@ -760,10 +663,7 @@ export class BarRendererBase {
             }
         }
 
-        // Per-beat content extents from the voice container. We use each
-        // beat's NoteHead extent (PreNotes..PostNotes) rather than the beat
-        // container's full slot width — the slot includes spring spacing
-        // between beats which isn't actually drawn on.
+        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
         const v = this.voiceContainer;
         const voiceX = v.x;
         for (const beatGlyphs of v.beatGlyphs.values()) {
@@ -790,9 +690,6 @@ export class BarRendererBase {
             }
         }
 
-        // Per-beat effect overflows (articulations, fermatas, tremolo, etc.)
-        // captured during chord glyph layout. Resolve each beat's final x
-        // from its beat container now.
         for (const r of this._pendingBeatEffectRanges) {
             const container = this.getBeatContainer(r.beat);
             if (!container) {
@@ -975,8 +872,6 @@ export class BarRendererBase {
     }
 
     public reLayout(): void {
-        // Effect-band placement (y / heights) is regenerated from the staff
-        // skyline on the next {@link RenderStaff.finalizeStaff} cycle.
         this.topEffects.height = 0;
         this.bottomEffects.height = 0;
         this.topEffects.alignGlyphs();

@@ -957,14 +957,8 @@ export abstract class LineBarRenderer extends BarRendererBase {
                         }
 
                         if (h.hasTuplet && tupletDirection !== direction) {
-                            // Mirror branch 2 (single-note case): use the flag
-                            // position in the tuplet direction so we capture
-                            // content below the notehead (e.g. numbered
-                            // octave-dots-below) that `getLowestNoteY` doesn't
-                            // include. `paintTuplets` positions the bracket via
-                            // `calculateBeamYWithDirection` (= the flag edge in
-                            // the tuplet direction), so the overflow has to
-                            // match or the bracket gets cropped.
+                            // Use flag position in tuplet direction (matches `paintTuplets`),
+                            // not getLowestNoteY which excludes content below the notehead.
                             bottomY =
                                 this.getFlagBottomY(h.beatOfLowestNote, tupletDirection) +
                                 this.tupletSize +
@@ -982,13 +976,8 @@ export abstract class LineBarRenderer extends BarRendererBase {
                         }
 
                         if (h.hasTuplet && tupletDirection !== direction) {
-                            // Mirror branch 2: numbered notation puts the
-                            // tuplet bracket UP while the beam goes DOWN, and
-                            // C7-style high notes carry octave dots above the
-                            // digit that `getHighestNoteY` (notehead-only)
-                            // doesn't see. `getFlagTopY(beat, tupletDirection)`
-                            // matches what `paintTuplets` uses, so the bracket
-                            // overflow reservation lines up with the paint.
+                            // Use flag position in tuplet direction (matches `paintTuplets`),
+                            // not getHighestNoteY which excludes octave dots above the digit.
                             topY =
                                 this.getFlagTopY(h.beatOfHighestNote, tupletDirection) -
                                 this.tupletSize -
@@ -1002,11 +991,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
                     }
                 }
 
-                // Scalar overflow registration — runs at doLayout time so the
-                // staff-overflow totals are available to
-                // `calculateHeightForAccolade`. The per-x skyline contribution
-                // is emitted later by `populateBeamingSkyline` once
-                // `scaleToWidth` has settled beat positions.
+                // Scalar only; per-x emits from `populateBeamingSkyline` post-scaleToWidth.
                 if (topY < rendererTop) {
                     this.registerOverflowTop(Math.abs(topY));
                 }
@@ -1017,13 +1002,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
         }
     }
 
-    /**
-     * Per-beam-helper skyline emission. Mirrors the y-bound computation in
-     * {@link calculateBeamingOverflows} but emits an `(xStart..xEnd, height)`
-     * insert into the bar-local skyline at each beam's actual beat-span,
-     * using post-scale {@link getBeatX} values. Called from
-     * {@link populateBarLocalSkyline} after {@link scaleToWidth}.
-     */
+    /** Per-beam-helper skyline emission; mirrors y-bounds from {@link calculateBeamingOverflows}. */
     protected populateBeamingSkyline(): void {
         const rendererTop = 0;
         const rendererBottom = this.height;
@@ -1085,10 +1064,6 @@ export abstract class LineBarRenderer extends BarRendererBase {
                             topY -= this.tupletSize + this.tupletOffset;
                         }
                         if (h.hasTuplet && tupletDirection !== direction) {
-                            // See `calculateBeamingOverflows` for rationale —
-                            // use the flag position in the tuplet direction so
-                            // the per-x skyline reservation matches what
-                            // `paintTuplets` actually draws.
                             bottomY =
                                 this.getFlagBottomY(h.beatOfLowestNote, tupletDirection) +
                                 this.tupletSize +

@@ -16,12 +16,6 @@ export interface ITieGlyph {
      * If set, the tie bounds will be requested and the overflow is applied.
      */
     readonly checkForOverflow: boolean;
-    /**
-     * Bezier-arc bounding box edges, used to register the tie's vertical
-     * overflow across its actual x extent into the bar-local skyline.
-     * Default-implemented by {@link TieGlyph}; subclasses do not need to
-     * override unless they substitute a non-bezier geometry.
-     */
     getBoundingBoxTop(): number;
     getBoundingBoxBottom(): number;
     getBoundingBoxLeft(): number;
@@ -61,12 +55,9 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
     }
 
     /**
-     * Top/bottom edges of the bezier arc in **renderer-local Y** — i.e.
-     * relative to `renderer.y`, NOT canvas Y. `_finalizeTies` compares
-     * these against `[0, renderer.height]` to derive the bar's top/bottom
-     * overflow. Storing renderer-local keeps the tie geometry independent
-     * of `renderer.y`, which the staff finalize loop may shift after tie
-     * layout (effect placement growing `topOverflow`).
+     * Renderer-local Y (not canvas Y). Tie geometry is stored relative to
+     * `renderer.y` because the staff finalize loop may shift the renderer
+     * (effect placement growing `topOverflow`) AFTER tie layout.
      */
     public override getBoundingBoxTop(): number {
         if (this._boundingBox) {
@@ -82,13 +73,7 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
         return this._startY;
     }
 
-    /**
-     * Left/right x extent of the bezier arc in **staff-absolute X** (the
-     * tie's `_startX` / `_endX` bake in the start/end renderers' `.x`
-     * because a tie may span bars). `_finalizeTies` clips this to the
-     * owning renderer's `[x, x + width]` range and converts to bar-local X
-     * before inserting into the per-renderer `barLocalSkyline`.
-     */
+    /** Staff-absolute X — `_startX`/`_endX` bake in their renderers' `.x` for cross-bar ties. */
     public override getBoundingBoxLeft(): number {
         if (this._boundingBox) {
             return this._boundingBox.x;
@@ -293,14 +278,8 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
             return;
         }
 
-        // `cy` is the canvas Y of the staff origin (the call site subtracts
-        // `renderer.y`). Tie Y coordinates are stored renderer-local — i.e.
-        // they do NOT bake in `renderer.y` — so we add the current
-        // `renderer.y` here. This decouples paint from the renderer.y value
-        // that was current at layout time: the staff finalize loop may shift
-        // `renderer.y` (effect placement growing `topOverflow`) AFTER the
-        // tie's geometry has been baked, and reading `renderer.y` fresh at
-        // paint keeps the slur anchored to the notes regardless.
+        // Tie Y is renderer-local; resolve `renderer.y` at paint time because
+        // staff finalize may shift it after layout (see getBoundingBoxTop).
         const rendererY = this.renderer.y;
 
         const isDown = this.tieDirection === BeamDirection.Down;
@@ -417,16 +396,6 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
 
     protected abstract calculateEndX(): number;
 
-    /**
-     * Returns the renderer-local Y at which the slur should continue on
-     * a subsequent system. Tie Y coordinates are stored relative to the
-     * owning renderer (see {@link calculateStartY}), and all bar
-     * renderers within a staff share the same `.y`, so the start tie's
-     * already-renderer-local startY is the correct continuation Y for any
-     * renderer on a continuation system that uses the same staff layout.
-     * The `renderer` parameter is retained for callers that may want to
-     * derive system-specific positioning in the future.
-     */
     public calculateMultiSystemSlurY(_renderer: BarRendererBase) {
         return this.calculateStartY();
     }

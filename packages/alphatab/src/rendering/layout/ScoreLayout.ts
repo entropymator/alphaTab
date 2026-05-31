@@ -54,10 +54,6 @@ export abstract class ScoreLayout {
     public width: number = 0;
     public height: number = 0;
 
-    /**
-     * Shared pool for {@link SkylineSegment} instances reused across all
-     * bar-local and per-staff skylines built during a layout cycle.
-     */
     public readonly skylinePool: SkylineSegmentPool = new SkylineSegmentPool();
 
     public multiBarRestInfo: Map<number, number[]> | null = null;

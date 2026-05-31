@@ -20,10 +20,6 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
     private _allMasterBarRenderers: MasterBarsRenderers[] = [];
     private _barsFromPreviousSystem: MasterBarsRenderers[] = [];
 
-    /**
-     * Read-only access to the laid-out systems. Used by internal diagnostic
-     * tooling (e.g. skyline visualization in tests).
-     */
     public get systems(): readonly StaffSystem[] {
         return this._systems;
     }
@@ -343,13 +339,7 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
                     system.y = y;
                 }
             }
-            // Finish the last system. The while loop only pushes a system
-            // once it fills (`isFull`). The trailing system — which may
-            // still be empty if `_allMasterBarRenderers` ran out exactly
-            // when a new system was created — needs to be pushed here too,
-            // matching what `_layoutAndRenderScore` does on the initial
-            // layout path. Otherwise resizing to a width that fits the
-            // entire score in one system leaves `_systems` empty.
+            // Push the trailing system if non-empty (mirrors `_layoutAndRenderScore`).
             if (system.masterBarsRenderers.length > 0) {
                 system.isLast = this.lastBarIndex === system.lastBarIndex;
                 this._systems.push(system);

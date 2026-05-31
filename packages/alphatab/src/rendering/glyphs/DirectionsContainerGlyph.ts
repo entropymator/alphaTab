@@ -30,10 +30,7 @@ class TargetDirectionGlyph extends Glyph {
             }
             totalWidth += this.renderer.smuflMetrics.glyphWidths.get(s)! * scale;
         }
-        // Captured so the owning `DirectionsContainerGlyph` can union it
-        // into its bbox — narrow bars with wide directions paint past
-        // the bar boundary, and the skyline needs to see that to stack
-        // adjacent bars' directions vertically.
+        // Captured for parent bbox so narrow-bar overflows participate in the skyline.
         this.width = totalWidth;
     }
 
@@ -58,9 +55,7 @@ class JumpDirectionGlyph extends Glyph {
         c.font = this.renderer.resources.elementFonts.get(NotationElement.EffectDirections)!;
         const m = c.measureText(this._text);
         this.height = m.height;
-        // Captured so the owning `DirectionsContainerGlyph` can union it
-        // into its bbox. End-of-bar jump labels paint right-aligned and
-        // typically extend past the bar's left edge on narrow bars.
+        // Captured for parent bbox so right-aligned-past-bar-edge text reaches the skyline.
         this.width = m.width;
     }
 
@@ -181,17 +176,7 @@ export class DirectionsContainerGlyph extends EffectGlyph {
         return y;
     }
 
-    /**
-     * Begin glyphs paint left-aligned at `this.x`; end glyphs paint
-     * right-aligned at `this.x + this.width`. On narrow bars the
-     * end-of-bar jump text (`D.C. al Coda`, `D.S. al Fine`, …) routinely
-     * extends past the bar's left edge, and the begin symbols can
-     * extend past the bar's right edge. Reflect that in the bbox so
-     * `EffectSystemPlacement` (via `EffectBand.computeLocalXRange` with
-     * the FullBar override) detects overlap with adjacent bars'
-     * direction bands and stacks them vertically instead of collapsing
-     * them onto one y row.
-     */
+    /** End-of-bar jump text (`D.C. al Coda`, …) may paint past either bar edge on narrow bars. */
     public override getBoundingBoxLeft(): number {
         let min = this.x;
         for (const g of this._barEndGlyphs) {

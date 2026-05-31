@@ -7,56 +7,26 @@ import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGly
 import type { Settings } from '@coderline/alphatab/Settings';
 
 /**
- * Coarse placement category used by {@link EffectSystemPlacement} to
- * decide how far from the staff an effect band sits. Lower category =
- * placed first against the skyline = closer to the staff edge. Mirrors
- * Gould (Behind Bars p.118, 184, 484) and the engine-design priority
- * ordering: note-attached annotations sit closest, passage spans sit
- * above them, and system-level markers (tempo, rehearsal, section)
- * sit furthest out so they don't have to be displaced by other
- * material.
+ * Lower = placed first = closer to staff. Gould (Behind Bars p.118, 184, 484).
  * @internal
  */
 export enum EffectBandPlacementCategory {
-    /**
-     * Note-attached annotations: articulations, fingerings, dynamics,
-     * text labels, ornaments, pick strokes, fermatas, lyrics. Sit
-     * closest to the staff (placed first).
-     */
+    /** Articulations, fingerings, dynamics, text, ornaments, fermatas. */
     NoteAttached = 0,
-    /**
-     * Passage-describing spans: vibrato, let-ring, palm-mute, trill,
-     * whammy, crescendo / fade hairpins, ottava, sustain pedal,
-     * rasgueado, barré. Sit above any note-attached annotations.
-     */
+    /** Vibrato, let-ring, palm-mute, trill, whammy, hairpins, ottava, pedal, rasgueado, barré. */
     Span = 1,
-    /**
-     * System-level markers that conventionally float above all other
-     * notation: tempo, rehearsal marks, section markers (D.C., D.S.,
-     * Coda), free-time, alternate endings, chord symbols. Placed last
-     * so they sit furthest from the staff.
-     */
+    /** Tempo, rehearsal, section markers, free-time, alternate endings, chords. */
     SystemMarker = 2,
     /**
-     * Text rows whose convention is to sit on a single y baseline that
-     * runs parallel to the staff for the whole system (Gould p.300:
-     * "A line of text should be parallel to the stave for the length
-     * of the system"). Lyrics are the canonical case; chord symbols
-     * and figured bass follow the same rule.
-     *
-     * Placement is grouped by {@link EffectInfo.effectId}: every band
-     * sharing one id is aligned at the deepest magnitude needed across
-     * the row's combined x-range, so per-bar envelope differences
-     * (stem-down notes, dots, …) cannot stagger the text. Bands in this
-     * category place AFTER all preceding categories so they clear any
-     * note-attached / span / system-marker material in their column.
+     * Single-baseline rows parallel to the stave (Gould p.300). Bands sharing
+     * {@link EffectInfo.effectId} align at the deepest magnitude across the
+     * row's combined x-range.
      */
     HorizontalRow = 3
 }
 
 /**
- * A classes inheriting from this base can provide the
- * data needed by a EffectBarRenderer to create effect glyphs dynamically.
+ * Provides the data an EffectBarRenderer needs to create effect glyphs.
  * @internal
  */
 export abstract class EffectInfo {
@@ -111,34 +81,12 @@ export abstract class EffectInfo {
      */
     public abstract canExpand(from: Beat, to: Beat): boolean;
 
-    /**
-     * Coarse placement-band category. Default {@link
-     * EffectBandPlacementCategory.NoteAttached} so unfamiliar / future
-     * effect kinds land close to the staff (the safe default — they
-     * cannot get visually buried under spans / markers without an
-     * explicit override). Subclasses representing spans or system
-     * markers override this getter.
-     */
+    /** Default {@link EffectBandPlacementCategory.NoteAttached} keeps unknown effects close to the staff. */
     public get placementCategory(): EffectBandPlacementCategory {
         return EffectBandPlacementCategory.NoteAttached;
     }
 
-    /**
-     * When `true`, the effect band feeds each per-beat glyph's actual
-     * paint extent into the bar's
-     * {@link import('@coderline/alphatab/rendering/staves/BarLayoutingInfo').BarLayoutingInfo}
-     * as a beat spring. The rhythmic-spacing solver then widens the
-     * beat's pre/post-beat slot to accommodate effects that paint
-     * outside the beat's notation column (e.g. {@link
-     * import('@coderline/alphatab/rendering/glyphs/FermataGlyph').FermataGlyph}
-     * center-aligned around `onTimeX` needs half-width clearance on each
-     * side that the beat's `preNotes` / `onNotes` do not reserve).
-     *
-     * Off by default — most effects fit inside their beat's slot and
-     * enabling this blanket-wide would shift existing layouts. Override
-     * to `true` only on effects whose glyph extends past the beat column
-     * AND whose layout we want to drive that widening.
-     */
+    /** When `true`, the band feeds each beat-glyph's paint extent into the rhythmic-spacing solver. */
     public get contributesToBeatSpacing(): boolean {
         return false;
     }

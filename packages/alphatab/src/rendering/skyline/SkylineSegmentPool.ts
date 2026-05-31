@@ -1,10 +1,6 @@
 /**
- * One segment of a piecewise-constant skyline step function. Pooled.
- *
- * A skyline owns a sorted array of these segments; each segment covers
- * `[segments[i].xStart, segments[i+1].xStart)` with constant `height`.
- * A sentinel final entry at `xMax` with `height = 0` terminates the range.
- *
+ * One segment of a piecewise-constant skyline. segment[i] covers
+ * `[xStart, segments[i+1].xStart)`; final entry is a sentinel.
  * @internal
  */
 export class SkylineSegment {
@@ -17,12 +13,7 @@ export class SkylineSegment {
     }
 }
 
-/**
- * Freelist pool for SkylineSegment objects. The free list never shrinks —
- * acquire reuses a released segment if available, otherwise grows.
- *
- * @internal
- */
+/** @internal */
 export class SkylineSegmentPool {
     private readonly _free: SkylineSegment[] = [];
     private _grown: number = 0;

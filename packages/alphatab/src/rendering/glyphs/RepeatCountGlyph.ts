@@ -32,14 +32,6 @@ export class RepeatCountGlyph extends Glyph {
         this._textWidth = size.width;
     }
 
-    /**
-     * `this.width = 0` opts the glyph out of rhythmic spacing, but
-     * `paint` writes the text right-aligned with its right edge at
-     * `this.x − textWidth * 2/3` (the historical offset that keeps
-     * the count slightly inside the barline). Override the bbox to
-     * match the actual painted x range, so the per-x skyline /
-     * overflow registration see the real extent.
-     */
     public override getBoundingBoxLeft(): number {
         return this.x - this._textWidth * (1 + RepeatCountGlyph._rightEdgeOffsetFactor);
     }

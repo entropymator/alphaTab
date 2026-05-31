@@ -11,12 +11,7 @@ import { NoteVibratoGlyph } from '@coderline/alphatab/rendering/glyphs/NoteVibra
 import type { ITieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
 import type { TabBarRenderer } from '@coderline/alphatab/rendering/TabBarRenderer';
 
-/**
- * Slide-in / slide-out paint segment, computed on demand. See
- * {@link ScoreSlideLineGlyph} for the rationale (renderer.x is set
- * during system layout, after the bar renderer's doLayout, so we
- * can't cache in doLayout).
- */
+/** Staff-absolute coordinates. See {@link ScoreSlideLineGlyph}. */
 interface SlideSegment {
     startX: number;
     startY: number;

@@ -24,12 +24,6 @@ export class OttavaGlyph extends GroupedEffectGlyph {
         this._symbolWidth = OttavaGlyph._resolveSymbolWidth(this._ottava, this.renderer.smuflMetrics.glyphWidths);
     }
 
-    /**
-     * The SMuFL ottava symbol is painted center-aligned around `this.x`
-     * (`cx + this.x - size / 2` in {@link _paintOttava}). Right edge is
-     * inherited from {@link GroupedEffectGlyph} — the dashed line
-     * terminates at the configured `endPosition`.
-     */
     public override getBoundingBoxLeft(): number {
         return this.x - this._symbolWidth / 2;
     }

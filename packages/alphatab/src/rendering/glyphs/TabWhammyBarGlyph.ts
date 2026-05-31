@@ -31,23 +31,9 @@ export class TabWhammyBarGlyph extends EffectGlyph {
     }
 
     /**
-     * Mirrors the x-range that {@link paint} actually draws so the
-     * skyline / overflow pipeline sees the real extent. The whammy
-     * curve anchors at the beat's `MiddleNotes` (not `PostNotes`) and
-     * extends into the *next* beat — even across the bar line, if the
-     * next beat has its own whammy. The cross-bar case is exactly the
-     * one that visually intrudes on the next bar's bar-number, so the
-     * bbox right edge must reach into the next renderer's coordinate
-     * space when applicable.
-     *
-     * Renderer-local: this glyph lives in an effect band
-     * ({@link TabWhammyEffectInfo} / {@link SimpleDipWhammyBarEffectInfo}),
-     * and {@link EffectBand.computeLocalXRange} +
-     * {@link EffectSystemPlacement._placeSide} add `renderer.x` when
-     * mapping to staff-system coordinates — adding it here as well
-     * would double-count. A right value > `renderer.width` is fine:
-     * the systemSkyline is shared across renderers, so an overshoot
-     * correctly registers over the next bar.
+     * Renderer-local. Right edge may reach into the next renderer's x
+     * (cross-bar curve into the next beat's whammy); the system skyline
+     * is shared so the overshoot lands on the right bar.
      */
     public override getBoundingBoxLeft(): number {
         if (this._isSimpleDip) {

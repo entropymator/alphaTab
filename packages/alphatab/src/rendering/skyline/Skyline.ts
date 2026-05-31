@@ -2,17 +2,7 @@ import type { SkylineSegment, SkylineSegmentPool } from '@coderline/alphatab/ren
 
 /**
  * Piecewise-constant step-function skyline used as a placement oracle.
- *
- * Heights are non-negative magnitudes measured outward from a reference edge
- * (the staff's top or bottom line). The Skyline itself owns no sign convention;
- * the caller chooses which Skyline instance (upSky / downSky) and translates
- * the returned magnitude into a signed coordinate in its own frame.
- *
- * Internal representation: sorted array of `SkylineSegment` records. Each
- * segments[i] covers `[segments[i].xStart, segments[i+1].xStart)` with
- * constant `height`. The final element is a sentinel at `xMax` with
- * `height = 0`.
- *
+ * Heights are non-negative magnitudes measured outward from a reference edge.
  * @internal
  */
 export class Skyline {
@@ -29,66 +19,29 @@ export class Skyline {
         this._initBaseline();
     }
 
-    /** Number of segments excluding the trailing sentinel. Test / diagnostic surface. */
     public get segmentCount(): number {
         return this._segments.length - 1;
     }
 
-    /**
-     * Iterate each non-sentinel segment as a `(xStart, xEnd, height)` triple.
-     * Diagnostic surface — zero-allocation, intended for visualization /
-     * tracing of skyline state.
-     */
     public forEachSegment(cb: (xStart: number, xEnd: number, height: number) => void): void {
         for (let k: number = 0; k < this._segments.length - 1; k = k + 1) {
             cb(this._segments[k].xStart, this._segments[k + 1].xStart, this._segments[k].height);
         }
     }
 
-    /**
-     * Smallest base y at which a rect `(xStart .. xEnd) × (y .. y +
-     * intrinsicHeight)` clears the current skyline state, with `pad`
-     * **vertical** clearance applied to the returned y. The rect's
-     * outer edge sits at `returned-y + intrinsicHeight`.
-     *
-     * `pad` governs vertical clearance only — the x-axis collision
-     * range is NOT widened by `pad`. The rhythmic-spacing solver does
-     * not reserve a horizontal `pad` gap around effect bands, so
-     * applying it here would spuriously push bands up against glyphs
-     * that they only touch at a shared x boundary (e.g. a fermata
-     * sitting next to a bar number). Horizontal inter-band stacking
-     * still works for bands whose actual x ranges overlap.
-     */
     public placeAbove(xStart: number, xEnd: number, _intrinsicHeight: number, pad: number): number {
         return this._maxHeightInRange(xStart, xEnd) + pad;
     }
 
-    /** Same algorithm as `placeAbove`; the caller picks upSky vs downSky. */
     public placeBelow(xStart: number, xEnd: number, _intrinsicHeight: number, pad: number): number {
         return this._maxHeightInRange(xStart, xEnd) + pad;
     }
 
-    /**
-     * Raise the skyline within `(xStart .. xEnd)` to `outerEdgeHeight`
-     * wherever the current height is lower. Splits segments at the
-     * endpoints and merges adjacent equal-height segments to keep the
-     * representation compact.
-     *
-     * The `pad` parameter is intentionally not used to widen the x
-     * range — see {@link placeAbove} for the rationale. It is retained
-     * in the signature for API symmetry with the placement methods.
-     */
     public insert(xStart: number, xEnd: number, outerEdgeHeight: number, _pad: number): void {
         this._raiseRange(xStart, xEnd, outerEdgeHeight);
     }
 
-    /**
-     * For inter-staff gap (`this = staffA.downSky`; `other = staffB.upSky`):
-     * returns max over the overlap range of `this.heightAt(x) + other.heightAt(x)`.
-     * Both inputs are outward-magnitude skylines in opposing frames; the returned
-     * value is the minimum distance needed between the two reference edges so the
-     * two outlines do not collide. O(n + m).
-     */
+    /** Inter-staff gap: max over the overlap range of `this.heightAt(x) + other.heightAt(x)`. */
     public meshDistance(other: Skyline): number {
         const a: SkylineSegment[] = this._segments;
         const b: SkylineSegment[] = other._segments;
@@ -117,11 +70,6 @@ export class Skyline {
         return best;
     }
 
-    /**
-     * Raise this skyline to per-x max of itself and `other` (same direction
-     * convention). Used to aggregate per-bar scalar envelopes into a seeded
-     * system skyline. O(n + m).
-     */
     public union(other: Skyline): void {
         const o: SkylineSegment[] = other._segments;
         for (let k: number = 0; k < o.length - 1; k = k + 1) {
@@ -134,16 +82,10 @@ export class Skyline {
         }
     }
 
-    /**
-     * Maximum height across the half-open range `[xStart, xEnd)`. O(n).
-     * Used by {@link EffectSystemPlacement} to read each renderer's
-     * post-placement envelope from the staff-system skyline.
-     */
     public maxHeightInRange(xStart: number, xEnd: number): number {
         return this._maxHeightInRange(xStart, xEnd);
     }
 
-    /** Maximum height across the skyline's full x-range. O(n). */
     public maxHeight(): number {
         let best: number = 0;
         for (let k: number = 0; k < this._segments.length - 1; k = k + 1) {
@@ -155,21 +97,12 @@ export class Skyline {
         return best;
     }
 
-    /**
-     * Release all intermediate segments back to the pool and rebuild the
-     * two-segment baseline `(xMin, 0)` + sentinel `(xMax, 0)`. Required
-     * before pool reuse.
-     */
     public reset(): void {
         this._releaseAllInternal();
         this._initBaseline();
     }
 
-    /**
-     * Release ALL segments (including the baseline pair) back to the pool.
-     * After this call the Skyline is empty and cannot be queried or inserted
-     * into — the caller is expected to discard it.
-     */
+    /** Releases the baseline too — the instance is unusable afterward. */
     public releaseAll(): void {
         this._releaseAllInternal();
     }

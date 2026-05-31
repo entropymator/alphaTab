@@ -77,8 +77,7 @@ export class SlashBarRenderer extends LineBarRenderer {
 
     public override doLayout(): void {
         super.doLayout();
-        // Scalar overflow only. Per-group skyline contributions are emitted
-        // from populateBarLocalSkyline once `getBeatX` returns post-scale x.
+        // Scalar overflow only; per-x emits later in populateBarLocalSkyline.
         if (this.voiceContainer.tupletGroups.size > 0) {
             this.registerOverflowTop(this.tupletSize);
         }

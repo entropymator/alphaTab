@@ -17,14 +17,6 @@ interface TempoAutomationLayout {
 export class BarTempoGlyph extends EffectGlyph {
     private _tempoAutomations: Automation[];
 
-    /**
-     * Per-automation `text + ' '` and ` = NNN` text widths, captured at
-     * {@link doLayout} time so the bbox accessors don't have to
-     * re-measure. Each automation paints at its own
-     * {@link Automation.ratioPosition} (resolved at paint time via
-     * {@link BarRendererBase.getRatioPositionX}), so the bbox can't be a
-     * single contiguous range — it has to union per-automation rects.
-     */
     private _automationLayouts: TempoAutomationLayout[] = [];
     private _symbolWidth: number = 0;
     private _noteShift: number = 0;
@@ -40,9 +32,7 @@ export class BarTempoGlyph extends EffectGlyph {
         const scale = res.engravingSettings.tempoNoteScale;
         this._symbolWidth =
             this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
-        // Matches the text-less branch in `paint`, which uses the
-        // engraving-settings width (not the smufl metric) for the
-        // half-symbol left shift.
+        // Mirrors the text-less branch in `paint`: engraving-settings width, not smufl metric.
         this._noteShift =
             res.engravingSettings.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! / 2;
         this.height =
@@ -60,17 +50,6 @@ export class BarTempoGlyph extends EffectGlyph {
         }
     }
 
-    /**
-     * `paint` ignores `this.x` and draws every automation at
-     * `cx + renderer.getRatioPositionX(automation.ratioPosition)`. The
-     * `SinglePreBeat` band alignment pins `this.x` to the first beat's
-     * on-time column, which doesn't match where the tempo actually
-     * paints — so the default `this.x`-based bbox would make the
-     * skyline miss the notehead column the tempo paints over, and
-     * `EffectSystemPlacement` would tuck the tempo too close to the
-     * staff. Compute the bbox from the same ratio-resolved positions
-     * the paint pass uses.
-     */
     public override getBoundingBoxLeft(): number {
         let min = Number.POSITIVE_INFINITY;
         for (const a of this._tempoAutomations) {

@@ -27,17 +27,8 @@ export class Glyph {
     }
 
     /**
-     * Left/right edges of the glyph's **paint extent** — distinct from
-     * `x`/`x + width` which describe the **rhythmic-spacing extent** (the
-     * "rod" used by the layouting info to compute bar widths). Many glyphs
-     * intentionally set `width = 0` to opt out of rhythmic spacing while
-     * still painting over a real horizontal range (ties / slurs, tempo
-     * marks, multi-bar rest labels, ...).
-     *
-     * Every skyline-insert call site reads from these two accessors so
-     * zero-width "no-rod" glyphs still contribute to the bar-local
-     * skyline. Default mirrors the rhythmic-spacing extent; subclasses
-     * with a wider paint extent override.
+     * Paint extent — distinct from the rhythmic-spacing extent (`x`, `x + width`).
+     * Override on zero-width "no-rod" glyphs so the bar-local skyline still sees them.
      */
     public getBoundingBoxLeft(): number {
         return this.x;

@@ -31,14 +31,6 @@ export class BeatTimerGlyph extends EffectGlyph {
         this.height = this._textHeight + this.renderer.smuflMetrics.beatTimerPadding * 2;
     }
 
-    /**
-     * The timer label and its surrounding stroke rect are painted
-     * center-aligned around `this.x` (paint uses `cx + this.x -
-     * halfWidth` for the rect and `TextAlign.Center` for the text).
-     * `this.width` stays at 0 to keep the timer out of the bar's
-     * rhythmic spacing — override the bbox so the per-x skyline /
-     * overflow pipeline sees the box's actual painted range.
-     */
     public override getBoundingBoxLeft(): number {
         return this.x - this._textWidth / 2;
     }

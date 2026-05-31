@@ -48,13 +48,6 @@ export class TextGlyph extends EffectGlyph {
         }
     }
 
-    /**
-     * `this.width` already tracks the max measured line width, but the
-     * default `Glyph` bbox accessors assume left-aligned paint
-     * (`x .. x + width`). Text painted with `TextAlign.Center` or
-     * `Right` shifts the actual paint extent — override so the per-x
-     * skyline sees where the text really lands.
-     */
     public override getBoundingBoxLeft(): number {
         switch (this.textAlign) {
             case TextAlign.Center:

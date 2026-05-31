@@ -25,24 +25,9 @@ export class BarNumberGlyph extends Glyph {
     }
 
     /**
-     * `paint` is a no-op on non-first staves (the bar number is drawn
-     * only once per system, on the top staff). On those staves the
-     * un-painted bar number still has to reserve vertical space — so
-     * lower staves with a short clef (tabs, bass) keep their grand-staff
-     * gap above — but it must NOT register as a horizontal obstacle in
-     * the skyline (otherwise centered effect glyphs at the bar's left
-     * edge get pushed up to clear an invisible label).
-     *
-     * Solution: collapse the **horizontal** bbox to a degenerate range
-     * (`Left == Right`). `Skyline._raiseRange` returns early when
-     * `lo >= hi`, so `populateBarLocalSkyline.insertSkylineTop` becomes
-     * a no-op. The **vertical** bbox stays at its natural extent so
-     * `calculateOverflows` still calls `registerOverflowTop(height)` —
-     * and since that's a `max`, the bar number only contributes when
-     * the staff's clef / pre-beat content doesn't already exceed it.
-     * Net effect: treble clefs absorb the bar number's vertical extent
-     * (no extra padding), tab/bass staves get exactly the bar-number-
-     * sized reservation.
+     * Non-first staves don't paint the bar number, but still reserve its
+     * vertical space via the scalar overflow. Collapse the horizontal
+     * bbox so the per-x skyline doesn't see a phantom obstacle.
      */
     public override getBoundingBoxLeft(): number {
         if (!this.renderer.staff!.isFirstInSystem) {

@@ -122,9 +122,7 @@ export class TabBarRenderer extends LineBarRenderer {
 
         super.doLayout();
 
-        // Scalar overflow registration only (bar-wide string overflow + tuplet
-        // height). Per-x skyline contributions are emitted later by
-        // populateBarLocalSkyline once positions are final.
+        // Scalar overflow only; per-x emits later in populateBarLocalSkyline.
         const hasNoteOnTopString = this.minString === 0;
         if (hasNoteOnTopString) {
             this.registerOverflowTop(this.lineSpacing / 2);
@@ -150,13 +148,8 @@ export class TabBarRenderer extends LineBarRenderer {
         if (this.rhythmMode !== TabRhythmMode.Hidden) {
             this.populateBeamingSkyline();
         }
-        // Tab digits ride on each string line; the half-line space taken by
-        // the digit only appears WHERE a note actually sits. Register the
-        // string-line overflow per-beat at its notehead extent rather than
-        // bar-wide so the skyline tracks the real envelope.
-        // Top tab line = highest pitch string = the LAST entry in `tuning`
-        // (alphaTab encodes `note.string` as 1..tuning.length where the
-        // largest value is the top staff line).
+        // Tab digits paint per-beat at the notehead extent — register the half-line
+        // overflow per beat, not bar-wide. Top string = `tuning.length` (largest index).
         const stringCount = this.bar.staff.tuning.length;
         const halfLine = this.lineSpacing / 2;
         for (const voice of this.bar.voices) {

@@ -13,15 +13,7 @@ import type { ITieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
 import type { ScoreBarRenderer } from '@coderline/alphatab/rendering/ScoreBarRenderer';
 import type { ScoreBeatContainerGlyph } from '@coderline/alphatab/rendering/ScoreBeatContainerGlyph';
 
-/**
- * Slide-in / slide-out paint segment, computed on demand. All
- * coordinates are **staff-absolute** (include `renderer.x` /
- * `renderer.y` of the start/end note's renderer) so they can be
- * combined with the staff-system origin `cx` / `cy` `paint` is
- * called with, and so that the bbox accessors return the same
- * staff-absolute range that `_finalizeTies` in
- * {@link BarRendererBase} expects for cross-bar tie geometry.
- */
+/** Staff-absolute coordinates (include the note's renderer `.x`/`.y`). */
 interface SlideSegment {
     startX: number;
     startY: number;
@@ -54,15 +46,7 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
         this.width = 0;
     }
 
-    /**
-     * Slide-line geometry depends on `renderer.x` of the start and end
-     * note's renderers, which are only finalized during system layout —
-     * after the bar renderer's `doLayout` has already run. So the
-     * segments are computed lazily on each query / paint call; both
-     * call sites run after system layout, so `renderer.x` is final.
-     * Returning a fresh segment each time keeps `paint` and the bbox
-     * accessors in sync without a stale cache.
-     */
+    /** Computed lazily — geometry depends on `renderer.x`, only final post-system-layout. */
     public override getBoundingBoxLeft(): number {
         let min = Number.POSITIVE_INFINITY;
         const slideIn = this._computeSlideIn();
