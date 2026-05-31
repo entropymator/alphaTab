@@ -20,10 +20,6 @@ export class MarkerEffectInfo extends EffectInfo {
         return true;
     }
 
-    public get canShareBand(): boolean {
-        return true;
-    }
-
     public get sizingMode(): EffectBarGlyphSizing {
         return EffectBarGlyphSizing.SinglePreBeat;
     }

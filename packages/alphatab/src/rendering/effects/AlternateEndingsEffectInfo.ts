@@ -19,10 +19,6 @@ export class AlternateEndingsEffectInfo extends EffectInfo {
         return true;
     }
 
-    public get canShareBand(): boolean {
-        return false;
-    }
-
     public get sizingMode(): EffectBarGlyphSizing {
         return EffectBarGlyphSizing.FullBar;
     }

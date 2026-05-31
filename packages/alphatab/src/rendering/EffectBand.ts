@@ -3,7 +3,6 @@ import type { Voice } from '@coderline/alphatab/model/Voice';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBandContainer } from '@coderline/alphatab/rendering/EffectBandContainer';
-import type { EffectBandSlot } from '@coderline/alphatab/rendering/EffectBandSlot';
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
@@ -27,7 +26,18 @@ export class EffectBand extends Glyph {
     public originalHeight: number = 0;
     public voice: Voice;
     public info: EffectInfo;
-    public slot: EffectBandSlot | null = null;
+
+    /**
+     * Magnitude of the band's inner edge from the staff reference, set by
+     * {@link EffectSystemPlacement} during the staff finalize pass. Drives the
+     * conversion from skyline magnitude to renderer-local `band.y` and is the
+     * only piece of placement state the band carries between place + apply.
+     */
+    public placedMagnitude: number = 0;
+
+    public get container(): EffectBandContainer {
+        return this._container;
+    }
 
     public constructor(voice: Voice, info: EffectInfo, container: EffectBandContainer) {
         super(0, 0);
@@ -173,11 +183,6 @@ export class EffectBand extends Glyph {
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
         super.paint(cx, cy, canvas);
 
-        // const c = canvas.color;
-        // canvas.color = Color.random();
-        // canvas.fillRect(cx + this.x, cy + this.y, this.renderer.width, this.slot!.shared.height);
-        // canvas.color = c;
-
         for (let i: number = 0, j: number = this._uniqueEffectGlyphs.length; i < j; i++) {
             const v: EffectGlyph[] = this._uniqueEffectGlyphs[i];
             for (let k: number = 0, l: number = v.length; k < l; k++) {
@@ -196,6 +201,40 @@ export class EffectBand extends Glyph {
             }
         }
         this.info.onAlignGlyphs(this);
+    }
+
+    /**
+     * The band's renderer-local x range, used by
+     * {@link EffectSystemPlacement} to query the staff skyline. Spans the
+     * union of every per-voice {@link EffectGlyph}'s `(x, x+width)` rect, or
+     * the renderer's full width for {@link EffectBarGlyphSizing.FullBar}.
+     *
+     * Result is `null` when the band is empty.
+     */
+    public computeLocalXRange(): { xStart: number; xEnd: number } | null {
+        if (this.isEmpty) {
+            return null;
+        }
+        if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
+            return { xStart: 0, xEnd: this.renderer.width };
+        }
+        let min = Number.POSITIVE_INFINITY;
+        let max = Number.NEGATIVE_INFINITY;
+        for (const v of this._uniqueEffectGlyphs) {
+            for (const g of v) {
+                if (g.x < min) {
+                    min = g.x;
+                }
+                const end = g.x + g.width;
+                if (end > max) {
+                    max = end;
+                }
+            }
+        }
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+            return null;
+        }
+        return { xStart: min, xEnd: max };
     }
 
     private _alignGlyph(sizing: EffectBarGlyphSizing, beat: Beat): void {

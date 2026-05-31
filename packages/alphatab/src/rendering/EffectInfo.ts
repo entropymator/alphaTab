@@ -25,14 +25,6 @@ export abstract class EffectInfo {
     public abstract get notationElement(): NotationElement;
 
     /**
-     * Gets a value indicating whether this effect can share the space
-     * with other effects if required.
-     * (Example: tempo and dynamics don't share their space with other effects, a let-ring and palm-mute will share the space if possible)
-     * @returns true if this effect bar should only be created once for the first track, otherwise false.
-     */
-    public abstract get canShareBand(): boolean;
-
-    /**
      * Gets a value indicating whether this effect glyphs
      * should only be added once on the first track if multiple tracks are rendered.
      * (Example: this allows to render the tempo changes only once)

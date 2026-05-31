@@ -7,6 +7,7 @@ import {
     type EffectBandInfo,
     EffectBandMode
 } from '@coderline/alphatab/rendering/BarRendererFactory';
+import { EffectSystemPlacement } from '@coderline/alphatab/rendering/EffectSystemPlacement';
 import { StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
 import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
@@ -209,6 +210,20 @@ export class RenderStaff {
     }
 
     private _systemSkyline: StaffSystemSkyline | null = null;
+    private _effectPlacement: EffectSystemPlacement | null = null;
+
+    /**
+     * Per-staff effect-band placement oracle that consumes the assembled
+     * {@link systemSkyline} to position every {@link EffectBand} on this
+     * staff line. Replaces the legacy `EffectBandSlot` / `EffectBandSizingInfo`
+     * row allocator.
+     */
+    public get effectPlacement(): EffectSystemPlacement {
+        if (!this._effectPlacement) {
+            this._effectPlacement = new EffectSystemPlacement(this);
+        }
+        return this._effectPlacement;
+    }
 
     /**
      * Per-staff skyline assembled from this staff's per-renderer
@@ -299,12 +314,12 @@ export class RenderStaff {
         // x and width are already final by this point (`_scaleToWidth` ran
         // earlier in the pipeline).
         this.systemSkyline.reset();
+        this.effectPlacement.reset();
 
-        // 1st pass: let all renderers finalize themselves, this might cause
-        // changes in the overflows. Fold each renderer's bar-local skyline
-        // into the staff skyline as we go — no second pass needed.
+        // 1st pass: let all renderers finalize themselves (ties), this
+        // might cause changes in the overflows. Fold each renderer's
+        // bar-local skyline into the staff skyline as we go.
         let needsSecondPass = false;
-        let topOverflow: number = this.topOverflow;
         for (const renderer of this.barRenderers) {
             renderer.registerMultiSystemSlurs(this.system.layout!.slurRegistry.getAllContinuations(renderer));
             if (renderer.finalizeRenderer()) {
@@ -314,21 +329,35 @@ export class RenderStaff {
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
-        // 2nd pass: move renderers to correct position respecting the new overflows
-        if (needsSecondPass) {
-            topOverflow = this.topOverflow;
-            // shift all the renderers to the new position to match required spacing
-            for (const renderer of this.barRenderers) {
-                renderer.y = this.topPadding + topOverflow;
-            }
+        // Place effect bands against the assembled staff skyline. This
+        // sets each renderer's `topEffects.height` / `bottomEffects.height`
+        // and re-registers staff overflows, so `this.topOverflow` /
+        // `this.bottomOverflow` reflect the new band stacks immediately
+        // afterwards.
+        this.effectPlacement.placeAndApply();
 
-            // Re-finalize (to align ties) and re-fold each bar-local skyline
-            // into a fresh staff skyline so the final envelope reflects the
-            // post-tie geometry.
+        let topOverflow: number = this.topOverflow;
+        // Always shift renderers to the post-placement topOverflow so band
+        // y's, content overflow and renderer.y agree.
+        for (const renderer of this.barRenderers) {
+            renderer.y = this.topPadding + topOverflow;
+        }
+
+        // 2nd pass: if ties asked for another finalize cycle, re-fold the
+        // bar-local skylines and re-run placement so band y's reflect the
+        // tie-adjusted skyline.
+        if (needsSecondPass) {
             this.systemSkyline.reset();
+            this.effectPlacement.reset();
             for (const renderer of this.barRenderers) {
                 renderer.finalizeRenderer();
                 this._unionBarLocalIntoStaffSkyline(renderer);
+            }
+            this.effectPlacement.placeAndApply();
+
+            topOverflow = this.topOverflow;
+            for (const renderer of this.barRenderers) {
+                renderer.y = this.topPadding + topOverflow;
             }
         }
 

@@ -21,10 +21,6 @@ export class ChordsEffectInfo extends EffectInfo {
         return false;
     }
 
-    public get canShareBand(): boolean {
-        return true;
-    }
-
     public get sizingMode(): EffectBarGlyphSizing {
         return EffectBarGlyphSizing.SingleOnBeat;
     }

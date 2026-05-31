@@ -20,10 +20,6 @@ export class TabWhammyEffectInfo extends EffectInfo {
         return false;
     }
 
-    public get canShareBand(): boolean {
-        return false;
-    }
-
     public get sizingMode(): EffectBarGlyphSizing {
         return EffectBarGlyphSizing.GroupedOnBeatToEnd;
     }
@@ -76,7 +72,6 @@ export class TabWhammyEffectInfo extends EffectInfo {
             tb.bottomOffset = bottom;
             tb.height = top + bottom;
         }
-        band.slot!.shared.height = top + bottom;
         band.height = top + bottom;
     }
 }

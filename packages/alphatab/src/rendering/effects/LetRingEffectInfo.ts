@@ -15,10 +15,6 @@ export class LetRingEffectInfo extends EffectInfo {
         return NotationElement.EffectLetRing;
     }
 
-    public get canShareBand(): boolean {
-        return false;
-    }
-
     public get hideOnMultiTrack(): boolean {
         return false;
     }

@@ -15,10 +15,6 @@ export class RasgueadoEffectInfo extends EffectInfo {
         return NotationElement.EffectRasgueado;
     }
 
-    public get canShareBand(): boolean {
-        return false;
-    }
-
     public get hideOnMultiTrack(): boolean {
         return false;
     }

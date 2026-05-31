@@ -396,8 +396,12 @@ export class BarRendererBase {
     }
 
     public afterStaffBarReverted() {
-        this.topEffects.afterStaffBarReverted();
-        this.bottomEffects.afterStaffBarReverted();
+        // Effect-band y assignments and container heights are re-derived
+        // from the staff skyline by {@link EffectSystemPlacement} on the
+        // next {@link RenderStaff.finalizeStaff} cycle, so this hook only
+        // needs to drop the stale heights here.
+        this.topEffects.height = 0;
+        this.bottomEffects.height = 0;
         // Do NOT reset the bar-local skyline here: this hook fires on the
         // bars that REMAIN on a staff after a revert, whose content (and
         // therefore vertical envelope) is unchanged. Resetting would discard
@@ -409,9 +413,6 @@ export class BarRendererBase {
         if (this._appliedLayoutingInfo >= this.layoutingInfo.version) {
             return false;
         }
-
-        this.topEffects.resetEffectBandSizingInfo();
-        this.bottomEffects.resetEffectBandSizingInfo();
 
         this._appliedLayoutingInfo = this.layoutingInfo.version;
         // if we need additional space in the preBeat group we simply
@@ -429,8 +430,12 @@ export class BarRendererBase {
         this.width = Math.ceil(this._postBeatGlyphs.x + this._postBeatGlyphs.width);
         this.computedWidth = this.width;
 
-        this.topEffects.sizeAndAlignEffectBands();
-        this.bottomEffects.sizeAndAlignEffectBands();
+        // Effect-band glyph alignment within each band still needs to
+        // happen here (so post-`applyLayoutingInfo` widths see correctly
+        // aligned glyphs); band placement / heights are derived later from
+        // the staff skyline by {@link EffectSystemPlacement}.
+        this.topEffects.alignGlyphs();
+        this.bottomEffects.alignGlyphs();
         this._registerStaffOverflow();
 
         return true;
@@ -504,12 +509,6 @@ export class BarRendererBase {
             didChangeOverflows = true;
         }
 
-        const topHeightChanged = this.topEffects.finalizeEffects();
-        const bottomHeightChanged = this.bottomEffects.finalizeEffects();
-        if (topHeightChanged || bottomHeightChanged) {
-            didChangeOverflows = true;
-        }
-
         if (didChangeOverflows) {
             this.updateSizes();
             this._registerStaffOverflow();
@@ -521,6 +520,15 @@ export class BarRendererBase {
     private _registerStaffOverflow() {
         this.staff!.registerOverflowTop(this.topOverflow);
         this.staff!.registerOverflowBottom(this.bottomOverflow);
+    }
+
+    /**
+     * Public re-export of {@link _registerStaffOverflow} used by
+     * {@link EffectSystemPlacement} after it derives the new container
+     * heights for this renderer from the staff skyline.
+     */
+    public registerStaffOverflows(): void {
+        this._registerStaffOverflow();
     }
 
     public doLayout(): void {
@@ -546,9 +554,12 @@ export class BarRendererBase {
 
         this._registerLayoutingInfo();
 
-        // registering happened during creation
-        this.topEffects.sizeAndAlignEffectBands(false);
-        this.bottomEffects.sizeAndAlignEffectBands(false);
+        // Align glyphs within each band so band-internal x/width are settled
+        // before the renderer scales/finalises. Band y / container heights
+        // are derived later from the staff skyline by {@link
+        // EffectSystemPlacement}.
+        this.topEffects.alignGlyphs();
+        this.bottomEffects.alignGlyphs();
 
         this.updateSizes();
 
@@ -731,12 +742,6 @@ export class BarRendererBase {
 
         this.width = Math.ceil(this._postBeatGlyphs.x + this._postBeatGlyphs.width);
 
-        const topHeightChanged = this.topEffects.updateEffectBandHeights();
-        const bottomHeightChanged = this.bottomEffects.updateEffectBandHeights();
-        if (topHeightChanged || bottomHeightChanged) {
-            this._registerStaffOverflow();
-        }
-
         this.height += this.layoutingInfo.height;
         this.height = Math.ceil(this.height);
 
@@ -895,8 +900,12 @@ export class BarRendererBase {
     }
 
     public reLayout(): void {
-        this.topEffects.reLayout();
-        this.bottomEffects.reLayout();
+        // Effect-band placement (y / heights) is regenerated from the staff
+        // skyline on the next {@link RenderStaff.finalizeStaff} cycle.
+        this.topEffects.height = 0;
+        this.bottomEffects.height = 0;
+        this.topEffects.alignGlyphs();
+        this.bottomEffects.alignGlyphs();
         this.updateSizes();
 
         // there are some glyphs which are shown only for renderers at the line start, so we simply recreate them

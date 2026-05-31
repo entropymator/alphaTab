@@ -19,10 +19,6 @@ export class BeatTimerEffectInfo extends EffectInfo {
         return true;
     }
 
-    public get canShareBand(): boolean {
-        return true;
-    }
-
     public get sizingMode(): EffectBarGlyphSizing {
         return EffectBarGlyphSizing.SingleOnBeat;
     }

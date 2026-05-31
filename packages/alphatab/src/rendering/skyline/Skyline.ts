@@ -123,6 +123,15 @@ export class Skyline {
         }
     }
 
+    /**
+     * Maximum height across the half-open range `[xStart, xEnd)`. O(n).
+     * Used by {@link EffectSystemPlacement} to read each renderer's
+     * post-placement envelope from the staff-system skyline.
+     */
+    public maxHeightInRange(xStart: number, xEnd: number): number {
+        return this._maxHeightInRange(xStart, xEnd);
+    }
+
     /** Maximum height across the skyline's full x-range. O(n). */
     public maxHeight(): number {
         let best: number = 0;

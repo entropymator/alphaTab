@@ -19,10 +19,6 @@ export class DirectionsEffectInfo extends EffectInfo {
         return true;
     }
 
-    public get canShareBand(): boolean {
-        return false;
-    }
-
     public get sizingMode(): EffectBarGlyphSizing {
         return EffectBarGlyphSizing.FullBar;
     }

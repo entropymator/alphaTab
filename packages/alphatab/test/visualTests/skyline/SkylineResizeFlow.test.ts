@@ -333,16 +333,19 @@ describe('SkylineResizeFlow', () => {
         }
     });
 
-    it('staff skyline maxHeight is the max over its constituent bar-local maxHeights', async () => {
+    it('staff skyline maxHeight is at least the max over its constituent bar-local maxHeights', async () => {
         // Phase 1's staff-skyline assembly inserts per-bar scalars across
-        // the bar's renderer-local x range. So the staff skyline's
-        // maxHeight equals the maximum bar-local maxHeight on each side.
+        // the bar's renderer-local x range. Phase 2's effect-band placement
+        // pass then stacks effect bands on top of the assembled staff
+        // skyline, so the staff skyline's maxHeight is at least the max
+        // bar-local skyline maxHeight — bigger when effect bands push it
+        // further out.
         const snap = await renderOnce(resizeTex, 600);
         for (const staff of snap) {
             const localUpMax = staff.barUpMaxes.reduce((a, b) => Math.max(a, b), 0);
             const localDownMax = staff.barDownMaxes.reduce((a, b) => Math.max(a, b), 0);
-            expect(staff.upMax).toBeCloseTo(localUpMax, 5);
-            expect(staff.downMax).toBeCloseTo(localDownMax, 5);
+            expect(staff.upMax).toBeGreaterThanOrEqual(localUpMax - 1e-5);
+            expect(staff.downMax).toBeGreaterThanOrEqual(localDownMax - 1e-5);
         }
     });
 
