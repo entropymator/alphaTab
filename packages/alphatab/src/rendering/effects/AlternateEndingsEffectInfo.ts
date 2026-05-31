@@ -53,7 +53,14 @@ export class AlternateEndingsEffectInfo extends EffectInfo {
         return true;
     }
     public override get placementCategory(): EffectBandPlacementCategory {
-        return EffectBandPlacementCategory.SystemMarker;
+        // Repeat brackets sit on a single y baseline across the whole
+        // system (Gould Ch.11) — adjacent endings (1st / 2nd / …) must
+        // line up so the reader can compare them. {@link HorizontalRow}
+        // aligns every volta band at the deepest magnitude needed in
+        // the row's combined x-range, avoiding the per-x stacking that
+        // would otherwise happen when adjacent FullBar voltas overlap
+        // each other's pad-widened query range.
+        return EffectBandPlacementCategory.HorizontalRow;
     }
 
 }

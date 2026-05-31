@@ -36,7 +36,22 @@ export enum EffectBandPlacementCategory {
      * Coda), free-time, alternate endings, chord symbols. Placed last
      * so they sit furthest from the staff.
      */
-    SystemMarker = 2
+    SystemMarker = 2,
+    /**
+     * Text rows whose convention is to sit on a single y baseline that
+     * runs parallel to the staff for the whole system (Gould p.300:
+     * "A line of text should be parallel to the stave for the length
+     * of the system"). Lyrics are the canonical case; chord symbols
+     * and figured bass follow the same rule.
+     *
+     * Placement is grouped by {@link EffectInfo.effectId}: every band
+     * sharing one id is aligned at the deepest magnitude needed across
+     * the row's combined x-range, so per-bar envelope differences
+     * (stem-down notes, dots, …) cannot stagger the text. Bands in this
+     * category place AFTER all preceding categories so they clear any
+     * note-attached / span / system-marker material in their column.
+     */
+    HorizontalRow = 3
 }
 
 /**

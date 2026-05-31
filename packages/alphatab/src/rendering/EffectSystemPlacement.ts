@@ -1,7 +1,8 @@
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
 import type { EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
-import type { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, type EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import type { Skyline } from '@coderline/alphatab/rendering/skyline/Skyline';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 
 /**
@@ -101,35 +102,22 @@ export class EffectSystemPlacement {
         EffectSystemPlacement._sortByPriority(top, orderMap);
         EffectSystemPlacement._sortByPriority(bottom, orderMap);
 
-        // Per-x placement: each band only clears content whose x range
-        // actually overlaps the band's own x extent (widened by `pad` for
-        // clearance). Bands at non-overlapping x positions naturally settle
-        // at the same staff-edge y instead of stacking. This is the Phase 2
-        // skyline benefit — `effectBandPaddingBottom` is the inter-rect
-        // clearance (bands ↔ content, bands ↔ bands); it is NOT a bar-wide
-        // "annotation row" floor.
-        for (const band of top) {
-            const range = band.computeLocalXRange();
-            if (!range) {
-                continue;
-            }
-            const xStart = band.renderer.x + range.xStart;
-            const xEnd = band.renderer.x + range.xEnd;
-            const magnitude = sky.upSky.placeAbove(xStart, xEnd, band.height, pad);
-            band.placedMagnitude = magnitude;
-            sky.upSky.insert(xStart, xEnd, magnitude + band.height, pad);
-        }
-        for (const band of bottom) {
-            const range = band.computeLocalXRange();
-            if (!range) {
-                continue;
-            }
-            const xStart = band.renderer.x + range.xStart;
-            const xEnd = band.renderer.x + range.xEnd;
-            const magnitude = sky.downSky.placeBelow(xStart, xEnd, band.height, pad);
-            band.placedMagnitude = magnitude;
-            sky.downSky.insert(xStart, xEnd, magnitude + band.height, pad);
-        }
+        // Per-x placement (default): each band only clears content whose
+        // x range actually overlaps the band's own x extent (widened by
+        // `pad` for clearance). Bands at non-overlapping x positions
+        // naturally settle at the same staff-edge y instead of stacking.
+        // This is the Phase 2 skyline benefit — `effectBandPaddingBottom`
+        // is the inter-rect clearance (bands ↔ content, bands ↔ bands);
+        // it is NOT a bar-wide "annotation row" floor.
+        //
+        // {@link EffectBandPlacementCategory.HorizontalRow}: bands sharing
+        // one effect id are placed at the deepest magnitude needed across
+        // the row's combined x-range so the text sits on one baseline
+        // across the system (Gould p.300 "parallel to the stave"; see
+        // {@link EffectBandPlacementCategory.HorizontalRow} for the
+        // rationale).
+        EffectSystemPlacement._placeSide(top, sky.upSky, pad, /* isTop */ true);
+        EffectSystemPlacement._placeSide(bottom, sky.downSky, pad, /* isTop */ false);
 
         // Derive each renderer's container heights from the per-renderer
         // skyline delta and re-register the resulting overflow on the staff.
@@ -203,7 +191,97 @@ export class EffectSystemPlacement {
             if (oa !== ob) {
                 return oa - ob;
             }
+            // Voice index before renderer index: keeps each voice's
+            // bands contiguous in the sorted list, which lets the
+            // {@link _placeSide} horizontal-row sweep group per-voice
+            // rows (multi-voice lyrics stack with voice 0 closest to
+            // the staff).
+            const va = a.voice.index;
+            const vb = b.voice.index;
+            if (va !== vb) {
+                return va - vb;
+            }
             return a.renderer.index - b.renderer.index;
         });
+    }
+
+    /**
+     * Walks a side's already-priority-sorted band list and dispatches to
+     * the placement style implied by each band's
+     * {@link EffectBandPlacementCategory}:
+     *
+     * - default (per-x): query the skyline for the band's own x range,
+     *   place at the shallowest clearance, insert.
+     * - {@link EffectBandPlacementCategory.HorizontalRow}: collect the
+     *   contiguous run of same-effect-id bands, query each one's
+     *   `placeAbove`/`placeBelow` without inserting, then place every
+     *   band in the run at the run's max magnitude and insert all rects
+     *   at that aligned magnitude. The sort guarantees same-effect-id
+     *   bands are adjacent, and the post-run insert keeps subsequent
+     *   bands (other effects, later groups) clear of the whole row.
+     */
+    private static _placeSide(bands: EffectBand[], sky: Skyline, pad: number, isTop: boolean): void {
+        let i = 0;
+        while (i < bands.length) {
+            const band = bands[i];
+            const range = band.computeLocalXRange();
+            if (!range) {
+                i++;
+                continue;
+            }
+
+            if (band.info.placementCategory !== EffectBandPlacementCategory.HorizontalRow) {
+                const xStart = band.renderer.x + range.xStart;
+                const xEnd = band.renderer.x + range.xEnd;
+                const magnitude = isTop
+                    ? sky.placeAbove(xStart, xEnd, band.height, pad)
+                    : sky.placeBelow(xStart, xEnd, band.height, pad);
+                band.placedMagnitude = magnitude;
+                sky.insert(xStart, xEnd, magnitude + band.height, pad);
+                i++;
+                continue;
+            }
+
+            // Horizontal-row run: bands sharing one effect id AND voice
+            // index are adjacent after the priority sort. Each voice
+            // forms its own row (multi-voice lyrics stack: voice 0
+            // closest to the staff, voice 1 below it, etc.). Collect
+            // each run's x ranges first (without inserting) so the
+            // group's max magnitude reflects the whole row's deepest
+            // need; then place every band at that max and insert. The
+            // insert places voice N's row in the skyline before voice
+            // N+1's run queries, so voice N+1 stacks behind it.
+            const rowEffectId = band.info.effectId;
+            const rowVoiceIndex = band.voice.index;
+            type RowEntry = { band: EffectBand; xStart: number; xEnd: number; magnitude: number };
+            const row: RowEntry[] = [];
+            let rowMagnitude = 0;
+            let j = i;
+            while (
+                j < bands.length &&
+                bands[j].info.placementCategory === EffectBandPlacementCategory.HorizontalRow &&
+                bands[j].info.effectId === rowEffectId &&
+                bands[j].voice.index === rowVoiceIndex
+            ) {
+                const r = bands[j].computeLocalXRange();
+                if (r) {
+                    const xStart = bands[j].renderer.x + r.xStart;
+                    const xEnd = bands[j].renderer.x + r.xEnd;
+                    const magnitude = isTop
+                        ? sky.placeAbove(xStart, xEnd, bands[j].height, pad)
+                        : sky.placeBelow(xStart, xEnd, bands[j].height, pad);
+                    if (magnitude > rowMagnitude) {
+                        rowMagnitude = magnitude;
+                    }
+                    row.push({ band: bands[j], xStart, xEnd, magnitude });
+                }
+                j++;
+            }
+            for (const e of row) {
+                e.band.placedMagnitude = rowMagnitude;
+                sky.insert(e.xStart, e.xEnd, rowMagnitude + e.band.height, pad);
+            }
+            i = j;
+        }
     }
 }
