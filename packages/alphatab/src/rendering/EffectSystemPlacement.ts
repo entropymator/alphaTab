@@ -1,4 +1,3 @@
-import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
 import type { EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
 import { EffectBandPlacementCategory, type EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
@@ -13,6 +12,16 @@ import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderSta
  */
 export class EffectSystemPlacement {
     private readonly _staff: RenderStaff;
+
+    // Reusable scratch buffers — same instance is rebuilt on every finalize cycle.
+    private readonly _top: EffectBand[] = [];
+    private readonly _bottom: EffectBand[] = [];
+    private readonly _contentTop: number[] = [];
+    private readonly _contentBottom: number[] = [];
+    private readonly _orderMap: Map<EffectInfo, number> = new Map();
+    private readonly _groupBands: EffectBand[] = [];
+    private readonly _groupXStarts: number[] = [];
+    private readonly _groupXEnds: number[] = [];
 
     public constructor(staff: RenderStaff) {
         this._staff = staff;
@@ -38,17 +47,20 @@ export class EffectSystemPlacement {
         const sky = staff.systemSkyline;
         const pad = staff.system.layout.renderer.settings.display.effectBandPaddingBottom;
 
-        // container.height = post-placement max - pre-placement max.
-        const contentTop = new Map<BarRendererBase, number>();
-        const contentBottom = new Map<BarRendererBase, number>();
-        for (const r of staff.barRenderers) {
-            contentTop.set(r, sky.upSky.maxHeightInRange(r.x, r.x + r.width));
-            contentBottom.set(r, sky.downSky.maxHeightInRange(r.x, r.x + r.width));
-        }
+        const top = this._top;
+        const bottom = this._bottom;
+        const contentTop = this._contentTop;
+        const contentBottom = this._contentBottom;
+        top.length = 0;
+        bottom.length = 0;
+        contentTop.length = 0;
+        contentBottom.length = 0;
 
-        const top: EffectBand[] = [];
-        const bottom: EffectBand[] = [];
-        for (const r of staff.barRenderers) {
+        // container.height = post-placement max - pre-placement max.
+        for (let i = 0; i < staff.barRenderers.length; i++) {
+            const r = staff.barRenderers[i];
+            contentTop.push(sky.upSky.maxHeightInRange(r.x, r.x + r.width));
+            contentBottom.push(sky.downSky.maxHeightInRange(r.x, r.x + r.width));
             for (const b of r.topEffects.bands) {
                 if (!b.isEmpty) {
                     top.push(b);
@@ -69,21 +81,20 @@ export class EffectSystemPlacement {
             b.finalizeBand();
         }
 
-        const orderMap = this._buildOrderMap();
-        EffectSystemPlacement._sortByPriority(top, orderMap);
-        EffectSystemPlacement._sortByPriority(bottom, orderMap);
+        this._buildOrderMap();
+        this._sortByPriority(top);
+        this._sortByPriority(bottom);
 
-        EffectSystemPlacement._placeSide(top, sky.upSky, pad, /* isTop */ true);
-        EffectSystemPlacement._placeSide(bottom, sky.downSky, pad, /* isTop */ false);
+        this._placeSide(top, sky.upSky, pad, /* isTop */ true);
+        this._placeSide(bottom, sky.downSky, pad, /* isTop */ false);
 
-        for (const r of staff.barRenderers) {
+        for (let i = 0; i < staff.barRenderers.length; i++) {
+            const r = staff.barRenderers[i];
             const topMax = sky.upSky.maxHeightInRange(r.x, r.x + r.width);
-            const topContent = contentTop.get(r)!;
-            r.topEffects.height = Math.max(0, Math.ceil(topMax - topContent));
+            r.topEffects.height = Math.max(0, Math.ceil(topMax - contentTop[i]));
 
             const bottomMax = sky.downSky.maxHeightInRange(r.x, r.x + r.width);
-            const bottomContent = contentBottom.get(r)!;
-            r.bottomEffects.height = Math.max(0, Math.ceil(bottomMax - bottomContent));
+            r.bottomEffects.height = Math.max(0, Math.ceil(bottomMax - contentBottom[i]));
 
             r.registerStaffOverflows();
         }
@@ -98,11 +109,10 @@ export class EffectSystemPlacement {
         }
     }
 
-    private _buildOrderMap(): Map<EffectInfo, number> {
-        const m = new Map<EffectInfo, number>();
-        EffectSystemPlacement._populateOrder(m, this._staff.topEffectInfos);
-        EffectSystemPlacement._populateOrder(m, this._staff.bottomEffectInfos);
-        return m;
+    private _buildOrderMap(): void {
+        this._orderMap.clear();
+        EffectSystemPlacement._populateOrder(this._orderMap, this._staff.topEffectInfos);
+        EffectSystemPlacement._populateOrder(this._orderMap, this._staff.bottomEffectInfos);
     }
 
     private static _populateOrder(map: Map<EffectInfo, number>, infos: EffectBandInfo[]): void {
@@ -118,7 +128,8 @@ export class EffectSystemPlacement {
      * Sort key: (placementCategory asc, order desc, voice asc, renderer asc).
      * Higher `order` placed first → closest to staff (e.g. voltas at `order: 1000`).
      */
-    private static _sortByPriority(bands: EffectBand[], orderMap: Map<EffectInfo, number>): void {
+    private _sortByPriority(bands: EffectBand[]): void {
+        const orderMap = this._orderMap;
         bands.sort((a, b) => {
             const ca = a.info.placementCategory;
             const cb = b.info.placementCategory;
@@ -145,7 +156,10 @@ export class EffectSystemPlacement {
      *  - Linked chain: bands flagged via {@link EffectBand.isLinkedToPrevious}.
      *  - Otherwise: single band.
      */
-    private static _placeSide(bands: EffectBand[], sky: Skyline, pad: number, isTop: boolean): void {
+    private _placeSide(bands: EffectBand[], sky: Skyline, pad: number, isTop: boolean): void {
+        const groupBands = this._groupBands;
+        const groupXStarts = this._groupXStarts;
+        const groupXEnds = this._groupXEnds;
         let i = 0;
         while (i < bands.length) {
             const band = bands[i];
@@ -175,8 +189,9 @@ export class EffectSystemPlacement {
             }
 
             // Query without inserting, then commit every member at the group's max magnitude.
-            type GroupEntry = { band: EffectBand; xStart: number; xEnd: number };
-            const group: GroupEntry[] = [];
+            groupBands.length = 0;
+            groupXStarts.length = 0;
+            groupXEnds.length = 0;
             let groupMagnitude = 0;
             for (let k = i; k < groupEnd; k++) {
                 const m = bands[k];
@@ -192,11 +207,14 @@ export class EffectSystemPlacement {
                 if (mag > groupMagnitude) {
                     groupMagnitude = mag;
                 }
-                group.push({ band: m, xStart, xEnd });
+                groupBands.push(m);
+                groupXStarts.push(xStart);
+                groupXEnds.push(xEnd);
             }
-            for (const e of group) {
-                e.band.placedMagnitude = groupMagnitude;
-                sky.insert(e.xStart, e.xEnd, groupMagnitude + e.band.height, pad);
+            for (let k = 0; k < groupBands.length; k++) {
+                const b = groupBands[k];
+                b.placedMagnitude = groupMagnitude;
+                sky.insert(groupXStarts[k], groupXEnds[k], groupMagnitude + b.height, pad);
             }
             i = groupEnd;
         }
