@@ -218,20 +218,35 @@ export class EffectBand extends Glyph {
         if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
             return { xStart: 0, xEnd: this.renderer.width };
         }
+        // Use each glyph's paint extent (`getBoundingBoxLeft/Right`), not
+        // its rhythmic-spacing extent (`x` / `x + width`). Effect glyphs
+        // such as `BarTempoGlyph` keep `width = 0` to stay out of the
+        // bar's rod calculation but still paint a real text/symbol
+        // string — without this their band would collapse to a
+        // degenerate point and the skyline never sees them.
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
         for (const v of this._uniqueEffectGlyphs) {
             for (const g of v) {
-                if (g.x < min) {
-                    min = g.x;
+                const left = g.getBoundingBoxLeft();
+                if (left < min) {
+                    min = left;
                 }
-                const end = g.x + g.width;
-                if (end > max) {
-                    max = end;
+                const right = g.getBoundingBoxRight();
+                if (right > max) {
+                    max = right;
                 }
             }
         }
-        if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+        // Defensive: `max < min` (strict) so that a degenerate point range
+        // (= every glyph in the band reported a zero-width paint extent)
+        // is still accepted. Any glyph that paints over a real range
+        // should override `getBoundingBoxLeft/Right` so the band yields a
+        // proper rectangle; the strict comparison just keeps unfamiliar
+        // future zero-width effect glyphs working with the placement
+        // (`placeAbove` widens by `pad` so a degenerate range still gets
+        // a small skyline column).
+        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
             return null;
         }
         return { xStart: min, xEnd: max };

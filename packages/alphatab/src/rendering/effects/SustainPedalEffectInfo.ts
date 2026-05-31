@@ -4,7 +4,7 @@ import type { Settings } from '@coderline/alphatab/Settings';
 import type { Beat } from '@coderline/alphatab/model/Beat';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import { SustainPedalGlyph } from '@coderline/alphatab/rendering/glyphs/SustainPedalGlyph';
 
 /**
@@ -34,4 +34,8 @@ export class SustainPedalEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return true;
     }
+    public override get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.Span;
+    }
+
 }

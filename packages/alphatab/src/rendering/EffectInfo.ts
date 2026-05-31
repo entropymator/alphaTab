@@ -7,6 +7,39 @@ import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGly
 import type { Settings } from '@coderline/alphatab/Settings';
 
 /**
+ * Coarse placement category used by {@link EffectSystemPlacement} to
+ * decide how far from the staff an effect band sits. Lower category =
+ * placed first against the skyline = closer to the staff edge. Mirrors
+ * Gould (Behind Bars p.118, 184, 484) and the engine-design priority
+ * ordering: note-attached annotations sit closest, passage spans sit
+ * above them, and system-level markers (tempo, rehearsal, section)
+ * sit furthest out so they don't have to be displaced by other
+ * material.
+ * @internal
+ */
+export enum EffectBandPlacementCategory {
+    /**
+     * Note-attached annotations: articulations, fingerings, dynamics,
+     * text labels, ornaments, pick strokes, fermatas, lyrics. Sit
+     * closest to the staff (placed first).
+     */
+    NoteAttached = 0,
+    /**
+     * Passage-describing spans: vibrato, let-ring, palm-mute, trill,
+     * whammy, crescendo / fade hairpins, ottava, sustain pedal,
+     * rasgueado, barré. Sit above any note-attached annotations.
+     */
+    Span = 1,
+    /**
+     * System-level markers that conventionally float above all other
+     * notation: tempo, rehearsal marks, section markers (D.C., D.S.,
+     * Coda), free-time, alternate endings, chord symbols. Placed last
+     * so they sit furthest from the staff.
+     */
+    SystemMarker = 2
+}
+
+/**
  * A classes inheriting from this base can provide the
  * data needed by a EffectBarRenderer to create effect glyphs dynamically.
  * @internal
@@ -62,6 +95,18 @@ export abstract class EffectInfo {
      * @returns true if the glyph can be expanded, false if a new glyph needs to be created.
      */
     public abstract canExpand(from: Beat, to: Beat): boolean;
+
+    /**
+     * Coarse placement-band category. Default {@link
+     * EffectBandPlacementCategory.NoteAttached} so unfamiliar / future
+     * effect kinds land close to the staff (the safe default — they
+     * cannot get visually buried under spans / markers without an
+     * explicit override). Subclasses representing spans or system
+     * markers override this getter.
+     */
+    public get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.NoteAttached;
+    }
 
     /**
      * Override this method to finalize an effect band with all glyphs created.

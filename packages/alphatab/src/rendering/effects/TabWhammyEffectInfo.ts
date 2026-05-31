@@ -3,7 +3,7 @@ import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
-import { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 import { TabWhammyBarGlyph } from '@coderline/alphatab/rendering/glyphs/TabWhammyBarGlyph';
 import type { Settings } from '@coderline/alphatab/Settings';
@@ -74,4 +74,8 @@ export class TabWhammyEffectInfo extends EffectInfo {
         }
         band.height = top + bottom;
     }
+    public override get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.Span;
+    }
+
 }

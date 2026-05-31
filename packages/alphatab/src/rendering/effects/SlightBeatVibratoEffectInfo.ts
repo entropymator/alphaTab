@@ -4,7 +4,7 @@ import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererB
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import { BeatVibratoGlyph } from '@coderline/alphatab/rendering/glyphs/BeatVibratoGlyph';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { Settings } from '@coderline/alphatab/Settings';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 
@@ -35,4 +35,8 @@ export class SlightBeatVibratoEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return true;
     }
+    public override get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.Span;
+    }
+
 }

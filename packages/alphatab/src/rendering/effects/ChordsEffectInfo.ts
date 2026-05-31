@@ -4,7 +4,7 @@ import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererB
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 import { TextGlyph } from '@coderline/alphatab/rendering/glyphs/TextGlyph';
-import { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { Settings } from '@coderline/alphatab/Settings';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { ChordDiagramGlyph } from '@coderline/alphatab/rendering/glyphs/ChordDiagramGlyph';
@@ -45,4 +45,8 @@ export class ChordsEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return false;
     }
+    public override get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.SystemMarker;
+    }
+
 }

@@ -472,18 +472,27 @@ export class BarRendererBase {
 
             if (t.checkForOverflow) {
                 // NOTE: Ties are aligned on staff level, need to subtract the bar position
-                const tieTop = tie.getBoundingBoxTop();
-                const tieBottom = tie.getBoundingBoxBottom();
+                const tieTop = t.getBoundingBoxTop();
+                const tieBottom = t.getBoundingBoxBottom();
+                // The tie/slur sets `this.width = 0` and never positions itself
+                // via `glyph.x` — it draws the bezier directly between
+                // `_startX` and `_endX`. Use the bezier's bounding-box x-range
+                // so the overflow registration actually reaches the bar-local
+                // skyline. Without this, `Skyline.insert(0, 0, ...)` no-ops
+                // and EffectSystemPlacement can't see the slur's arc, even
+                // though the scalar overflow is correctly reported.
+                const tieLeft = t.getBoundingBoxLeft();
+                const tieRight = t.getBoundingBoxRight();
 
                 const bottomOverflow = tieBottom - barBottom;
                 if (bottomOverflow > 0) {
-                    if (this.registerOverflowRangeBottom(tie.x, tie.x + tie.width, bottomOverflow)) {
+                    if (this.registerOverflowRangeBottom(tieLeft, tieRight, bottomOverflow)) {
                         didChangeOverflows = true;
                     }
                 }
                 const topOverflow = tieTop - barTop;
                 if (topOverflow < 0) {
-                    if (this.registerOverflowRangeTop(tie.x, tie.x + tie.width, topOverflow * -1)) {
+                    if (this.registerOverflowRangeTop(tieLeft, tieRight, topOverflow * -1)) {
                         didChangeOverflows = true;
                     }
                 }
@@ -655,13 +664,25 @@ export class BarRendererBase {
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
             for (const g of preBeatGlyphs) {
+                // Use the glyph's paint extent (`getBoundingBoxLeft/Right`),
+                // not its rhythmic-spacing extent (`x` / `x + width`) —
+                // many glyphs deliberately set `width = 0` to opt out of
+                // rod-based bar-width calculations but still paint over a
+                // real range (slurs, tempo marks, ...). The default
+                // implementation collapses to the spacing extent so glyphs
+                // that haven't overridden the accessors keep their old
+                // behaviour.
                 const topY = g.getBoundingBoxTop();
                 if (topY < 0) {
-                    this.insertSkylineTop(g.x, g.x + g.width, topY * -1);
+                    this.insertSkylineTop(g.getBoundingBoxLeft(), g.getBoundingBoxRight(), topY * -1);
                 }
                 const bottomY = g.getBoundingBoxBottom();
                 if (bottomY > rendererBottom) {
-                    this.insertSkylineBottom(g.x, g.x + g.width, bottomY - rendererBottom);
+                    this.insertSkylineBottom(
+                        g.getBoundingBoxLeft(),
+                        g.getBoundingBoxRight(),
+                        bottomY - rendererBottom
+                    );
                 }
             }
         }
@@ -672,13 +693,17 @@ export class BarRendererBase {
             for (const g of postBeatGlyphs) {
                 const topY = g.getBoundingBoxTop();
                 if (topY < 0) {
-                    this.insertSkylineTop(postX + g.x, postX + g.x + g.width, topY * -1);
+                    this.insertSkylineTop(
+                        postX + g.getBoundingBoxLeft(),
+                        postX + g.getBoundingBoxRight(),
+                        topY * -1
+                    );
                 }
                 const bottomY = g.getBoundingBoxBottom();
                 if (bottomY > rendererBottom) {
                     this.insertSkylineBottom(
-                        postX + g.x,
-                        postX + g.x + g.width,
+                        postX + g.getBoundingBoxLeft(),
+                        postX + g.getBoundingBoxRight(),
                         bottomY - rendererBottom
                     );
                 }

@@ -16,6 +16,16 @@ export interface ITieGlyph {
      * If set, the tie bounds will be requested and the overflow is applied.
      */
     readonly checkForOverflow: boolean;
+    /**
+     * Bezier-arc bounding box edges, used to register the tie's vertical
+     * overflow across its actual x extent into the bar-local skyline.
+     * Default-implemented by {@link TieGlyph}; subclasses do not need to
+     * override unless they substitute a non-bezier geometry.
+     */
+    getBoundingBoxTop(): number;
+    getBoundingBoxBottom(): number;
+    getBoundingBoxLeft(): number;
+    getBoundingBoxRight(): number;
 }
 
 /**
@@ -62,6 +72,28 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
             return this._boundingBox.y + this._boundingBox.h;
         }
         return this._startY;
+    }
+
+    /**
+     * Left/right x extent of the bezier arc — used by
+     * {@link BarRendererBase._finalizeTies} so the slur's vertical
+     * overflow gets registered into the bar-local skyline across the
+     * arc's actual span (not against `this.width = 0`, which would
+     * silently no-op the skyline insert and leave the arc invisible
+     * to {@link EffectSystemPlacement}).
+     */
+    public override getBoundingBoxLeft(): number {
+        if (this._boundingBox) {
+            return this._boundingBox.x;
+        }
+        return this._startX;
+    }
+
+    public override getBoundingBoxRight(): number {
+        if (this._boundingBox) {
+            return this._boundingBox.x + this._boundingBox.w;
+        }
+        return this._endX;
     }
 
     public override doLayout(): void {

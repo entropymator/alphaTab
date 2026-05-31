@@ -1,5 +1,5 @@
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
-import { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { Settings } from '@coderline/alphatab/Settings';
 import type { Beat } from '@coderline/alphatab/model/Beat';
@@ -34,4 +34,8 @@ export class BeatTimerEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return true;
     }
+    public override get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.SystemMarker;
+    }
+
 }

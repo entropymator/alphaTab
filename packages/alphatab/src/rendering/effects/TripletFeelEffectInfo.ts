@@ -4,7 +4,7 @@ import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererB
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 import { TripletFeelGlyph } from '@coderline/alphatab/rendering/glyphs/TripletFeelGlyph';
-import { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { Settings } from '@coderline/alphatab/Settings';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 
@@ -41,4 +41,8 @@ export class TripletFeelEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return true;
     }
+    public override get placementCategory(): EffectBandPlacementCategory {
+        return EffectBandPlacementCategory.SystemMarker;
+    }
+
 }

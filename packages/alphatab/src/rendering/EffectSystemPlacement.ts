@@ -1,7 +1,6 @@
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
 import type { EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
-import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 
@@ -102,6 +101,13 @@ export class EffectSystemPlacement {
         EffectSystemPlacement._sortByPriority(top, orderMap);
         EffectSystemPlacement._sortByPriority(bottom, orderMap);
 
+        // Per-x placement: each band only clears content whose x range
+        // actually overlaps the band's own x extent (widened by `pad` for
+        // clearance). Bands at non-overlapping x positions naturally settle
+        // at the same staff-edge y instead of stacking. This is the Phase 2
+        // skyline benefit — `effectBandPaddingBottom` is the inter-rect
+        // clearance (bands ↔ content, bands ↔ bands); it is NOT a bar-wide
+        // "annotation row" floor.
         for (const band of top) {
             const range = band.computeLocalXRange();
             if (!range) {
@@ -171,12 +177,26 @@ export class EffectSystemPlacement {
         }
     }
 
+    /**
+     * Primary sort key is {@link EffectInfo.placementCategory}: note-attached
+     * annotations (articulations, text, dynamics, fingerings, ...) place
+     * first against the empty skyline and end up closest to the staff;
+     * passage spans (vibrato, let-ring, palm-mute, trill, ...) place
+     * after; system markers (tempo, rehearsal, section, alternate
+     * endings, ...) place last and end up furthest out. This matches
+     * the priority ordering in
+     * `docs/engine-design/10-collision/priority-ordering.md §5` and
+     * Behind Bars p. 117-184. Within a category, {@link
+     * EffectBandInfo.order} stably tiebreaks (preserves factory
+     * declaration order); within an order, renderer index keeps the
+     * sort left-to-right.
+     */
     private static _sortByPriority(bands: EffectBand[], orderMap: Map<EffectInfo, number>): void {
         bands.sort((a, b) => {
-            const ta = EffectSystemPlacement._tier(a);
-            const tb = EffectSystemPlacement._tier(b);
-            if (ta !== tb) {
-                return ta - tb;
+            const ca = a.info.placementCategory;
+            const cb = b.info.placementCategory;
+            if (ca !== cb) {
+                return ca - cb;
             }
             const oa = orderMap.get(a.info) ?? 0;
             const ob = orderMap.get(b.info) ?? 0;
@@ -185,14 +205,5 @@ export class EffectSystemPlacement {
             }
             return a.renderer.index - b.renderer.index;
         });
-    }
-
-    private static _tier(band: EffectBand): number {
-        const sm = band.info.sizingMode;
-        const single =
-            sm === EffectBarGlyphSizing.SinglePreBeat ||
-            sm === EffectBarGlyphSizing.SingleOnBeat ||
-            sm === EffectBarGlyphSizing.SingleOnBeatToEnd;
-        return single && band.firstBeat === band.lastBeat ? 1 : 2;
     }
 }

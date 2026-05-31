@@ -12,6 +12,17 @@ import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 export class BarTempoGlyph extends EffectGlyph {
     private _tempoAutomations: Automation[];
 
+    /**
+     * Sum of every automation's rendered width (text + quarter-note
+     * symbol + ` = NNN` text). The glyph keeps `width = 0` so it doesn't
+     * stretch the bar's rhythmic-spacing rod, but the paint extent is
+     * exposed via {@link getBoundingBoxLeft} / {@link getBoundingBoxRight}
+     * so the skyline integration (and EffectSystemPlacement's
+     * `computeLocalXRange`) see a real x-range instead of a degenerate
+     * point.
+     */
+    private _paintWidth: number = 0;
+
     public constructor(tempoAutomations: Automation[]) {
         super(0, 0);
         this._tempoAutomations = tempoAutomations;
@@ -20,9 +31,32 @@ export class BarTempoGlyph extends EffectGlyph {
     public override doLayout(): void {
         super.doLayout();
         const res = this.renderer.resources;
+        const scale = res.engravingSettings.tempoNoteScale;
+        const symbolWidth =
+            this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
         this.height =
-            this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.MetNoteQuarterUp)! *
-            res.engravingSettings.tempoNoteScale;
+            this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
+
+        const canvas = this.renderer.scoreRenderer.canvas!;
+        canvas.font = res.elementFonts.get(NotationElement.EffectMarker)!;
+        let total = 0;
+        for (const automation of this._tempoAutomations) {
+            let segment = symbolWidth;
+            if (automation.text) {
+                segment += canvas.measureText(`${automation.text} `).width;
+            }
+            segment += canvas.measureText(` = ${automation.value.toString()}`).width;
+            total += segment;
+        }
+        this._paintWidth = total;
+    }
+
+    public override getBoundingBoxLeft(): number {
+        return this.x;
+    }
+
+    public override getBoundingBoxRight(): number {
+        return this.x + this._paintWidth;
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
