@@ -22,6 +22,7 @@ export class EffectSystemPlacement {
     private readonly _groupBands: EffectBand[] = [];
     private readonly _groupXStarts: number[] = [];
     private readonly _groupXEnds: number[] = [];
+    private readonly _xRangeScratch: { xStart: number; xEnd: number } = { xStart: 0, xEnd: 0 };
 
     public constructor(staff: RenderStaff) {
         this._staff = staff;
@@ -192,15 +193,15 @@ export class EffectSystemPlacement {
             groupBands.length = 0;
             groupXStarts.length = 0;
             groupXEnds.length = 0;
+            const xRange = this._xRangeScratch;
             let groupMagnitude = 0;
             for (let k = i; k < groupEnd; k++) {
                 const m = bands[k];
-                const r = m.computeLocalXRange();
-                if (!r) {
+                if (!m.computeLocalXRange(xRange)) {
                     continue;
                 }
-                const xStart = m.renderer.x + r.xStart;
-                const xEnd = m.renderer.x + r.xEnd;
+                const xStart = m.renderer.x + xRange.xStart;
+                const xEnd = m.renderer.x + xRange.xEnd;
                 const mag = isTop
                     ? sky.placeAbove(xStart, xEnd, m.height, pad)
                     : sky.placeBelow(xStart, xEnd, m.height, pad);

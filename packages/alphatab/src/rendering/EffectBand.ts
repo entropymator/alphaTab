@@ -243,13 +243,14 @@ export class EffectBand extends Glyph {
     }
 
     /**
-     * Renderer-local x range used by {@link EffectSystemPlacement}. Unions glyph
-     * paint extents (not `x`/`width` — many effect glyphs keep `width = 0`).
-     * Returns `null` when empty.
+     * Writes the renderer-local x range used by {@link EffectSystemPlacement}
+     * into `out`. Unions glyph paint extents (not `x`/`width` — many effect
+     * glyphs keep `width = 0`). Returns `false` when the band has no usable
+     * range (empty or every glyph reports a degenerate paint extent).
      */
-    public computeLocalXRange(): { xStart: number; xEnd: number } | null {
+    public computeLocalXRange(out: { xStart: number; xEnd: number }): boolean {
         if (this.isEmpty) {
-            return null;
+            return false;
         }
         if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
             let xStart = 0;
@@ -266,7 +267,9 @@ export class EffectBand extends Glyph {
                     }
                 }
             }
-            return { xStart, xEnd };
+            out.xStart = xStart;
+            out.xEnd = xEnd;
+            return true;
         }
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
@@ -283,9 +286,11 @@ export class EffectBand extends Glyph {
             }
         }
         if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
-            return null;
+            return false;
         }
-        return { xStart: min, xEnd: max };
+        out.xStart = min;
+        out.xEnd = max;
+        return true;
     }
 
     private _alignGlyph(sizing: EffectBarGlyphSizing, beat: Beat): void {

@@ -113,10 +113,12 @@ function effectName(band: EffectBand): string {
     return id;
 }
 
+const _xRangeScratch: { xStart: number; xEnd: number } = { xStart: 0, xEnd: 0 };
+
 function dumpBand(band: EffectBand, index: number, indent: string): string {
     const lines: string[] = [];
-    const range = band.computeLocalXRange();
-    const xLocal = range ? `(${n(range.xStart)},${n(range.xEnd)})` : '<null>';
+    const hasRange = band.computeLocalXRange(_xRangeScratch);
+    const xLocal = hasRange ? `(${n(_xRangeScratch.xStart)},${n(_xRangeScratch.xEnd)})` : '<null>';
     const outerEdge = band.placedMagnitude + band.height;
     const firstBeatIdx = band.firstBeat ? band.firstBeat.index : -1;
     const lastBeatIdx = band.lastBeat ? band.lastBeat.index : -1;
