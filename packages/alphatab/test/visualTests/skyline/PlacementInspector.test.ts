@@ -15,29 +15,11 @@ import { describe, expect, it } from 'vitest';
 import { inspectPlacement } from './PlacementInspector';
 
 describe('PlacementInspector', () => {
-    it('renders a report for the lyrics placement repro case', async () => {
-        const tex = `\\hidedynamics
-E5 {lyrics "A"}
-D5 {lyrics "A"}
-B4 {lyrics "A"}
-|
-r.4
-D5 {lyrics "A"}`;
-        const report = await inspectPlacement(tex);
-        console.log(`\n${report}\n`);
-        expect(report).toContain('inspectPlacement  tex=');
-    });
-
-    it.skip('renders a report for the slur+trill repro case', async () => {
-        const tex = `\\ts (6 8)
-      E5{slur s0}.4
-      Gb5{acc #}.16
-      G5{tr (81 32) slur s0}.16
-      B5.8{gr onbeat}
-      A5.4{d}
-      G5.16{gr onbeat}
-      A5.16{gr onbeat}
-      |`;
+    it('renders a report for the slur+trill repro case', async () => {
+        const tex = `\\voice
+ C4 {tempo 120}
+\\voice
+r`;
         const report = await inspectPlacement(tex);
         console.log(`\n${report}\n`);
         expect(report).toContain('inspectPlacement  tex=');

@@ -327,6 +327,13 @@ export class DisplaySettings {
      * is 9 px, so this value of 5 ≈ 0.5 sp — the standard outside-staff
      * annotation clearance recommended in Gould (Behind Bars) for
      * dynamics, fingerings, fermatas and similar markings.
+     *
+     * This pad governs **vertical** clearance only. The skyline pass
+     * intentionally does NOT widen its x-axis collision range by this
+     * value — horizontal clearance would have to be reserved by the
+     * rhythmic-spacing solver to be meaningful, and adding it to the
+     * skyline alone would let bands be pushed up by glyphs they only
+     * touch (e.g. a fermata next to a bar number).
      * @since 1.7.0
      * @category Display
      * @defaultValue `5`

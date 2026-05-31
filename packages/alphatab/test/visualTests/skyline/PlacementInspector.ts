@@ -23,6 +23,7 @@
 import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
 import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
 import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
+import { ScoreLoader } from '@coderline/alphatab/importer/ScoreLoader';
 import { ByteBuffer } from '@coderline/alphatab/io/ByteBuffer';
 import { JsonConverter } from '@coderline/alphatab/model/JsonConverter';
 import type { Score } from '@coderline/alphatab/model/Score';
@@ -44,6 +45,10 @@ async function loadScore(tex: string): Promise<Score> {
     const importer = new AlphaTexImporter();
     importer.init(ByteBuffer.fromString(tex), settings);
     return importer.readScore();
+}
+
+function loadScoreFromBytes(bytes: Uint8Array): Score {
+    return ScoreLoader.loadScoreFromBytes(bytes);
 }
 
 function sizingName(s: EffectBarGlyphSizing): string {
@@ -198,10 +203,46 @@ function captureReport(api: AlphaTabApiBase<unknown>, tex: string, width: number
  * report. Designed for `console.log` output inside throwaway repro tests.
  */
 export async function inspectPlacement(tex: string, width: number = 1000): Promise<string> {
+    return inspectScore(await loadScore(tex), width, tex);
+}
+
+/**
+ * Render a pre-loaded {@link Score} at the given width and return a textual
+ * placement report. Use when the repro lives in a file format other than
+ * alphaTex (MusicXML, GP, …); load via {@link ScoreLoader.loadScoreFromBytes}.
+ *
+ * The `matchVisualTest` flag (default `true`) mirrors the settings the
+ * MusicXML / non-tex visual test suites apply, so the layout numbers in the
+ * report match what the reference PNG would render at the given width:
+ *   - `justifyLastSystem = true` when the score has > 4 master bars;
+ *   - `layoutMode = Parchment` when any track has an explicit systems layout;
+ *   - all tracks rendered.
+ */
+export async function inspectScoreFromBytes(
+    bytes: Uint8Array,
+    width: number = 1000,
+    label: string = '<file>',
+    matchVisualTest: boolean = true
+): Promise<string> {
+    return inspectScore(loadScoreFromBytes(bytes), width, label, matchVisualTest);
+}
+
+async function inspectScore(score: Score, width: number, label: string, matchVisualTest: boolean = false): Promise<string> {
     await VisualTestHelper.prepareAlphaSkia();
-    const score = await loadScore(tex);
     const settings = new Settings();
     VisualTestHelper.prepareSettingsForTest(settings);
+
+    let tracks: number[] | undefined;
+    if (matchVisualTest) {
+        settings.display.justifyLastSystem = score.masterBars.length > 4;
+        if (score.tracks.some(t => t.systemsLayout.length > 0)) {
+            const { LayoutMode } = await import('@coderline/alphatab/LayoutMode');
+            settings.display.layoutMode = LayoutMode.Parchment;
+        }
+        tracks = score.tracks.map(t => t.index);
+    } else {
+        tracks = [0];
+    }
 
     const uiFacade = new TestUiFacade();
     uiFacade.rootContainer.width = width;
@@ -210,7 +251,7 @@ export async function inspectPlacement(tex: string, width: number = 1000): Promi
     try {
         return await new Promise<string>((resolve, reject) => {
             api.renderer.postRenderFinished.on(() => {
-                resolve(captureReport(api, tex, width));
+                resolve(captureReport(api, label, width));
             });
             api.error.on(e => {
                 reject(
@@ -222,7 +263,7 @@ export async function inspectPlacement(tex: string, width: number = 1000): Promi
                 );
             });
             const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
-            api.renderScore(renderScore, [0]);
+            api.renderScore(renderScore, tracks);
             setTimeout(() => reject(new Error('inspectPlacement render harness timed out')), 5000);
         });
     } finally {

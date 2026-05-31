@@ -18,6 +18,18 @@ export class TrillGlyph extends GroupedEffectGlyph {
         this.height = this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.OrnamentTrill)!;
     }
 
+    /**
+     * The "tr" symbol is painted center-aligned around `this.x`
+     * (`cx + this.x - trillSize / 2` in {@link paintGrouped}), so the
+     * leftmost paint pixel sits half-a-symbol to the left of `this.x`.
+     * Right edge is inherited from {@link GroupedEffectGlyph} —
+     * the wavy line terminates at the configured `endPosition`.
+     */
+    public override getBoundingBoxLeft(): number {
+        const trillSize = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.OrnamentTrill)!;
+        return this.x - trillSize / 2;
+    }
+
     protected override paintGrouped(cx: number, cy: number, endX: number, canvas: ICanvas): void {
         const trillSize = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.OrnamentTrill)!;
         const startX: number = cx + this.x;

@@ -30,6 +30,65 @@ export class TabWhammyBarGlyph extends EffectGlyph {
         this._renderPoints = this._createRenderingPoints(beat);
     }
 
+    /**
+     * Mirrors the x-range that {@link paint} actually draws so the
+     * skyline / overflow pipeline sees the real extent. The whammy
+     * curve anchors at the beat's `MiddleNotes` (not `PostNotes`) and
+     * extends into the *next* beat — even across the bar line, if the
+     * next beat has its own whammy. The cross-bar case is exactly the
+     * one that visually intrudes on the next bar's bar-number, so the
+     * bbox right edge must reach into the next renderer's coordinate
+     * space when applicable.
+     *
+     * Renderer-local: this glyph lives in an effect band
+     * ({@link TabWhammyEffectInfo} / {@link SimpleDipWhammyBarEffectInfo}),
+     * and {@link EffectBand.computeLocalXRange} +
+     * {@link EffectSystemPlacement._placeSide} add `renderer.x` when
+     * mapping to staff-system coordinates — adding it here as well
+     * would double-count. A right value > `renderer.width` is fine:
+     * the systemSkyline is shared across renderers, so an overshoot
+     * correctly registers over the next bar.
+     */
+    public override getBoundingBoxLeft(): number {
+        if (this._isSimpleDip) {
+            return this.renderer.getBeatX(this._beat, BeatXPosition.OnNotes, true);
+        }
+        return this.renderer.getBeatX(this._beat, BeatXPosition.MiddleNotes, true);
+    }
+
+    public override getBoundingBoxRight(): number {
+        if (this._isSimpleDip) {
+            return this.renderer.getBeatX(this._beat, BeatXPosition.PostNotes, true);
+        }
+        const nextBeat = this._beat.nextBeat;
+        if (nextBeat) {
+            const nextRenderer = this.renderer.scoreRenderer.layout!.getRendererForBar(
+                this.renderer.staff!.staffId,
+                nextBeat.voice.bar
+            );
+            if (nextRenderer && nextRenderer.staff === this.renderer.staff) {
+                const sameRenderer = nextRenderer === this.renderer;
+                if (sameRenderer || nextBeat.hasWhammyBar) {
+                    const endXPositionType =
+                        nextBeat.hasWhammyBar &&
+                        (this.renderer.settings.notation.notationMode !== NotationMode.SongBook ||
+                            nextBeat.whammyBarType !== WhammyType.Dip)
+                            ? BeatXPosition.MiddleNotes
+                            : BeatXPosition.PreNotes;
+                    return (
+                        nextRenderer.x -
+                        this.renderer.x +
+                        nextRenderer.getBeatX(nextBeat, endXPositionType, true)
+                    );
+                }
+            }
+        }
+        return (
+            this.renderer.getBeatX(this._beat, BeatXPosition.EndBeat) -
+            this.renderer.smuflMetrics.postNoteEffectPadding
+        );
+    }
+
     private _createRenderingPoints(beat: Beat): BendPoint[] {
         // advanced rendering
         if (beat.whammyBarType === WhammyType.Custom) {

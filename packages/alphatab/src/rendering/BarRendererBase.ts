@@ -381,6 +381,13 @@ export class BarRendererBase {
         const container = this.voiceContainer;
         container.registerLayoutingInfo(info);
 
+        // Let opt-in effect bands widen the beat springs so glyphs that
+        // paint outside their beat's notation column (center-aligned
+        // fermatas, …) reserve room in the rhythmic spacing. See
+        // {@link EffectInfo.contributesToBeatSpacing}.
+        this.topEffects.registerLayoutingInfo(info);
+        this.bottomEffects.registerLayoutingInfo(info);
+
         const postSize: number = this._postBeatGlyphs.width;
         if (info.postBeatSize < postSize) {
             info.postBeatSize = postSize;

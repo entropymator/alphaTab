@@ -46,29 +46,40 @@ export class Skyline {
     }
 
     /**
-     * Smallest base y at which a rect (xStart - pad .. xEnd + pad) ×
-     * (y .. y + intrinsicHeight) clears the current skyline state, with
-     * `pad` vertical clearance applied to the returned y.
+     * Smallest base y at which a rect `(xStart .. xEnd) × (y .. y +
+     * intrinsicHeight)` clears the current skyline state, with `pad`
+     * **vertical** clearance applied to the returned y. The rect's
+     * outer edge sits at `returned-y + intrinsicHeight`.
      *
-     * The rect's outer edge sits at returned-y + intrinsicHeight.
+     * `pad` governs vertical clearance only — the x-axis collision
+     * range is NOT widened by `pad`. The rhythmic-spacing solver does
+     * not reserve a horizontal `pad` gap around effect bands, so
+     * applying it here would spuriously push bands up against glyphs
+     * that they only touch at a shared x boundary (e.g. a fermata
+     * sitting next to a bar number). Horizontal inter-band stacking
+     * still works for bands whose actual x ranges overlap.
      */
     public placeAbove(xStart: number, xEnd: number, _intrinsicHeight: number, pad: number): number {
-        return this._maxHeightInRange(xStart - pad, xEnd + pad) + pad;
+        return this._maxHeightInRange(xStart, xEnd) + pad;
     }
 
     /** Same algorithm as `placeAbove`; the caller picks upSky vs downSky. */
     public placeBelow(xStart: number, xEnd: number, _intrinsicHeight: number, pad: number): number {
-        return this._maxHeightInRange(xStart - pad, xEnd + pad) + pad;
+        return this._maxHeightInRange(xStart, xEnd) + pad;
     }
 
     /**
-     * Raise the skyline within `(xStart - pad .. xEnd + pad)` to
-     * `outerEdgeHeight` wherever the current height is lower. Splits
-     * segments at the endpoints and merges adjacent equal-height segments
-     * to keep the representation compact.
+     * Raise the skyline within `(xStart .. xEnd)` to `outerEdgeHeight`
+     * wherever the current height is lower. Splits segments at the
+     * endpoints and merges adjacent equal-height segments to keep the
+     * representation compact.
+     *
+     * The `pad` parameter is intentionally not used to widen the x
+     * range — see {@link placeAbove} for the rationale. It is retained
+     * in the signature for API symmetry with the placement methods.
      */
-    public insert(xStart: number, xEnd: number, outerEdgeHeight: number, pad: number): void {
-        this._raiseRange(xStart - pad, xEnd + pad, outerEdgeHeight);
+    public insert(xStart: number, xEnd: number, outerEdgeHeight: number, _pad: number): void {
+        this._raiseRange(xStart, xEnd, outerEdgeHeight);
     }
 
     /**

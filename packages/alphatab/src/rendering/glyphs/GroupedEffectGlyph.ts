@@ -17,6 +17,28 @@ export abstract class GroupedEffectGlyph extends EffectGlyph {
         this.endPosition = endPosition;
     }
 
+    /**
+     * Right edge of the paint extent. GroupedEffectGlyphs all paint
+     * from their anchor `this.x` to `endX = renderer.getBeatX(beat,
+     * endPosition)` — the beat's end position in renderer-local x.
+     * The bbox default would otherwise return `this.x + width = this.x`
+     * (zero width), and `EffectBand.computeLocalXRange` would collapse
+     * to a degenerate point so the per-x skyline can't see the
+     * effect's actual horizontal range.
+     *
+     * Subclasses that paint to the LEFT of `this.x` (centered SMuFL
+     * symbols — {@link OttavaGlyph}, {@link TrillGlyph}) override
+     * `getBoundingBoxLeft` to reflect the symbol's left edge; the
+     * right edge defined here stays correct because their wavy line /
+     * dashed line still terminates at `endX`.
+     */
+    public override getBoundingBoxRight(): number {
+        if (!this.beat) {
+            return super.getBoundingBoxRight();
+        }
+        return this.renderer.getBeatX(this.beat, this.endPosition);
+    }
+
     public get isLinkedWithPrevious(): boolean {
         return !!this.previousGlyph && this.previousGlyph.renderer.staff?.system === this.renderer.staff!.system;
     }

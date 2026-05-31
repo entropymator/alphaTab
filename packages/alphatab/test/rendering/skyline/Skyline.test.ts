@@ -39,11 +39,16 @@ describe('Skyline — insert + placeAbove', () => {
         expect(sky.placeAbove(15, 25, 1, 0.5)).toBe(5.5);
     });
 
-    it('placeAbove with horizontal pad sees a neighbouring inserted rect', () => {
+    it('placeAbove pad does NOT widen the x-axis query range', () => {
+        // The `pad` parameter governs vertical clearance only — the
+        // horizontal collision range is the band's actual x extent.
+        // A neighbouring inserted rect outside that range stays
+        // invisible regardless of pad size, because the rhythmic
+        // spacing solver does not reserve a horizontal pad gap.
         const sky: Skyline = SkylineFixtures.newSkyline(0, 100);
         sky.insert(10, 30, 5, 0);
         expect(sky.placeAbove(35, 40, 1, 0)).toBe(0);
-        expect(sky.placeAbove(35, 40, 1, 10)).toBe(15);
+        expect(sky.placeAbove(35, 40, 1, 10)).toBe(10);
     });
 
     it('multiple non-overlapping inserts coexist', () => {

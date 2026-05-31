@@ -32,6 +32,27 @@ export class LineRangedGlyph extends GroupedEffectGlyph {
         this._labelWidth = size.width;
     }
 
+    /**
+     * Label paints centered around `this.x` (see {@link paintNonGrouped}),
+     * so the bbox has to extend half-label-width to the left. Without
+     * this override the inherited `Glyph` default returns `this.x`,
+     * which combined with {@link GroupedEffectGlyph.getBoundingBoxRight}
+     * (default `endPosition = OnNotes`, equal to `this.x` for
+     * `GroupedOnBeat` sizing) collapses the bbox to a degenerate point
+     * — `EffectBand.computeLocalXRange` then returns `null` and
+     * `EffectSystemPlacement._placeSide` skips the band entirely,
+     * leaving the harmonic label out of the skyline.
+     */
+    public override getBoundingBoxLeft(): number {
+        return this.x - this._labelWidth / 2;
+    }
+
+    public override getBoundingBoxRight(): number {
+        const labelRight = this.x + this._labelWidth / 2;
+        const groupedRight = super.getBoundingBoxRight();
+        return labelRight > groupedRight ? labelRight : groupedRight;
+    }
+
     protected override paintNonGrouped(cx: number, cy: number, canvas: ICanvas): void {
         const res: RenderingResources = this.renderer.resources;
         canvas.font = res.elementFonts.get(this._fontElement)!;

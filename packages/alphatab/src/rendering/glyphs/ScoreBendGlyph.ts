@@ -49,6 +49,23 @@ export class ScoreBendGlyph extends ScoreHelperNotesBaseGlyph implements ITieGly
         return super.getBoundingBoxBottom() + this._calculateMaxSlurHeight(BeamDirection.Down);
     }
 
+    /**
+     * Bend paint stretches across the available rhythmic space of the
+     * start beat (or further, if the bend ties through). Reported here
+     * as a conservative **min size** derived from layout info — the
+     * beat's on-time x to the next beat's pre-notes x — so the per-x
+     * skyline / overflow pipeline sees a real extent even though
+     * `this.width = 0`. Returned in staff-local x ({@link ITieGlyph}
+     * convention).
+     */
+    public override getBoundingBoxLeft(): number {
+        return this.renderer.x + this.renderer.getBeatX(this._beat, BeatXPosition.PostNotes);
+    }
+
+    public override getBoundingBoxRight(): number {
+        return this.renderer.x + this.renderer.getBeatX(this._beat, BeatXPosition.EndBeat);
+    }
+
     public doMultiVoiceLayout(): void {
         this._middleNoteGlyph?.doMultiVoiceLayout();
         this._endNoteGlyph?.doMultiVoiceLayout();

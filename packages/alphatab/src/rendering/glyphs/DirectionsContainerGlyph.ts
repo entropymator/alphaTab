@@ -22,12 +22,19 @@ class TargetDirectionGlyph extends Glyph {
         // NOTE: It's nowhere documented explicitly in SMuFL but it appears direction symbols need to be scaled down
         const scale = this.renderer.smuflMetrics.directionsScale;
         this._scale = scale;
+        let totalWidth = 0;
         for (const s of this._symbols) {
             const h = this.renderer.smuflMetrics.glyphHeights.get(s)! * scale;
             if (h > this.height) {
                 this.height = h;
             }
+            totalWidth += this.renderer.smuflMetrics.glyphWidths.get(s)! * scale;
         }
+        // Captured so the owning `DirectionsContainerGlyph` can union it
+        // into its bbox — narrow bars with wide directions paint past
+        // the bar boundary, and the skyline needs to see that to stack
+        // adjacent bars' directions vertically.
+        this.width = totalWidth;
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
@@ -49,7 +56,12 @@ class JumpDirectionGlyph extends Glyph {
     public override doLayout(): void {
         const c = this.renderer.scoreRenderer.canvas!;
         c.font = this.renderer.resources.elementFonts.get(NotationElement.EffectDirections)!;
-        this.height = c.measureText(this._text).height;
+        const m = c.measureText(this._text);
+        this.height = m.height;
+        // Captured so the owning `DirectionsContainerGlyph` can union it
+        // into its bbox. End-of-bar jump labels paint right-aligned and
+        // typically extend past the bar's left edge on narrow bars.
+        this.width = m.width;
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
@@ -167,6 +179,39 @@ export class DirectionsContainerGlyph extends EffectGlyph {
         }
 
         return y;
+    }
+
+    /**
+     * Begin glyphs paint left-aligned at `this.x`; end glyphs paint
+     * right-aligned at `this.x + this.width`. On narrow bars the
+     * end-of-bar jump text (`D.C. al Coda`, `D.S. al Fine`, …) routinely
+     * extends past the bar's left edge, and the begin symbols can
+     * extend past the bar's right edge. Reflect that in the bbox so
+     * `EffectSystemPlacement` (via `EffectBand.computeLocalXRange` with
+     * the FullBar override) detects overlap with adjacent bars'
+     * direction bands and stacks them vertically instead of collapsing
+     * them onto one y row.
+     */
+    public override getBoundingBoxLeft(): number {
+        let min = this.x;
+        for (const g of this._barEndGlyphs) {
+            const left = this.x + this.width - g.width;
+            if (left < min) {
+                min = left;
+            }
+        }
+        return min;
+    }
+
+    public override getBoundingBoxRight(): number {
+        let max = this.x + this.width;
+        for (const g of this._barBeginGlyphs) {
+            const right = this.x + g.width;
+            if (right > max) {
+                max = right;
+            }
+        }
+        return max;
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {

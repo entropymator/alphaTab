@@ -175,9 +175,13 @@ export class EffectSystemPlacement {
      * the priority ordering in
      * `docs/engine-design/10-collision/priority-ordering.md §5` and
      * Behind Bars p. 117-184. Within a category, {@link
-     * EffectBandInfo.order} stably tiebreaks (preserves factory
-     * declaration order); within an order, renderer index keeps the
-     * sort left-to-right.
+     * EffectBandInfo.order} stably tiebreaks with the intuitive
+     * "visual stack position" reading: a higher `order` sorts first
+     * → placed first → ends up closest to the staff, so `order: 0`
+     * (the implicit value for factory-index-defaulted entries) is
+     * the topmost (furthest from staff) within the category and
+     * larger values pull the band back toward the staff. Within an
+     * order, renderer index keeps the sort left-to-right.
      */
     private static _sortByPriority(bands: EffectBand[], orderMap: Map<EffectInfo, number>): void {
         bands.sort((a, b) => {
@@ -186,10 +190,18 @@ export class EffectSystemPlacement {
             if (ca !== cb) {
                 return ca - cb;
             }
+            // Higher `order` sorts first → placed first against the
+            // empty skyline → closest to the staff. This matches the
+            // intuitive reading of `EffectBandInfo.order` as a visual-
+            // stack position where `order: 0` is the topmost (furthest
+            // from staff) entry and larger values pull the band back
+            // toward the staff (e.g. `AlternateEndingsEffectInfo`'s
+            // `order: 1000` keeps repeat brackets right next to the
+            // staff, per Gould Ch.11).
             const oa = orderMap.get(a.info) ?? 0;
             const ob = orderMap.get(b.info) ?? 0;
             if (oa !== ob) {
-                return oa - ob;
+                return ob - oa;
             }
             // Voice index before renderer index: keeps each voice's
             // bands contiguous in the sorted list, which lets the
@@ -224,64 +236,79 @@ export class EffectSystemPlacement {
         let i = 0;
         while (i < bands.length) {
             const band = bands[i];
-            const range = band.computeLocalXRange();
-            if (!range) {
-                i++;
-                continue;
-            }
 
-            if (band.info.placementCategory !== EffectBandPlacementCategory.HorizontalRow) {
-                const xStart = band.renderer.x + range.xStart;
-                const xEnd = band.renderer.x + range.xEnd;
-                const magnitude = isTop
-                    ? sky.placeAbove(xStart, xEnd, band.height, pad)
-                    : sky.placeBelow(xStart, xEnd, band.height, pad);
-                band.placedMagnitude = magnitude;
-                sky.insert(xStart, xEnd, magnitude + band.height, pad);
-                i++;
-                continue;
-            }
-
-            // Horizontal-row run: bands sharing one effect id AND voice
-            // index are adjacent after the priority sort. Each voice
-            // forms its own row (multi-voice lyrics stack: voice 0
-            // closest to the staff, voice 1 below it, etc.). Collect
-            // each run's x ranges first (without inserting) so the
-            // group's max magnitude reflects the whole row's deepest
-            // need; then place every band at that max and insert. The
-            // insert places voice N's row in the skyline before voice
-            // N+1's run queries, so voice N+1 stacks behind it.
-            const rowEffectId = band.info.effectId;
-            const rowVoiceIndex = band.voice.index;
-            type RowEntry = { band: EffectBand; xStart: number; xEnd: number; magnitude: number };
-            const row: RowEntry[] = [];
-            let rowMagnitude = 0;
-            let j = i;
-            while (
-                j < bands.length &&
-                bands[j].info.placementCategory === EffectBandPlacementCategory.HorizontalRow &&
-                bands[j].info.effectId === rowEffectId &&
-                bands[j].voice.index === rowVoiceIndex
-            ) {
-                const r = bands[j].computeLocalXRange();
-                if (r) {
-                    const xStart = bands[j].renderer.x + r.xStart;
-                    const xEnd = bands[j].renderer.x + r.xEnd;
-                    const magnitude = isTop
-                        ? sky.placeAbove(xStart, xEnd, bands[j].height, pad)
-                        : sky.placeBelow(xStart, xEnd, bands[j].height, pad);
-                    if (magnitude > rowMagnitude) {
-                        rowMagnitude = magnitude;
-                    }
-                    row.push({ band: bands[j], xStart, xEnd, magnitude });
+            // Determine the placement group ending index (exclusive). Three
+            // group shapes exist; all three are resolved by the same
+            // "place every member at the group's max magnitude" body further
+            // down — only the group selector differs:
+            //
+            // 1. {@link EffectBandPlacementCategory.HorizontalRow}: all
+            //    bands sharing one effect id + voice index (per
+            //    {@link _sortByPriority} they are adjacent). Used by
+            //    lyrics, voltas, and other "parallel-to-staff" rows.
+            //
+            // 2. Linked chain: an effect that {@link EffectInfo.canExpand}s
+            //    across bars sets {@link EffectBand.isLinkedToPrevious} on
+            //    every continuation band. Multi-bar sustain pedal /
+            //    crescendo brackets are visually one block, so they must
+            //    sit at one magnitude — otherwise each subsequent band
+            //    would see its predecessor in the pad-widened skyline
+            //    range and stair-step up at every barline.
+            //
+            // 3. Single band: no chain, not a row member. groupEnd = i + 1
+            //    and the group body collapses to a single placeAbove /
+            //    placeBelow + insert (the historical per-x behaviour).
+            let groupEnd = i + 1;
+            const groupEffectId = band.info.effectId;
+            const groupVoiceIndex = band.voice.index;
+            if (band.info.placementCategory === EffectBandPlacementCategory.HorizontalRow) {
+                while (
+                    groupEnd < bands.length &&
+                    bands[groupEnd].info.placementCategory === EffectBandPlacementCategory.HorizontalRow &&
+                    bands[groupEnd].info.effectId === groupEffectId &&
+                    bands[groupEnd].voice.index === groupVoiceIndex
+                ) {
+                    groupEnd++;
                 }
-                j++;
+            } else {
+                while (
+                    groupEnd < bands.length &&
+                    bands[groupEnd].info.effectId === groupEffectId &&
+                    bands[groupEnd].voice.index === groupVoiceIndex &&
+                    bands[groupEnd].isLinkedToPrevious
+                ) {
+                    groupEnd++;
+                }
             }
-            for (const e of row) {
-                e.band.placedMagnitude = rowMagnitude;
-                sky.insert(e.xStart, e.xEnd, rowMagnitude + e.band.height, pad);
+
+            // Query each member without inserting first so chain members
+            // do not see each other, then place every member at the
+            // group's max magnitude and insert. Subsequent groups (other
+            // effects, later chains) clear the whole block.
+            type GroupEntry = { band: EffectBand; xStart: number; xEnd: number };
+            const group: GroupEntry[] = [];
+            let groupMagnitude = 0;
+            for (let k = i; k < groupEnd; k++) {
+                const m = bands[k];
+                const r = m.computeLocalXRange();
+                if (!r) {
+                    continue;
+                }
+                const xStart = m.renderer.x + r.xStart;
+                const xEnd = m.renderer.x + r.xEnd;
+                const mag = isTop
+                    ? sky.placeAbove(xStart, xEnd, m.height, pad)
+                    : sky.placeBelow(xStart, xEnd, m.height, pad);
+                if (mag > groupMagnitude) {
+                    groupMagnitude = mag;
+                }
+                group.push({ band: m, xStart, xEnd });
             }
-            i = j;
+            for (const e of group) {
+                e.band.placedMagnitude = groupMagnitude;
+                sky.insert(e.xStart, e.xEnd, groupMagnitude + e.band.height, pad);
+            }
+            i = groupEnd;
         }
     }
 }

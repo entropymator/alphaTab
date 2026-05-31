@@ -3,6 +3,7 @@ import type { Voice } from '@coderline/alphatab/model/Voice';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBandContainer } from '@coderline/alphatab/rendering/EffectBandContainer';
+import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
@@ -56,6 +57,48 @@ export class EffectBand extends Glyph {
 
     public finalizeBand() {
         this.info.finalizeBand(this);
+    }
+
+    /**
+     * Feeds the band's per-beat glyph extents into the bar's
+     * {@link BarLayoutingInfo} when the underlying effect has
+     * {@link EffectInfo.contributesToBeatSpacing} enabled. Each beat's
+     * spring is widened by the glyph's actual paint extent so the
+     * layout solver reserves room for effects that paint outside the
+     * beat's notation column (e.g. center-aligned fermata needs
+     * half-width clearance on each side of `onTimeX`).
+     *
+     * No-op for the default `contributesToBeatSpacing = false` so
+     * existing layouts that don't opt in are unaffected.
+     */
+    public registerLayoutingInfo(layoutings: BarLayoutingInfo): void {
+        if (!this.info.contributesToBeatSpacing) {
+            return;
+        }
+        for (let v = 0; v < this._effectGlyphs.length; v++) {
+            const voiceBeats = this.renderer.bar.voices[v]?.beats;
+            if (!voiceBeats) {
+                continue;
+            }
+            for (const [beatIndex, glyph] of this._effectGlyphs[v]) {
+                const beat = voiceBeats[beatIndex];
+                if (!beat) {
+                    continue;
+                }
+                const container = this.renderer.getBeatContainer(beat);
+                if (!container) {
+                    continue;
+                }
+                // glyph.x is still 0 at this lifecycle stage (set later
+                // by `_alignGlyph`), so getBoundingBoxLeft/Right return
+                // the extent relative to the glyph's anchor.
+                const preBeat = Math.max(0, -glyph.getBoundingBoxLeft());
+                const postBeat = Math.max(0, glyph.getBoundingBoxRight());
+                if (preBeat > 0 || postBeat > 0) {
+                    layoutings.addBeatSpring(container, preBeat, postBeat);
+                }
+            }
+        }
     }
 
     public override doLayout(): void {
@@ -118,6 +161,33 @@ export class EffectBand extends Glyph {
                 g.doLayout();
                 this._effectGlyphs[b.voice.index].set(b.index, g);
                 this._uniqueEffectGlyphs[b.voice.index].push(g);
+                // FullBar effects (sustain pedal, alternate endings, …)
+                // can also span multiple renderers when the same effect
+                // continues on the next bar. The Grouped* path tracks
+                // this via per-beat `canExpand`; for FullBar the unit is
+                // the bar itself, so a non-empty same-effect band in the
+                // previous renderer (whose last beat satisfies
+                // `canExpand`) is the bar-level equivalent. Marking the
+                // chain via {@link isLinkedToPrevious} lets
+                // {@link EffectSystemPlacement} treat the run as one
+                // block — otherwise each band's pad-widened skyline
+                // query overlaps the previous band's inserted rect and
+                // they stair-step up at every barline.
+                if (this.renderer.index > 0 && b.index === 0) {
+                    const previousContainer = this._container.previousContainer;
+                    const previousBand = previousContainer?.getBand(b.voice, this.info.effectId);
+                    if (previousBand && !previousBand.isEmpty) {
+                        const prevBar = b.voice.bar.previousBar;
+                        const prevVoice = prevBar?.voices[b.voice.index];
+                        const prevLastBeat =
+                            prevVoice && prevVoice.beats.length > 0
+                                ? prevVoice.beats[prevVoice.beats.length - 1]
+                                : null;
+                        if (prevLastBeat && this.info.canExpand(prevLastBeat, b)) {
+                            this.isLinkedToPrevious = true;
+                        }
+                    }
+                }
                 return g;
             case EffectBarGlyphSizing.SinglePreBeat:
             case EffectBarGlyphSizing.SingleOnBeat:
@@ -216,7 +286,27 @@ export class EffectBand extends Glyph {
             return null;
         }
         if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
-            return { xStart: 0, xEnd: this.renderer.width };
+            // The bar itself anchors the band, but the painted content
+            // may extend past either edge — e.g. right-aligned
+            // end-of-bar direction labels (`D.C. al Coda`) on a narrow
+            // bar overflow leftward. Union with each glyph's bbox so
+            // the skyline can detect that overflow and stack adjacent
+            // bars' bands vertically instead of overlapping them.
+            let xStart = 0;
+            let xEnd = this.renderer.width;
+            for (const v of this._uniqueEffectGlyphs) {
+                for (const g of v) {
+                    const left = g.getBoundingBoxLeft();
+                    if (left < xStart) {
+                        xStart = left;
+                    }
+                    const right = g.getBoundingBoxRight();
+                    if (right > xEnd) {
+                        xEnd = right;
+                    }
+                }
+            }
+            return { xStart, xEnd };
         }
         // Use each glyph's paint extent (`getBoundingBoxLeft/Right`), not
         // its rhythmic-spacing extent (`x` / `x + width`). Effect glyphs

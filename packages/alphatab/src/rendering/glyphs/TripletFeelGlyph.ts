@@ -25,6 +25,7 @@ export class TripletFeelGlyph extends EffectGlyph {
     private _tripletFeel: TripletFeel;
     private _tupletHeight: number = 0;
     private _tupletPadding: number = 0;
+    private _paintWidth: number = 0;
 
     public constructor(tripletFeel: TripletFeel) {
         super(0, 0);
@@ -39,6 +40,93 @@ export class TripletFeelGlyph extends EffectGlyph {
         this._tupletHeight = this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.Tuplet3)! * noteScale;
         this._tupletPadding = this.renderer.smuflMetrics.tripletFeelBracketPadding;
         this.height += this._tupletHeight;
+
+        // Triplet feel paints a horizontal label "( notes = notes )" starting
+        // at `this.x`. The rhythmic-spacing extent stays at `width = 0`
+        // (effect bands don't widen the bar's rod), but the actual paint
+        // extends well past `this.x` and must register in the per-x skyline
+        // so adjacent bars' labels stack instead of overlapping. Mirror the
+        // paint's horizontal advancement once to derive the total label
+        // width.
+        const noteSpacing = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * noteScale;
+        const groups = TripletFeelGlyph._resolveGroups(this._tripletFeel);
+        const canvas = this.renderer.scoreRenderer.canvas!;
+        canvas.font = this.renderer.resources.elementFonts.get(NotationElement.EffectTripletFeel)!;
+        const parenOpenW = canvas.measureText('( ').width;
+        const equalsW = canvas.measureText(' = ').width;
+        const parenCloseW = canvas.measureText(' )').width;
+        const group1W = TripletFeelGlyph._groupAdvance(groups.left, noteSpacing);
+        const group2W = TripletFeelGlyph._groupAdvance(groups.right, noteSpacing);
+        this._paintWidth = parenOpenW + group1W + equalsW + group2W + parenCloseW;
+    }
+
+    /**
+     * Right edge of the painted label (relative to `this.x = 0`). The label
+     * paints left-aligned to `this.x` — `getBoundingBoxLeft` defaults to
+     * `this.x` already and matches the leftmost `(` character.
+     */
+    public override getBoundingBoxRight(): number {
+        return this.x + this._paintWidth;
+    }
+
+    /**
+     * Width consumed by one {@link TripletFeelNoteGroup} when painted by
+     * {@link _drawGroup}: 3 × noteSpacing for plain pairs, 4 × noteSpacing
+     * when the right note carries an augmentation dot or starts with an
+     * 8th-up symbol (mirrors the trailing `cx += noteSpacing` branch).
+     */
+    private static _groupAdvance(group: TripletFeelNoteGroup, noteSpacing: number): number {
+        switch (group) {
+            case TripletFeelNoteGroup.QuarterTripletEighthTriplet:
+            case TripletFeelNoteGroup.EighthDottedSixteenth:
+            case TripletFeelNoteGroup.SixteenthDottedThirtySecond:
+                return 4 * noteSpacing;
+            default:
+                return 3 * noteSpacing;
+        }
+    }
+
+    /** Mirrors the `switch (this._tripletFeel)` mapping in {@link paint}. */
+    private static _resolveGroups(tripletFeel: TripletFeel): {
+        left: TripletFeelNoteGroup;
+        right: TripletFeelNoteGroup;
+    } {
+        switch (tripletFeel) {
+            case TripletFeel.NoTripletFeel:
+                return { left: TripletFeelNoteGroup.EighthEighth, right: TripletFeelNoteGroup.EighthEighth };
+            case TripletFeel.Triplet8th:
+                return {
+                    left: TripletFeelNoteGroup.EighthEighth,
+                    right: TripletFeelNoteGroup.QuarterTripletEighthTriplet
+                };
+            case TripletFeel.Triplet16th:
+                return {
+                    left: TripletFeelNoteGroup.SixteenthSixteenth,
+                    right: TripletFeelNoteGroup.EighthSixteenthTriplet
+                };
+            case TripletFeel.Dotted8th:
+                return {
+                    left: TripletFeelNoteGroup.EighthEighth,
+                    right: TripletFeelNoteGroup.EighthDottedSixteenth
+                };
+            case TripletFeel.Dotted16th:
+                return {
+                    left: TripletFeelNoteGroup.SixteenthSixteenth,
+                    right: TripletFeelNoteGroup.SixteenthDottedThirtySecond
+                };
+            case TripletFeel.Scottish8th:
+                return {
+                    left: TripletFeelNoteGroup.EighthEighth,
+                    right: TripletFeelNoteGroup.SixteenthEighthDotted
+                };
+            case TripletFeel.Scottish16th:
+                return {
+                    left: TripletFeelNoteGroup.SixteenthSixteenth,
+                    right: TripletFeelNoteGroup.ThirtySecondSixteenthDotted
+                };
+            default:
+                return { left: TripletFeelNoteGroup.EighthEighth, right: TripletFeelNoteGroup.EighthEighth };
+        }
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {

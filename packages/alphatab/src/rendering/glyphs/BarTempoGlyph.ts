@@ -4,6 +4,11 @@ import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { CanvasHelper, TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 
+interface TempoAutomationLayout {
+    textWidth: number;
+    valueWidth: number;
+}
+
 /**
  * This glyph renders tempo annotations for tempo automations
  * where the drawing position is determined more dynamically while rendering.
@@ -13,15 +18,16 @@ export class BarTempoGlyph extends EffectGlyph {
     private _tempoAutomations: Automation[];
 
     /**
-     * Sum of every automation's rendered width (text + quarter-note
-     * symbol + ` = NNN` text). The glyph keeps `width = 0` so it doesn't
-     * stretch the bar's rhythmic-spacing rod, but the paint extent is
-     * exposed via {@link getBoundingBoxLeft} / {@link getBoundingBoxRight}
-     * so the skyline integration (and EffectSystemPlacement's
-     * `computeLocalXRange`) see a real x-range instead of a degenerate
-     * point.
+     * Per-automation `text + ' '` and ` = NNN` text widths, captured at
+     * {@link doLayout} time so the bbox accessors don't have to
+     * re-measure. Each automation paints at its own
+     * {@link Automation.ratioPosition} (resolved at paint time via
+     * {@link BarRendererBase.getRatioPositionX}), so the bbox can't be a
+     * single contiguous range — it has to union per-automation rects.
      */
-    private _paintWidth: number = 0;
+    private _automationLayouts: TempoAutomationLayout[] = [];
+    private _symbolWidth: number = 0;
+    private _noteShift: number = 0;
 
     public constructor(tempoAutomations: Automation[]) {
         super(0, 0);
@@ -32,31 +38,68 @@ export class BarTempoGlyph extends EffectGlyph {
         super.doLayout();
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
-        const symbolWidth =
+        this._symbolWidth =
             this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
+        // Matches the text-less branch in `paint`, which uses the
+        // engraving-settings width (not the smufl metric) for the
+        // half-symbol left shift.
+        this._noteShift =
+            res.engravingSettings.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! / 2;
         this.height =
             this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
 
         const canvas = this.renderer.scoreRenderer.canvas!;
         canvas.font = res.elementFonts.get(NotationElement.EffectMarker)!;
-        let total = 0;
+        this._automationLayouts = [];
         for (const automation of this._tempoAutomations) {
-            let segment = symbolWidth;
-            if (automation.text) {
-                segment += canvas.measureText(`${automation.text} `).width;
-            }
-            segment += canvas.measureText(` = ${automation.value.toString()}`).width;
-            total += segment;
+            const textWidth = automation.text
+                ? canvas.measureText(`${automation.text} `).width
+                : 0;
+            const valueWidth = canvas.measureText(` = ${automation.value.toString()}`).width;
+            this._automationLayouts.push({ textWidth, valueWidth });
         }
-        this._paintWidth = total;
     }
 
+    /**
+     * `paint` ignores `this.x` and draws every automation at
+     * `cx + renderer.getRatioPositionX(automation.ratioPosition)`. The
+     * `SinglePreBeat` band alignment pins `this.x` to the first beat's
+     * on-time column, which doesn't match where the tempo actually
+     * paints — so the default `this.x`-based bbox would make the
+     * skyline miss the notehead column the tempo paints over, and
+     * `EffectSystemPlacement` would tuck the tempo too close to the
+     * staff. Compute the bbox from the same ratio-resolved positions
+     * the paint pass uses.
+     */
     public override getBoundingBoxLeft(): number {
-        return this.x;
+        let min = Number.POSITIVE_INFINITY;
+        for (const a of this._tempoAutomations) {
+            let startX = this.renderer.getRatioPositionX(a.ratioPosition);
+            if (!a.text) {
+                startX -= this._noteShift;
+            }
+            if (startX < min) {
+                min = startX;
+            }
+        }
+        return Number.isFinite(min) ? min : this.x;
     }
 
     public override getBoundingBoxRight(): number {
-        return this.x + this._paintWidth;
+        let max = Number.NEGATIVE_INFINITY;
+        for (let i = 0; i < this._tempoAutomations.length; i++) {
+            const a = this._tempoAutomations[i];
+            const layout = this._automationLayouts[i];
+            let startX = this.renderer.getRatioPositionX(a.ratioPosition);
+            if (!a.text) {
+                startX -= this._noteShift;
+            }
+            const rightX = startX + layout.textWidth + this._symbolWidth + layout.valueWidth;
+            if (rightX > max) {
+                max = rightX;
+            }
+        }
+        return Number.isFinite(max) ? max : this.x;
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {

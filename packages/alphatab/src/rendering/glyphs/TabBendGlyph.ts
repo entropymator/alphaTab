@@ -36,6 +36,33 @@ export class TabBendGlyph extends Glyph implements ITieGlyph {
         super(0, 0);
     }
 
+    /**
+     * Bend paint stretches across the available rhythmic space from
+     * the first bending note's on-time x to (at least) the next beat
+     * — or, when the bend ties through, all the way to the tied
+     * destination beat. The actual paint extent is computed per-bend
+     * in `paint`; the bbox below reports a conservative **min size**
+     * derivable from the layout: the start beat's on-time x to the
+     * next beat's pre-notes x (or the renderer's right edge for the
+     * last beat). Returned in staff-local x (matches the
+     * {@link ITieGlyph} convention used by tie / slide bboxes).
+     */
+    public override getBoundingBoxLeft(): number {
+        if (this._notes.length === 0) {
+            return this.x;
+        }
+        const beat = this._notes[0].beat;
+        return this.renderer.x + this.renderer.getBeatX(beat, BeatXPosition.PostNotes);
+    }
+
+    public override getBoundingBoxRight(): number {
+        if (this._notes.length === 0) {
+            return this.x;
+        }
+        const beat = this._notes[0].beat;
+        return this.renderer.x + this.renderer.getBeatX(beat, BeatXPosition.EndBeat);
+    }
+
     public addBends(note: Note): void {
         this._notes.push(note);
         const renderPoints: TabBendRenderPoint[] = this._createRenderingPoints(note);

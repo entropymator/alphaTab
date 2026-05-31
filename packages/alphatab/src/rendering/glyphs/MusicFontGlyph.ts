@@ -20,6 +20,22 @@ export class MusicFontGlyph extends EffectGlyph {
         this.symbol = symbol;
     }
 
+    public override getBoundingBoxLeft(): number {
+        let x = super.getBoundingBoxLeft() + this.offsetX;
+        if (this.center) {
+            x -= this.width / 2;
+        }
+        return x;
+    }
+
+    public override getBoundingBoxRight(): number {
+        let x = super.getBoundingBoxRight() + this.offsetX;
+        if (this.center) {
+            x -= this.width / 2;
+        }
+        return x;
+    }
+
     public override getBoundingBoxTop(): number {
         const bBoxTop = this.renderer.smuflMetrics.glyphTop.get(this.symbol)!;
         return this.y - this.offsetY - bBoxTop;

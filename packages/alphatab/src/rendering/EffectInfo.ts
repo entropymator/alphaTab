@@ -124,6 +124,26 @@ export abstract class EffectInfo {
     }
 
     /**
+     * When `true`, the effect band feeds each per-beat glyph's actual
+     * paint extent into the bar's
+     * {@link import('@coderline/alphatab/rendering/staves/BarLayoutingInfo').BarLayoutingInfo}
+     * as a beat spring. The rhythmic-spacing solver then widens the
+     * beat's pre/post-beat slot to accommodate effects that paint
+     * outside the beat's notation column (e.g. {@link
+     * import('@coderline/alphatab/rendering/glyphs/FermataGlyph').FermataGlyph}
+     * center-aligned around `onTimeX` needs half-width clearance on each
+     * side that the beat's `preNotes` / `onNotes` do not reserve).
+     *
+     * Off by default — most effects fit inside their beat's slot and
+     * enabling this blanket-wide would shift existing layouts. Override
+     * to `true` only on effects whose glyph extends past the beat column
+     * AND whose layout we want to drive that widening.
+     */
+    public get contributesToBeatSpacing(): boolean {
+        return false;
+    }
+
+    /**
      * Override this method to finalize an effect band with all glyphs created.
      * Allows special layout logic like for whammys where we center-align the glyphs and size the band accordingly.
      * @param _band The band which is being finalized.

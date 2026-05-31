@@ -3,6 +3,7 @@ import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
 import { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
+import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 
 /**
  * Holds the per-(voice × effect) {@link EffectBand} list for one side
@@ -32,6 +33,18 @@ export class EffectBandContainer {
         for (const effectBand of this._bands) {
             effectBand.resetHeight();
             effectBand.alignGlyphs();
+        }
+    }
+
+    /**
+     * Fans out the bar's rhythmic-spacing pass to each band. Bands whose
+     * {@link EffectInfo.contributesToBeatSpacing} is `false` no-op; the
+     * rest widen the beat's spring with their actual paint extent. See
+     * {@link EffectBand.registerLayoutingInfo}.
+     */
+    public registerLayoutingInfo(layoutings: BarLayoutingInfo): void {
+        for (const band of this._bands) {
+            band.registerLayoutingInfo(layoutings);
         }
     }
 

@@ -34,4 +34,18 @@ export class FermataEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return true;
     }
+
+    /**
+     * {@link FermataGlyph} paints center-aligned around the beat's
+     * `onTimeX` (half-width to the left, half-width to the right).
+     * Without feeding that into the bar's rhythmic spacing, beats that
+     * sit next to a tight pre-beat element (bar number, barline) end up
+     * with the fermata's left half overlapping it visually. Enabling
+     * this flag asks {@link EffectBand.registerLayoutingInfo} to push
+     * the fermata's paint extent into the beat's spring so the layout
+     * solver reserves the half-width clearance.
+     */
+    public override get contributesToBeatSpacing(): boolean {
+        return true;
+    }
 }

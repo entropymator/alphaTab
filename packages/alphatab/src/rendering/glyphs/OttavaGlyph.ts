@@ -10,6 +10,7 @@ import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 export class OttavaGlyph extends GroupedEffectGlyph {
     private _ottava: Ottavia;
     private _aboveStaff: boolean;
+    private _symbolWidth: number = 0;
 
     public constructor(ottava: Ottavia, aboveStaff: boolean) {
         super(BeatXPosition.PostNotes);
@@ -20,6 +21,36 @@ export class OttavaGlyph extends GroupedEffectGlyph {
     public override doLayout(): void {
         super.doLayout();
         this.height = this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.QuindicesimaAlta)!;
+        this._symbolWidth = OttavaGlyph._resolveSymbolWidth(this._ottava, this.renderer.smuflMetrics.glyphWidths);
+    }
+
+    /**
+     * The SMuFL ottava symbol is painted center-aligned around `this.x`
+     * (`cx + this.x - size / 2` in {@link _paintOttava}). Right edge is
+     * inherited from {@link GroupedEffectGlyph} — the dashed line
+     * terminates at the configured `endPosition`.
+     */
+    public override getBoundingBoxLeft(): number {
+        return this.x - this._symbolWidth / 2;
+    }
+
+    private static _resolveSymbolWidth(ottava: Ottavia, glyphWidths: Map<MusicFontSymbol, number>): number {
+        switch (ottava) {
+            case Ottavia._15ma:
+                return glyphWidths.get(MusicFontSymbol.QuindicesimaAlta) ?? 0;
+            case Ottavia._8va:
+                return glyphWidths.get(MusicFontSymbol.OttavaAlta) ?? 0;
+            case Ottavia._8vb:
+                return glyphWidths.get(MusicFontSymbol.OttavaBassaVb) ?? 0;
+            case Ottavia._15mb:
+                return (
+                    (glyphWidths.get(MusicFontSymbol.Quindicesima) ?? 0) +
+                    (glyphWidths.get(MusicFontSymbol.OctaveBaselineM) ?? 0) +
+                    (glyphWidths.get(MusicFontSymbol.OctaveBaselineB) ?? 0)
+                );
+            default:
+                return 0;
+        }
     }
 
     protected override paintNonGrouped(cx: number, cy: number, canvas: ICanvas): void {

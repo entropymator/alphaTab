@@ -35,4 +35,8 @@ export class NoteOrnamentEffectInfo extends EffectInfo {
     public canExpand(_from: Beat, _to: Beat): boolean {
         return false;
     }
+
+    public override get contributesToBeatSpacing(): boolean {
+        return true;
+    }
 }
