@@ -464,36 +464,82 @@ export class BarRendererBase {
         this._multiSystemSlurs = ties;
     }
 
-    private _finalizeTies(ties: Iterable<ITieGlyph>, barTop: number, barBottom: number): boolean {
+    private _finalizeTies(ties: Iterable<ITieGlyph>): boolean {
         let didChangeOverflows = false;
+        // Cross-bar slurs/ties: the tie glyph is registered on the START
+        // beat's bar only, but its bezier may arc over several subsequent
+        // bars on the same staff. Slice the bezier's bounding box across
+        // every bar it overlaps so each bar's `barLocalSkyline` reflects
+        // the actual painted geometry. Without this, effect placement in
+        // the spanned bars wouldn't see the arc when the staff skyline is
+        // assembled from per-bar skylines via
+        // `_unionBarLocalIntoStaffSkyline`.
+        const staffRenderers = this.staff ? this.staff.barRenderers : [this];
         for (const t of ties) {
             const tie = t as unknown as Glyph;
             tie.doLayout();
 
-            if (t.checkForOverflow) {
-                // NOTE: Ties are aligned on staff level, need to subtract the bar position
-                const tieTop = t.getBoundingBoxTop();
-                const tieBottom = t.getBoundingBoxBottom();
-                // The tie/slur sets `this.width = 0` and never positions itself
-                // via `glyph.x` — it draws the bezier directly between
-                // `_startX` and `_endX`. Use the bezier's bounding-box x-range
-                // so the overflow registration actually reaches the bar-local
-                // skyline. Without this, `Skyline.insert(0, 0, ...)` no-ops
-                // and EffectSystemPlacement can't see the slur's arc, even
-                // though the scalar overflow is correctly reported.
-                const tieLeft = t.getBoundingBoxLeft();
-                const tieRight = t.getBoundingBoxRight();
+            if (!t.checkForOverflow) {
+                continue;
+            }
 
-                const bottomOverflow = tieBottom - barBottom;
-                if (bottomOverflow > 0) {
-                    if (this.registerOverflowRangeBottom(tieLeft, tieRight, bottomOverflow)) {
-                        didChangeOverflows = true;
-                    }
+            // Tie Y geometry is renderer-local (see TieGlyph
+            // `getBoundingBoxTop/Bottom` contract). All renderers in a
+            // staff share `renderer.y` (set as `topPadding + topOverflow`),
+            // so the same renderer-local top/bottom applies to every bar
+            // the arc spans.
+            const tieTop = t.getBoundingBoxTop();
+            const tieBottom = t.getBoundingBoxBottom();
+            const tieTopOverflow = tieTop < 0 ? -tieTop : 0;
+
+            // X extent of the bezier is staff-absolute because cross-bar
+            // ties span multiple renderers.
+            const tieLeftStaff = t.getBoundingBoxLeft();
+            const tieRightStaff = t.getBoundingBoxRight();
+
+            for (const target of staffRenderers) {
+                const targetXStart = target.x;
+                const targetXEnd = target.x + target.width;
+                const xStartStaff = Math.max(targetXStart, tieLeftStaff);
+                const xEndStaff = Math.min(targetXEnd, tieRightStaff);
+                if (xEndStaff <= xStartStaff) {
+                    continue;
                 }
-                const topOverflow = tieTop - barTop;
-                if (topOverflow < 0) {
-                    if (this.registerOverflowRangeTop(tieLeft, tieRight, topOverflow * -1)) {
-                        didChangeOverflows = true;
+                const xStart = xStartStaff - targetXStart;
+                const xEnd = xEndStaff - targetXStart;
+                const tieBottomOverflow = tieBottom - target.height;
+
+                if (target === this) {
+                    // Owning renderer: also bumps the scalar overflow,
+                    // which `_registerStaffOverflow` propagates to
+                    // `staff.topOverflow` / `staff.bottomOverflow`. Since
+                    // all bars in the staff share `renderer.y` derived
+                    // from the staff-level overflow, the tie's maximum
+                    // contribution captured here is enough — the other
+                    // bars only need the bar-local skyline slice for
+                    // effect-band placement within their range.
+                    if (tieTopOverflow > 0) {
+                        if (this.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
+                            didChangeOverflows = true;
+                        }
+                    }
+                    if (tieBottomOverflow > 0) {
+                        if (this.registerOverflowRangeBottom(xStart, xEnd, tieBottomOverflow)) {
+                            didChangeOverflows = true;
+                        }
+                    }
+                } else {
+                    if (tieTopOverflow > 0) {
+                        target.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, tieTopOverflow, 0);
+                    }
+                    if (tieBottomOverflow > 0) {
+                        target.barLocalSkyline.insertPlaced(
+                            StaffSide.Bottom,
+                            xStart,
+                            xEnd,
+                            tieBottomOverflow,
+                            0
+                        );
                     }
                 }
             }
@@ -505,16 +551,13 @@ export class BarRendererBase {
         this.isFinalized = true;
 
         let didChangeOverflows = false;
-        // allow spacing to be used for tie overflows
-        const barTop = this.y;
-        const barBottom = this.y + this.height;
 
-        if (this._finalizeTies(this._ties, barTop, barBottom)) {
+        if (this._finalizeTies(this._ties)) {
             didChangeOverflows = true;
         }
 
         const multiSystemSlurs = this._multiSystemSlurs;
-        if (multiSystemSlurs && this._finalizeTies(multiSystemSlurs, barTop, barBottom)) {
+        if (multiSystemSlurs && this._finalizeTies(multiSystemSlurs)) {
             didChangeOverflows = true;
         }
 

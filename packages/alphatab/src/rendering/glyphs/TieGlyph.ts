@@ -60,6 +60,14 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
         return this._shouldPaint && this._boundingBox !== undefined;
     }
 
+    /**
+     * Top/bottom edges of the bezier arc in **renderer-local Y** — i.e.
+     * relative to `renderer.y`, NOT canvas Y. `_finalizeTies` compares
+     * these against `[0, renderer.height]` to derive the bar's top/bottom
+     * overflow. Storing renderer-local keeps the tie geometry independent
+     * of `renderer.y`, which the staff finalize loop may shift after tie
+     * layout (effect placement growing `topOverflow`).
+     */
     public override getBoundingBoxTop(): number {
         if (this._boundingBox) {
             return this._boundingBox!.y;
@@ -75,12 +83,11 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
     }
 
     /**
-     * Left/right x extent of the bezier arc — used by
-     * {@link BarRendererBase._finalizeTies} so the slur's vertical
-     * overflow gets registered into the bar-local skyline across the
-     * arc's actual span (not against `this.width = 0`, which would
-     * silently no-op the skyline insert and leave the arc invisible
-     * to {@link EffectSystemPlacement}).
+     * Left/right x extent of the bezier arc in **staff-absolute X** (the
+     * tie's `_startX` / `_endX` bake in the start/end renderers' `.x`
+     * because a tie may span bars). `_finalizeTies` clips this to the
+     * owning renderer's `[x, x + width]` range and converts to bar-local X
+     * before inserting into the per-renderer `barLocalSkyline`.
      */
     public override getBoundingBoxLeft(): number {
         if (this._boundingBox) {
@@ -286,15 +293,25 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
             return;
         }
 
+        // `cy` is the canvas Y of the staff origin (the call site subtracts
+        // `renderer.y`). Tie Y coordinates are stored renderer-local — i.e.
+        // they do NOT bake in `renderer.y` — so we add the current
+        // `renderer.y` here. This decouples paint from the renderer.y value
+        // that was current at layout time: the staff finalize loop may shift
+        // `renderer.y` (effect placement growing `topOverflow`) AFTER the
+        // tie's geometry has been baked, and reading `renderer.y` fresh at
+        // paint keeps the slur anchored to the notes regardless.
+        const rendererY = this.renderer.y;
+
         const isDown = this.tieDirection === BeamDirection.Down;
 
         if (this.shouldDrawBendSlur()) {
             TieGlyph.drawBendSlur(
                 canvas,
                 cx + this._startX,
-                cy + this._startY,
+                cy + rendererY + this._startY,
                 cx + this._endX,
-                cy + this._endY,
+                cy + rendererY + this._endY,
                 isDown,
                 this.renderer.smuflMetrics.tieHeight
             );
@@ -303,9 +320,9 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
                 canvas,
                 1,
                 cx + this._startX,
-                cy + this._startY,
+                cy + rendererY + this._startY,
                 cx + this._endX,
-                cy + this._endY,
+                cy + rendererY + this._endY,
                 isDown,
                 this._tieHeight,
                 this.renderer.smuflMetrics.tieMidpointThickness
@@ -325,7 +342,7 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
                     canvas.font = res.getFontForNotationElement(label.element);
                     lastElement = label.element;
                 }
-                canvas.fillText(label.text, cx + label.x, cy + label.y + this._labelBaselineOffset);
+                canvas.fillText(label.text, cx + label.x, cy + rendererY + label.y + this._labelBaselineOffset);
             }
             canvas.textAlign = ta;
             canvas.textBaseline = tb;
@@ -400,11 +417,18 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
 
     protected abstract calculateEndX(): number;
 
-    public calculateMultiSystemSlurY(renderer: BarRendererBase) {
-        const startRenderer = this.lookupStartBeatRenderer();
-        const startY = this.calculateStartY();
-        const relY = startY - startRenderer.y;
-        return renderer.y + relY;
+    /**
+     * Returns the renderer-local Y at which the slur should continue on
+     * a subsequent system. Tie Y coordinates are stored relative to the
+     * owning renderer (see {@link calculateStartY}), and all bar
+     * renderers within a staff share the same `.y`, so the start tie's
+     * already-renderer-local startY is the correct continuation Y for any
+     * renderer on a continuation system that uses the same staff layout.
+     * The `renderer` parameter is retained for callers that may want to
+     * derive system-specific positioning in the future.
+     */
+    public calculateMultiSystemSlurY(_renderer: BarRendererBase) {
+        return this.calculateStartY();
     }
 
     public shouldCreateMultiSystemSlur(renderer: BarRendererBase) {
@@ -759,14 +783,14 @@ export abstract class NoteTieGlyph extends TieGlyph {
     protected override calculateStartY(): number {
         const startNoteRenderer = this.lookupStartBeatRenderer();
         if (this.isLeftHandTap) {
-            return startNoteRenderer.y + startNoteRenderer.getNoteY(this.startNote, NoteYPosition.Center);
+            return startNoteRenderer.getNoteY(this.startNote, NoteYPosition.Center);
         }
 
         switch (this.tieDirection) {
             case BeamDirection.Up:
-                return startNoteRenderer.y + startNoteRenderer!.getNoteY(this.startNote, NoteYPosition.Top);
+                return startNoteRenderer!.getNoteY(this.startNote, NoteYPosition.Top);
             default:
-                return startNoteRenderer.y + startNoteRenderer.getNoteY(this.startNote, NoteYPosition.Bottom);
+                return startNoteRenderer.getNoteY(this.startNote, NoteYPosition.Bottom);
         }
     }
 
@@ -792,14 +816,14 @@ export abstract class NoteTieGlyph extends TieGlyph {
         }
 
         if (this.isLeftHandTap) {
-            return endNoteRenderer.y + endNoteRenderer!.getNoteY(this.endNote, NoteYPosition.Center);
+            return endNoteRenderer!.getNoteY(this.endNote, NoteYPosition.Center);
         }
 
         switch (this.tieDirection) {
             case BeamDirection.Up:
-                return endNoteRenderer.y + endNoteRenderer!.getNoteY(this.endNote, NoteYPosition.Top);
+                return endNoteRenderer!.getNoteY(this.endNote, NoteYPosition.Top);
             default:
-                return endNoteRenderer.y + endNoteRenderer!.getNoteY(this.endNote, NoteYPosition.Bottom);
+                return endNoteRenderer!.getNoteY(this.endNote, NoteYPosition.Bottom);
         }
     }
 

@@ -45,13 +45,13 @@ export class ScoreSlurGlyph extends ScoreTieGlyph {
         if (this._isStartCentered()) {
             switch (this.tieDirection) {
                 case BeamDirection.Up:
-                    return this.renderer.y + this.renderer!.getNoteY(this.startNote, NoteYPosition.Top);
+                    return this.renderer!.getNoteY(this.startNote, NoteYPosition.Top);
                 default:
-                    return this.renderer.y + this.renderer!.getNoteY(this.startNote, NoteYPosition.Bottom);
+                    return this.renderer!.getNoteY(this.startNote, NoteYPosition.Bottom);
             }
         }
 
-        return this.renderer.y + this.renderer!.getNoteY(this.startNote, NoteYPosition.Center);
+        return this.renderer!.getNoteY(this.startNote, NoteYPosition.Center);
     }
 
     protected override calculateEndX(): number {
@@ -79,19 +79,19 @@ export class ScoreSlurGlyph extends ScoreTieGlyph {
             if (this._isEndOnStem()) {
                 switch (this.tieDirection) {
                     case BeamDirection.Up:
-                        return endNoteRenderer.y + endNoteRenderer.getNoteY(this.endNote, NoteYPosition.TopWithStem);
+                        return endNoteRenderer.getNoteY(this.endNote, NoteYPosition.TopWithStem);
                     default:
-                        return endNoteRenderer.y + endNoteRenderer.getNoteY(this.endNote, NoteYPosition.BottomWithStem);
+                        return endNoteRenderer.getNoteY(this.endNote, NoteYPosition.BottomWithStem);
                 }
             }
             switch (this.tieDirection) {
                 case BeamDirection.Up:
-                    return endNoteRenderer.y + endNoteRenderer.getNoteY(this.endNote, NoteYPosition.Top);
+                    return endNoteRenderer.getNoteY(this.endNote, NoteYPosition.Top);
                 default:
-                    return endNoteRenderer.y + endNoteRenderer.getNoteY(this.endNote, NoteYPosition.Bottom);
+                    return endNoteRenderer.getNoteY(this.endNote, NoteYPosition.Bottom);
             }
         }
-        return endNoteRenderer.y + endNoteRenderer.getNoteY(this.endNote, NoteYPosition.Center);
+        return endNoteRenderer.getNoteY(this.endNote, NoteYPosition.Center);
     }
 
     private _isStartCentered() {
