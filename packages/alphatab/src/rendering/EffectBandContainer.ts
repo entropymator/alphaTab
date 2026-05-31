@@ -14,7 +14,9 @@ import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarL
  */
 export class EffectBandContainer {
     private _bands: EffectBand[] = [];
-    private _bandLookup: Map<string, EffectBand> = new Map();
+    // Per-voice (effectId → band) lookup; avoids string-key allocation in the hot
+    // `_createOrResizeGlyph` path called once per beat per Grouped/FullBar effect.
+    private _bandLookup: Map<number, Map<string, EffectBand>> = new Map();
     public height: number = 0;
 
     public infos!: EffectBandInfo[];
@@ -83,7 +85,12 @@ export class EffectBandContainer {
                     band.renderer = this._renderer;
                     band.doLayout();
                     this._bands.push(band);
-                    this._bandLookup.set(`${voice.index}.${info.effect.effectId}`, band);
+                    let perVoice = this._bandLookup.get(voice.index);
+                    if (!perVoice) {
+                        perVoice = new Map<string, EffectBand>();
+                        this._bandLookup.set(voice.index, perVoice);
+                    }
+                    perVoice.set(info.effect.effectId, band);
                 }
 
                 if (band !== undefined) {
@@ -95,7 +102,7 @@ export class EffectBandContainer {
 
     public doLayout() {
         this._bands = [];
-        this._bandLookup = new Map<string, EffectBand>();
+        this._bandLookup = new Map<number, Map<string, EffectBand>>();
         this.height = 0;
     }
 
@@ -110,10 +117,10 @@ export class EffectBandContainer {
     }
 
     public getBand(voice: Voice, effectId: string): EffectBand | null {
-        const id: string = `${voice.index}.${effectId}`;
-        if (this._bandLookup.has(id)) {
-            return this._bandLookup.get(id)!;
+        const perVoice = this._bandLookup.get(voice.index);
+        if (!perVoice) {
+            return null;
         }
-        return null;
+        return perVoice.get(effectId) ?? null;
     }
 }
