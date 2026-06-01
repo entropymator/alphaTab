@@ -22,6 +22,9 @@ export class BarNumberGlyph extends Glyph {
         this.width = size.width;
         this.height = size.height;
         this.y -= this.height;
+        // bbox depends on `staff.system.firstVisibleStaff` which is not yet
+        // decided at calculateOverflows time — re-emit at scaleToWidth.
+        this.renderer.registerDynamicSkylineGlyph(this, 'pre');
     }
 
     /**

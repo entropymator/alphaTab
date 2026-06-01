@@ -138,14 +138,13 @@ export class BarRendererBase {
     public beatEffectsMinY = Number.NaN;
     public beatEffectsMaxY = Number.NaN;
 
-    /** Captured during {@link doLayout}; resolved to per-x ranges in {@link populateBarLocalSkyline}. */
-    private _pendingBeatEffectRanges: {
-        beat: Beat;
-        minY: number;
-        maxY: number;
-    }[] = [];
+    /** Captured during effect glyph {@link doLayout}; flushed per-beat inside the
+     *  voiceContainer position-settling walk (see scaleToWidth's per-beat callback). */
+    private _pendingBeatEffectsByBeat: Map<number, { minY: number; maxY: number }[]> = new Map();
 
     private _barLocalSkyline: BarLocalSkyline | null = null;
+    private _preBeatLocalSkyline: BarLocalSkyline | null = null;
+    private _postBeatLocalSkyline: BarLocalSkyline | null = null;
 
     /**
      * Per-bar local skyline of every non-effect-band glyph's above/below-staff
@@ -162,9 +161,62 @@ export class BarRendererBase {
         return this._barLocalSkyline;
     }
 
+    /**
+     * Pre-beat glyphs' skyline contribution. Emitted from {@link calculateOverflows}
+     * (stable across scaleToWidth re-runs) and unioned alongside the bar-local
+     * skyline at staff-skyline merge time. Kept separate so {@link scaleToWidth}'s
+     * reset doesn't wipe it when resize triggers multiple passes.
+     */
+    public get preBeatLocalSkyline(): BarLocalSkyline {
+        if (!this._preBeatLocalSkyline) {
+            this._preBeatLocalSkyline = new BarLocalSkyline(
+                0,
+                Number.MAX_SAFE_INTEGER,
+                this.scoreRenderer.layout!.skylinePool
+            );
+        }
+        return this._preBeatLocalSkyline;
+    }
+
+    /**
+     * Post-beat glyphs' skyline contribution in POST-BEAT-GROUP-LOCAL x
+     * coordinates. Shifted by `_postBeatGlyphs.x` (which is final only after
+     * scaleToWidth) when unioned into the staff skyline.
+     */
+    public get postBeatLocalSkyline(): BarLocalSkyline {
+        if (!this._postBeatLocalSkyline) {
+            this._postBeatLocalSkyline = new BarLocalSkyline(
+                0,
+                Number.MAX_SAFE_INTEGER,
+                this.scoreRenderer.layout!.skylinePool
+            );
+        }
+        return this._postBeatLocalSkyline;
+    }
+
+    public get postBeatGroupOffset(): number {
+        return this._postBeatGlyphs.x;
+    }
+
     public resetBarLocalSkyline(): void {
         this._barLocalSkyline?.reset();
-        this._pendingBeatEffectRanges = [];
+        this._preBeatLocalSkyline?.reset();
+        this._postBeatLocalSkyline?.reset();
+        this._pendingBeatEffectsByBeat.clear();
+        this._dynamicSkylineGlyphs.length = 0;
+    }
+
+    /**
+     * Pre/post-beat glyphs whose bbox depends on bar-layout state that's only
+     * finalized in scaleToWidth (post-beat group offset, firstVisibleStaff,
+     * etc.). Such glyphs register themselves here from their doLayout, and we
+     * re-emit their per-x skyline contribution at scaleToWidth time when their
+     * bbox returns its final value.
+     */
+    private readonly _dynamicSkylineGlyphs: { glyph: Glyph; group: 'pre' | 'post' }[] = [];
+
+    public registerDynamicSkylineGlyph(glyph: Glyph, group: 'pre' | 'post' = 'pre'): void {
+        this._dynamicSkylineGlyphs.push({ glyph, group });
     }
 
     public get topOverflow() {
@@ -228,7 +280,13 @@ export class BarRendererBase {
 
     public registerBeatEffectOverflowsForBeat(beat: Beat, minY: number, maxY: number): void {
         this.registerBeatEffectOverflows(minY, maxY);
-        this._pendingBeatEffectRanges.push({ beat, minY, maxY });
+        const id = beat.id;
+        let ranges = this._pendingBeatEffectsByBeat.get(id);
+        if (!ranges) {
+            ranges = [];
+            this._pendingBeatEffectsByBeat.set(id, ranges);
+        }
+        ranges.push({ minY, maxY });
     }
 
     public registerOverflowTop(topOverflow: number): boolean {
@@ -292,20 +350,26 @@ export class BarRendererBase {
         // preBeat and postBeat glyphs do not get resized
         const containerWidth: number = width - this._preBeatGlyphs.width - this._postBeatGlyphs.width;
 
+        // barLocalSkyline holds scale-dependent emissions (voiceContainer beats,
+        // beam helpers, pending effect ranges, dynamic-bbox glyphs). Reset here
+        // so multi-call scaleToWidth (alignRenderers) doesn't accumulate stale
+        // segments. pre/postBeatLocalSkyline stay (managed by calculateOverflows).
         this.barLocalSkyline.reset();
+
         const rendererBottom = this.height;
         const vc = this.voiceContainer;
-        // voiceX is settled before scaleToWidth — captured up front so the
-        // per-beat callback writes ranges in bar-local coordinates.
         const voiceX = vc.x;
         // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
+        // The onBeatSettled callback also flushes any beat-effect ranges that
+        // landed on this container during effect-glyph doLayout — folded into
+        // the positioning walk that's already iterating beat containers.
         vc.scaleToWidth(containerWidth, beatContainer => {
             const containerTop = beatContainer.getBoundingBoxTop();
             const containerBottom = beatContainer.getBoundingBoxBottom();
             const topOver = !Number.isNaN(containerTop) && containerTop < 0;
             const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
+            const base = voiceX + beatContainer.x;
             if (topOver || botOver) {
-                const base = voiceX + beatContainer.x;
                 const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
                 const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
                 if (xEnd > xStart) {
@@ -317,6 +381,24 @@ export class BarRendererBase {
                     }
                 }
             }
+
+            const beatId = beatContainer.beatId;
+            if (beatId >= 0) {
+                const pending = this._pendingBeatEffectsByBeat.get(beatId);
+                if (pending) {
+                    const pendingXStart = base;
+                    const pendingXEnd = base + beatContainer.width;
+                    for (const r of pending) {
+                        if (r.minY < 0) {
+                            this.insertSkylineTop(pendingXStart, pendingXEnd, r.minY * -1);
+                        }
+                        if (r.maxY > rendererBottom) {
+                            this.insertSkylineBottom(pendingXStart, pendingXEnd, r.maxY - rendererBottom);
+                        }
+                    }
+                }
+            }
+
             this.emitBeatSkyline(beatContainer);
         });
 
@@ -333,65 +415,46 @@ export class BarRendererBase {
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
-        // Paint extent (`getBoundingBoxLeft/Right`), not rhythmic-spacing extent
-        // — many glyphs keep `width = 0` while painting over a real range.
-        const preBeatGlyphs = this._preBeatGlyphs.glyphs;
-        if (preBeatGlyphs) {
-            for (const g of preBeatGlyphs) {
-                const topY = g.getBoundingBoxTop();
-                if (topY < 0) {
-                    this.insertSkylineTop(g.getBoundingBoxLeft(), g.getBoundingBoxRight(), topY * -1);
-                }
-                const bottomY = g.getBoundingBoxBottom();
-                if (bottomY > rendererBottom) {
-                    this.insertSkylineBottom(
-                        g.getBoundingBoxLeft(),
-                        g.getBoundingBoxRight(),
-                        bottomY - rendererBottom
-                    );
-                }
-            }
-        }
+        this._emitDynamicSkylineGlyphs(rendererBottom);
+        this.emitSubclassBarLocalSkyline();
+    }
 
-        const postBeatGlyphs = this._postBeatGlyphs.glyphs;
-        if (postBeatGlyphs) {
-            const postX = this._postBeatGlyphs.x;
-            for (const g of postBeatGlyphs) {
-                const topY = g.getBoundingBoxTop();
-                if (topY < 0) {
-                    this.insertSkylineTop(
-                        postX + g.getBoundingBoxLeft(),
-                        postX + g.getBoundingBoxRight(),
-                        topY * -1
-                    );
-                }
-                const bottomY = g.getBoundingBoxBottom();
-                if (bottomY > rendererBottom) {
-                    this.insertSkylineBottom(
-                        postX + g.getBoundingBoxLeft(),
-                        postX + g.getBoundingBoxRight(),
-                        bottomY - rendererBottom
-                    );
-                }
-            }
+    private _emitDynamicSkylineGlyphs(rendererBottom: number): void {
+        if (this._dynamicSkylineGlyphs.length === 0) {
+            return;
         }
-
-        for (const r of this._pendingBeatEffectRanges) {
-            const container = this.getBeatContainer(r.beat);
-            if (!container) {
+        // These glyphs need re-emission each scaleToWidth pass because their
+        // bbox depends on layout state (firstVisibleStaff, bar width, ...) that's
+        // only final here. Emit into barLocalSkyline (which is reset at every
+        // scaleToWidth start) so resize re-runs don't accumulate stale segments.
+        // The `group` channel is preserved only for postBeatLocalSkyline-targeted
+        // emissions when post-beat coords need group-local shifting at union.
+        for (const entry of this._dynamicSkylineGlyphs) {
+            const g = entry.glyph;
+            const topY = g.getBoundingBoxTop();
+            const bottomY = g.getBoundingBoxBottom();
+            const xL = g.getBoundingBoxLeft();
+            const xR = g.getBoundingBoxRight();
+            if (xR <= xL) {
                 continue;
             }
-            const xStart = voiceX + container.x;
-            const xEnd = xStart + container.width;
-            if (r.minY < 0) {
-                this.insertSkylineTop(xStart, xEnd, r.minY * -1);
-            }
-            if (r.maxY > rendererBottom) {
-                this.insertSkylineBottom(xStart, xEnd, r.maxY - rendererBottom);
+            if (entry.group === 'pre') {
+                if (topY < 0) {
+                    this.insertSkylineTop(xL, xR, topY * -1);
+                }
+                if (bottomY > rendererBottom) {
+                    this.insertSkylineBottom(xL, xR, bottomY - rendererBottom);
+                }
+            } else {
+                const postSky = this.postBeatLocalSkyline;
+                if (topY < 0) {
+                    postSky.insertPlaced(StaffSide.Top, xL, xR, topY * -1, 0);
+                }
+                if (bottomY > rendererBottom) {
+                    postSky.insertPlaced(StaffSide.Bottom, xL, xR, bottomY - rendererBottom, 0);
+                }
             }
         }
-
-        this.emitSubclassBarLocalSkyline();
     }
 
     protected emitHelperSkyline(_h: BeamingHelper): void {}
@@ -648,33 +711,66 @@ export class BarRendererBase {
         this.calculateOverflows(0, this.height);
     }
 
-    /** Scalar-only — per-x data lands later via {@link populateBarLocalSkyline}. */
     protected calculateOverflows(_rendererTop: number, rendererBottom: number) {
+        // Re-emit pre/post-beat skylines from scratch each pass (doLayout +
+        // reLayout both call this). barLocalSkyline is reset in scaleToWidth.
+        this.preBeatLocalSkyline.reset();
+        this.postBeatLocalSkyline.reset();
+
+        // _preBeatGlyphs.x is invariant (= 0); glyph-local x is bar-local x.
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
+            const preSky = this.preBeatLocalSkyline;
             for (const g of preBeatGlyphs) {
                 const topY = g.getBoundingBoxTop();
                 if (topY < 0) {
                     this.registerOverflowTop(topY * -1);
+                    const xL = g.getBoundingBoxLeft();
+                    const xR = g.getBoundingBoxRight();
+                    if (xR > xL) {
+                        preSky.insertPlaced(StaffSide.Top, xL, xR, topY * -1, 0);
+                    }
                 }
 
                 const bottomY = g.getBoundingBoxBottom();
                 if (bottomY > rendererBottom) {
                     this.registerOverflowBottom(bottomY - rendererBottom);
+                    const xL = g.getBoundingBoxLeft();
+                    const xR = g.getBoundingBoxRight();
+                    if (xR > xL) {
+                        preSky.insertPlaced(StaffSide.Bottom, xL, xR, bottomY - rendererBottom, 0);
+                    }
                 }
             }
         }
+        // _postBeatGlyphs.x is not final until scaleToWidth — emit in group-local
+        // coords; staff-skyline union shifts by the final group offset.
         const postBeatGlyphs = this._postBeatGlyphs.glyphs;
         if (postBeatGlyphs) {
+            const postSky = this.postBeatLocalSkyline;
             for (const g of postBeatGlyphs) {
                 const topY = g.getBoundingBoxTop();
                 if (topY < 0) {
                     this.registerOverflowTop(topY * -1);
+                    postSky.insertPlaced(
+                        StaffSide.Top,
+                        g.getBoundingBoxLeft(),
+                        g.getBoundingBoxRight(),
+                        topY * -1,
+                        0
+                    );
                 }
 
                 const bottomY = g.getBoundingBoxBottom();
                 if (bottomY > rendererBottom) {
                     this.registerOverflowBottom(bottomY - rendererBottom);
+                    postSky.insertPlaced(
+                        StaffSide.Bottom,
+                        g.getBoundingBoxLeft(),
+                        g.getBoundingBoxRight(),
+                        bottomY - rendererBottom,
+                        0
+                    );
                 }
             }
         }
@@ -887,6 +983,13 @@ export class BarRendererBase {
     protected recreatePreBeatGlyphs() {
         this._preBeatGlyphs = new LeftToRightLayoutingGlyphGroup();
         this._preBeatGlyphs.renderer = this;
+        // Drop any pre-beat entries from the previous glyph set; the new
+        // glyphs will re-register themselves via createPreBeatGlyphs.
+        for (let i = this._dynamicSkylineGlyphs.length - 1; i >= 0; i--) {
+            if (this._dynamicSkylineGlyphs[i].group === 'pre') {
+                this._dynamicSkylineGlyphs.splice(i, 1);
+            }
+        }
         this.createPreBeatGlyphs();
     }
 

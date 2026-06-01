@@ -28,6 +28,9 @@ export class BarTempoGlyph extends EffectGlyph {
 
     public override doLayout(): void {
         super.doLayout();
+        // bbox depends on the renderer's `getRatioPositionX` which uses
+        // voiceContainer.x / _postBeatGlyphs.x — final only at scaleToWidth.
+        this.renderer.registerDynamicSkylineGlyph(this, 'pre');
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
         this._symbolWidth =

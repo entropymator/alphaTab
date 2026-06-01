@@ -247,6 +247,32 @@ export class RenderStaff {
                 sky.insertPlaced(StaffSide.Bottom, baseX + xStart, baseX + xEnd, height, 0);
             }
         });
+        // Pre-beat segments are bar-local (group x = 0); union with renderer.x.
+        const pre = renderer.preBeatLocalSkyline;
+        pre.upSky.forEachSegment((xStart, xEnd, height) => {
+            if (height > 0) {
+                sky.insertPlaced(StaffSide.Top, baseX + xStart, baseX + xEnd, height, 0);
+            }
+        });
+        pre.downSky.forEachSegment((xStart, xEnd, height) => {
+            if (height > 0) {
+                sky.insertPlaced(StaffSide.Bottom, baseX + xStart, baseX + xEnd, height, 0);
+            }
+        });
+        // Post-beat segments live in post-beat-group-local coords; shift by the
+        // group's final x (settled by scaleToWidth) before unioning.
+        const postBaseX = baseX + renderer.postBeatGroupOffset;
+        const post = renderer.postBeatLocalSkyline;
+        post.upSky.forEachSegment((xStart, xEnd, height) => {
+            if (height > 0) {
+                sky.insertPlaced(StaffSide.Top, postBaseX + xStart, postBaseX + xEnd, height, 0);
+            }
+        });
+        post.downSky.forEachSegment((xStart, xEnd, height) => {
+            if (height > 0) {
+                sky.insertPlaced(StaffSide.Bottom, postBaseX + xStart, postBaseX + xEnd, height, 0);
+            }
+        });
     }
 
     public resetSkylines(): void {
