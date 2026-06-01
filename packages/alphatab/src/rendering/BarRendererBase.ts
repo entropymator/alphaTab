@@ -291,9 +291,34 @@ export class BarRendererBase {
     public scaleToWidth(width: number): void {
         // preBeat and postBeat glyphs do not get resized
         const containerWidth: number = width - this._preBeatGlyphs.width - this._postBeatGlyphs.width;
-        this.voiceContainer.scaleToWidth(containerWidth);
 
         this.barLocalSkyline.reset();
+        const rendererBottom = this.height;
+        const vc = this.voiceContainer;
+        // voiceX is settled before scaleToWidth — captured up front so the
+        // per-beat callback writes ranges in bar-local coordinates.
+        const voiceX = vc.x;
+        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
+        vc.scaleToWidth(containerWidth, beatContainer => {
+            const containerTop = beatContainer.getBoundingBoxTop();
+            const containerBottom = beatContainer.getBoundingBoxBottom();
+            const topOver = !Number.isNaN(containerTop) && containerTop < 0;
+            const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
+            if (topOver || botOver) {
+                const base = voiceX + beatContainer.x;
+                const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
+                const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
+                if (xEnd > xStart) {
+                    if (topOver) {
+                        this.insertSkylineTop(xStart, xEnd, containerTop * -1);
+                    }
+                    if (botOver) {
+                        this.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
+                    }
+                }
+            }
+            this.emitBeatSkyline(beatContainer);
+        });
 
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
@@ -307,8 +332,6 @@ export class BarRendererBase {
 
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
-
-        const rendererBottom = this.height;
 
         // Paint extent (`getBoundingBoxLeft/Right`), not rhythmic-spacing extent
         // — many glyphs keep `width = 0` while painting over a real range.
@@ -353,33 +376,6 @@ export class BarRendererBase {
             }
         }
 
-        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
-        const vc = this.voiceContainer;
-        const voiceX = vc.x;
-        for (const beatGlyphs of vc.beatGlyphs.values()) {
-            for (const beatContainer of beatGlyphs) {
-                const containerTop = beatContainer.getBoundingBoxTop();
-                const containerBottom = beatContainer.getBoundingBoxBottom();
-                const topOver = !Number.isNaN(containerTop) && containerTop < 0;
-                const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
-                if (!topOver && !botOver) {
-                    continue;
-                }
-                const base = voiceX + beatContainer.x;
-                const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
-                const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
-                if (xEnd <= xStart) {
-                    continue;
-                }
-                if (topOver) {
-                    this.insertSkylineTop(xStart, xEnd, containerTop * -1);
-                }
-                if (botOver) {
-                    this.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
-                }
-            }
-        }
-
         for (const r of this._pendingBeatEffectRanges) {
             const container = this.getBeatContainer(r.beat);
             if (!container) {
@@ -399,6 +395,8 @@ export class BarRendererBase {
     }
 
     protected emitHelperSkyline(_h: BeamingHelper): void {}
+
+    protected emitBeatSkyline(_beatContainer: BeatContainerGlyphBase): void {}
 
     protected emitSubclassBarLocalSkyline(): void {}
 

@@ -53,12 +53,12 @@ export class MultiVoiceContainerGlyph extends Glyph {
         return y;
     }
 
-    public scaleToWidth(width: number): void {
+    public scaleToWidth(width: number, onBeatSettled?: (b: BeatContainerGlyphBase) => void): void {
         const force: number = this.renderer.layoutingInfo.spaceToForce(width);
-        this._scaleToForce(force);
+        this._scaleToForce(force, onBeatSettled);
     }
 
-    private _scaleToForce(force: number): void {
+    private _scaleToForce(force: number, onBeatSettled?: (b: BeatContainerGlyphBase) => void): void {
         this.width = this.renderer.layoutingInfo.calculateVoiceWidth(force);
         const positions = this.renderer.layoutingInfo.buildOnTimePositions(force);
         for (const beatGlyphs of this.beatGlyphs.values()) {
@@ -130,13 +130,20 @@ export class MultiVoiceContainerGlyph extends Glyph {
                 // size always previous glyph after we know the position
                 // of the next glyph
                 if (i > 0) {
-                    const beatWidth: number = currentBeatGlyph.x - beatGlyphs[i - 1].x;
-                    beatGlyphs[i - 1].scaleToWidth(beatWidth);
+                    const previous = beatGlyphs[i - 1];
+                    const beatWidth: number = currentBeatGlyph.x - previous.x;
+                    previous.scaleToWidth(beatWidth);
+                    if (onBeatSettled) {
+                        onBeatSettled(previous);
+                    }
                 }
                 // for the last glyph size based on the full width
                 if (i === j - 1) {
                     const beatWidth: number = this.width - beatGlyphs[beatGlyphs.length - 1].x;
                     currentBeatGlyph.scaleToWidth(beatWidth);
+                    if (onBeatSettled) {
+                        onBeatSettled(currentBeatGlyph);
+                    }
                 }
             }
         }
