@@ -162,7 +162,6 @@ export class BarRendererBase {
         return this._barLocalSkyline;
     }
 
-    /** Reset the bar-local skyline (returns segments to the pool). */
     public resetBarLocalSkyline(): void {
         this._barLocalSkyline?.reset();
         this._pendingBeatEffectRanges = [];
@@ -227,7 +226,6 @@ export class BarRendererBase {
         }
     }
 
-    /** Range-aware sibling of {@link registerBeatEffectOverflows}. */
     public registerBeatEffectOverflowsForBeat(beat: Beat, minY: number, maxY: number): void {
         this.registerBeatEffectOverflows(minY, maxY);
         this._pendingBeatEffectRanges.push({ beat, minY, maxY });
@@ -540,10 +538,7 @@ export class BarRendererBase {
 
         this._registerLayoutingInfo();
 
-        // Align glyphs within each band so band-internal x/width are settled
-        // before the renderer scales/finalises. Band y / container heights
-        // are derived later from the staff skyline by {@link
-        // EffectSystemPlacement}.
+        // Align so band-internal x/width are settled before scale/finalize.
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
@@ -614,7 +609,6 @@ export class BarRendererBase {
         }
     }
 
-    /** Called by {@link scaleToWidth}; subclasses override + chain to super. */
     protected populateBarLocalSkyline(): void {
         this.barLocalSkyline.reset();
 

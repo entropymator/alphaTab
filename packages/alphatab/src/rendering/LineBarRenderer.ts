@@ -884,10 +884,9 @@ export abstract class LineBarRenderer extends BarRendererBase {
     }
 
     /**
-     * Computes the y-extent the beam/flag/tuplet bracket needs above and below
-     * the staff for one helper. Writes results into `out` (shared scratch
-     * record to avoid per-helper allocations); 0 means no overflow on that
-     * side. Used by both the scalar overflow pass and the per-x skyline pass.
+     * Writes the helper's beam/flag/tuplet-bracket y-extent into `out`
+     * (0 = no overflow on that side). Shared by the scalar overflow pass
+     * and the per-x skyline pass.
      */
     private _computeBeamingBounds(h: BeamingHelper, out: { topY: number; bottomY: number }): void {
         let topY = 0;
@@ -914,7 +913,6 @@ export abstract class LineBarRenderer extends BarRendererBase {
                 }
             }
         } else if (h.beats.length === 1 && h.beats[0].duration >= Duration.Half) {
-            // Single note with stem + flag.
             const tupletDirection = this.getTupletBeamDirection(h);
             const direction = this.getBeamDirection(h);
             const flagOverflow = this.smuflMetrics.stemFlagOffsets.get(h.beats[0].duration)!;
@@ -940,7 +938,6 @@ export abstract class LineBarRenderer extends BarRendererBase {
                 // top handled via beat container bBox
             }
         } else {
-            // Beamed notes (and notes without stems). See paintTuplets for tuplets-on-non-beamed.
             const direction = this.getBeamDirection(h);
             this.ensureBeamDrawingInfo(h, direction);
             const drawingInfo = h.drawingInfos.get(direction)!;
@@ -983,7 +980,6 @@ export abstract class LineBarRenderer extends BarRendererBase {
 
     private readonly _beamingBoundsScratch: { topY: number; bottomY: number } = { topY: 0, bottomY: 0 };
 
-    /** Scalar overflow registration; runs at doLayout. */
     protected calculateBeamingOverflows(rendererTop: number, rendererBottom: number) {
         const out = this._beamingBoundsScratch;
         for (const v of this.helpers.beamHelpers) {
@@ -999,7 +995,6 @@ export abstract class LineBarRenderer extends BarRendererBase {
         }
     }
 
-    /** Per-beam-helper skyline emission; runs from {@link populateBarLocalSkyline}. */
     protected populateBeamingSkyline(): void {
         const rendererTop = 0;
         const rendererBottom = this.height;

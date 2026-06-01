@@ -6,10 +6,9 @@ import { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 
 /**
- * Holds the per-(voice × effect) {@link EffectBand} list for one side
- * (above- or below-staff) of a bar renderer. Layout/placement is delegated
- * to {@link EffectSystemPlacement}; this class only owns band lifecycle,
- * per-band glyph alignment and painting.
+ * Per-(voice × effect) {@link EffectBand} list for one side of a bar
+ * renderer. Owns band lifecycle, glyph alignment, painting. Placement
+ * is delegated to {@link EffectSystemPlacement}.
  * @internal
  */
 export class EffectBandContainer {
@@ -38,12 +37,6 @@ export class EffectBandContainer {
         }
     }
 
-    /**
-     * Fans out the bar's rhythmic-spacing pass to each band. Bands whose
-     * {@link EffectInfo.contributesToBeatSpacing} is `false` no-op; the
-     * rest widen the beat's spring with their actual paint extent. See
-     * {@link EffectBand.registerLayoutingInfo}.
-     */
     public registerLayoutingInfo(layoutings: BarLayoutingInfo): void {
         for (const band of this._bands) {
             band.registerLayoutingInfo(layoutings);

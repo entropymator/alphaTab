@@ -151,12 +151,6 @@ export class EffectSystemPlacement {
         });
     }
 
-    /**
-     * Groups bands placed at one magnitude:
-     *  - {@link EffectBandPlacementCategory.HorizontalRow}: same `(effectId, voice)`.
-     *  - Linked chain: bands flagged via {@link EffectBand.isLinkedToPrevious}.
-     *  - Otherwise: single band.
-     */
     private _placeSide(bands: EffectBand[], sky: Skyline, pad: number, isTop: boolean): void {
         const groupBands = this._groupBands;
         const groupXStarts = this._groupXStarts;
@@ -165,10 +159,10 @@ export class EffectSystemPlacement {
         while (i < bands.length) {
             const band = bands[i];
 
+            // Group same-magnitude bands: HorizontalRow row mates or linked-chain continuations.
             let groupEnd = i + 1;
             const groupEffectId = band.info.effectId;
             const groupVoiceIndex = band.voice.index;
-            // Extend group through HorizontalRow row mates or linked-chain continuations.
             if (band.info.placementCategory === EffectBandPlacementCategory.HorizontalRow) {
                 while (
                     groupEnd < bands.length &&
@@ -189,7 +183,8 @@ export class EffectSystemPlacement {
                 }
             }
 
-            // Query without inserting, then commit every member at the group's max magnitude.
+            // Two-phase: query without inserting so chain members don't see each other,
+            // then commit every member at the group's max magnitude.
             groupBands.length = 0;
             groupXStarts.length = 0;
             groupXEnds.length = 0;

@@ -12,7 +12,6 @@ export class RepeatCountGlyph extends Glyph {
     private _count: number = 0;
     private _text: string = '';
     private _textWidth: number = 0;
-    /** Horizontal offset applied to `this.x` to position the text's right edge. */
     private static readonly _rightEdgeOffsetFactor: number = 2 / 3;
 
     public constructor(x: number, y: number, count: number) {

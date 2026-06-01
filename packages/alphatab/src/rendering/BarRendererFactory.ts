@@ -49,14 +49,8 @@ export interface EffectBandInfo {
     mode: EffectBandMode;
     effect: EffectInfo;
     /**
-     * Visual-stack position within the band's
-     * {@link EffectInfo.placementCategory}. Lower values sit higher
-     * in the stack (further from the staff); higher values sit
-     * closer to the staff. Defaults to the factory declaration
-     * index, so the first entry in a factory's effect list is the
-     * topmost within its category. Use an explicit value (e.g.
-     * `order: 1000` for repeat brackets) to pin a band close to the
-     * staff regardless of declaration position.
+     * Visual-stack position within {@link EffectInfo.placementCategory}.
+     * Higher value = closer to staff. Defaults to the declaration index.
      */
     order?: number;
     shouldCreate?: (staff: Staff) => boolean;
