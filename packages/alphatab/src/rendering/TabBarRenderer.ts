@@ -145,9 +145,6 @@ export class TabBarRenderer extends LineBarRenderer {
         if (this.bar.isEmpty) {
             return;
         }
-        if (this.rhythmMode !== TabRhythmMode.Hidden) {
-            this.populateBeamingSkyline();
-        }
         // Tab digits paint per-beat at the notehead extent — register the half-line
         // overflow per beat, not bar-wide. Top string = `tuning.length` (largest index).
         const stringCount = this.bar.staff.tuning.length;
@@ -379,5 +376,12 @@ export class TabBarRenderer extends LineBarRenderer {
         if (this.rhythmMode !== TabRhythmMode.Hidden) {
             this.calculateBeamingOverflows(rendererTop, rendererBottom);
         }
+    }
+
+    protected override emitHelperSkyline(h: BeamingHelper): void {
+        if (this.rhythmMode === TabRhythmMode.Hidden) {
+            return;
+        }
+        super.emitHelperSkyline(h);
     }
 }

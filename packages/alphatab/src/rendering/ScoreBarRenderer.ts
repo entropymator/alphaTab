@@ -167,9 +167,6 @@ export class ScoreBarRenderer extends LineBarRenderer {
 
     protected override populateBarLocalSkyline(): void {
         super.populateBarLocalSkyline();
-        if (!this.bar.isEmpty) {
-            this.populateBeamingSkyline();
-        }
         // Multi-voice rest displacement already lives in the beat container bbox; super captures it.
     }
 

@@ -293,9 +293,12 @@ export class BarRendererBase {
         const containerWidth: number = width - this._preBeatGlyphs.width - this._postBeatGlyphs.width;
         this.voiceContainer.scaleToWidth(containerWidth);
 
+        this.barLocalSkyline.reset();
+
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
                 h.alignWithBeats();
+                this.emitHelperSkyline(h);
             }
         }
 
@@ -307,6 +310,8 @@ export class BarRendererBase {
 
         this.populateBarLocalSkyline();
     }
+
+    protected emitHelperSkyline(_h: BeamingHelper): void {}
 
     public get resources(): RenderingResources {
         return this.settings.display.resources;
@@ -610,8 +615,6 @@ export class BarRendererBase {
     }
 
     protected populateBarLocalSkyline(): void {
-        this.barLocalSkyline.reset();
-
         const rendererBottom = this.height;
 
         // Paint extent (`getBoundingBoxLeft/Right`), not rhythmic-spacing extent

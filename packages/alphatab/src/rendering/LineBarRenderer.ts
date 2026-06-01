@@ -995,27 +995,22 @@ export abstract class LineBarRenderer extends BarRendererBase {
         }
     }
 
-    protected populateBeamingSkyline(): void {
-        const rendererTop = 0;
+    protected override emitHelperSkyline(h: BeamingHelper): void {
         const rendererBottom = this.height;
         const out = this._beamingBoundsScratch;
-        for (const v of this.helpers.beamHelpers) {
-            for (const h of v) {
-                this._computeBeamingBounds(h, out);
-                if (out.topY >= rendererTop && out.bottomY <= rendererBottom) {
-                    continue;
-                }
-                const firstBeat = h.beats[0];
-                const lastBeat = h.beats[h.beats.length - 1];
-                const xStart = this.getBeatX(firstBeat, BeatXPosition.PreNotes);
-                const xEnd = this.getBeatX(lastBeat, BeatXPosition.PostNotes);
-                if (out.topY < rendererTop) {
-                    this.insertSkylineTop(xStart, xEnd, Math.abs(out.topY));
-                }
-                if (out.bottomY > rendererBottom) {
-                    this.insertSkylineBottom(xStart, xEnd, Math.abs(out.bottomY) - rendererBottom);
-                }
-            }
+        this._computeBeamingBounds(h, out);
+        if (out.topY >= 0 && out.bottomY <= rendererBottom) {
+            return;
+        }
+        const firstBeat = h.beats[0];
+        const lastBeat = h.beats[h.beats.length - 1];
+        const xStart = this.getBeatX(firstBeat, BeatXPosition.PreNotes);
+        const xEnd = this.getBeatX(lastBeat, BeatXPosition.PostNotes);
+        if (out.topY < 0) {
+            this.insertSkylineTop(xStart, xEnd, Math.abs(out.topY));
+        }
+        if (out.bottomY > rendererBottom) {
+            this.insertSkylineBottom(xStart, xEnd, Math.abs(out.bottomY) - rendererBottom);
         }
     }
 

@@ -196,9 +196,6 @@ export class NumberedBarRenderer extends LineBarRenderer {
 
     protected override populateBarLocalSkyline(): void {
         super.populateBarLocalSkyline();
-        if (!this.bar.isEmpty) {
-            this.populateBeamingSkyline();
-        }
     }
 
     public getNoteLine(_note: Note) {

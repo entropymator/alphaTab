@@ -85,9 +85,6 @@ export class SlashBarRenderer extends LineBarRenderer {
 
     protected override populateBarLocalSkyline(): void {
         super.populateBarLocalSkyline();
-        if (!this.bar.isEmpty) {
-            this.populateBeamingSkyline();
-        }
         if (this.voiceContainer.tupletGroups.size > 0) {
             for (const groups of this.voiceContainer.tupletGroups.values()) {
                 for (const group of groups) {
