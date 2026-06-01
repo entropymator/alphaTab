@@ -194,10 +194,6 @@ export class NumberedBarRenderer extends LineBarRenderer {
         this.calculateBeamingOverflows(rendererTop, rendererBottom);
     }
 
-    protected override populateBarLocalSkyline(): void {
-        super.populateBarLocalSkyline();
-    }
-
     public getNoteLine(_note: Note) {
         return 0;
     }

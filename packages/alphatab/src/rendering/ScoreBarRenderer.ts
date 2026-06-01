@@ -165,10 +165,7 @@ export class ScoreBarRenderer extends LineBarRenderer {
         return result;
     }
 
-    protected override populateBarLocalSkyline(): void {
-        super.populateBarLocalSkyline();
-        // Multi-voice rest displacement already lives in the beat container bbox; super captures it.
-    }
+    // Multi-voice rest displacement already lives in the beat container bbox; the base sweep captures it.
 
     protected override getMinLineOfBeat(beat: Beat): number {
         return this.accidentalHelper.getMinSteps(beat) / 2;

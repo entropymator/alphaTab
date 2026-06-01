@@ -308,10 +308,99 @@ export class BarRendererBase {
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
-        this.populateBarLocalSkyline();
+        const rendererBottom = this.height;
+
+        // Paint extent (`getBoundingBoxLeft/Right`), not rhythmic-spacing extent
+        // — many glyphs keep `width = 0` while painting over a real range.
+        const preBeatGlyphs = this._preBeatGlyphs.glyphs;
+        if (preBeatGlyphs) {
+            for (const g of preBeatGlyphs) {
+                const topY = g.getBoundingBoxTop();
+                if (topY < 0) {
+                    this.insertSkylineTop(g.getBoundingBoxLeft(), g.getBoundingBoxRight(), topY * -1);
+                }
+                const bottomY = g.getBoundingBoxBottom();
+                if (bottomY > rendererBottom) {
+                    this.insertSkylineBottom(
+                        g.getBoundingBoxLeft(),
+                        g.getBoundingBoxRight(),
+                        bottomY - rendererBottom
+                    );
+                }
+            }
+        }
+
+        const postBeatGlyphs = this._postBeatGlyphs.glyphs;
+        if (postBeatGlyphs) {
+            const postX = this._postBeatGlyphs.x;
+            for (const g of postBeatGlyphs) {
+                const topY = g.getBoundingBoxTop();
+                if (topY < 0) {
+                    this.insertSkylineTop(
+                        postX + g.getBoundingBoxLeft(),
+                        postX + g.getBoundingBoxRight(),
+                        topY * -1
+                    );
+                }
+                const bottomY = g.getBoundingBoxBottom();
+                if (bottomY > rendererBottom) {
+                    this.insertSkylineBottom(
+                        postX + g.getBoundingBoxLeft(),
+                        postX + g.getBoundingBoxRight(),
+                        bottomY - rendererBottom
+                    );
+                }
+            }
+        }
+
+        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
+        const vc = this.voiceContainer;
+        const voiceX = vc.x;
+        for (const beatGlyphs of vc.beatGlyphs.values()) {
+            for (const beatContainer of beatGlyphs) {
+                const containerTop = beatContainer.getBoundingBoxTop();
+                const containerBottom = beatContainer.getBoundingBoxBottom();
+                const topOver = !Number.isNaN(containerTop) && containerTop < 0;
+                const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
+                if (!topOver && !botOver) {
+                    continue;
+                }
+                const base = voiceX + beatContainer.x;
+                const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
+                const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
+                if (xEnd <= xStart) {
+                    continue;
+                }
+                if (topOver) {
+                    this.insertSkylineTop(xStart, xEnd, containerTop * -1);
+                }
+                if (botOver) {
+                    this.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
+                }
+            }
+        }
+
+        for (const r of this._pendingBeatEffectRanges) {
+            const container = this.getBeatContainer(r.beat);
+            if (!container) {
+                continue;
+            }
+            const xStart = voiceX + container.x;
+            const xEnd = xStart + container.width;
+            if (r.minY < 0) {
+                this.insertSkylineTop(xStart, xEnd, r.minY * -1);
+            }
+            if (r.maxY > rendererBottom) {
+                this.insertSkylineBottom(xStart, xEnd, r.maxY - rendererBottom);
+            }
+        }
+
+        this.emitSubclassBarLocalSkyline();
     }
 
     protected emitHelperSkyline(_h: BeamingHelper): void {}
+
+    protected emitSubclassBarLocalSkyline(): void {}
 
     public get resources(): RenderingResources {
         return this.settings.display.resources;
@@ -611,95 +700,6 @@ export class BarRendererBase {
         const beatEffectsMaxY = this.beatEffectsMaxY;
         if (!Number.isNaN(beatEffectsMaxY) && beatEffectsMaxY > rendererBottom) {
             this.registerOverflowBottom(beatEffectsMaxY - rendererBottom);
-        }
-    }
-
-    protected populateBarLocalSkyline(): void {
-        const rendererBottom = this.height;
-
-        // Paint extent (`getBoundingBoxLeft/Right`), not rhythmic-spacing extent
-        // — many glyphs keep `width = 0` while painting over a real range.
-        const preBeatGlyphs = this._preBeatGlyphs.glyphs;
-        if (preBeatGlyphs) {
-            for (const g of preBeatGlyphs) {
-                const topY = g.getBoundingBoxTop();
-                if (topY < 0) {
-                    this.insertSkylineTop(g.getBoundingBoxLeft(), g.getBoundingBoxRight(), topY * -1);
-                }
-                const bottomY = g.getBoundingBoxBottom();
-                if (bottomY > rendererBottom) {
-                    this.insertSkylineBottom(
-                        g.getBoundingBoxLeft(),
-                        g.getBoundingBoxRight(),
-                        bottomY - rendererBottom
-                    );
-                }
-            }
-        }
-
-        const postBeatGlyphs = this._postBeatGlyphs.glyphs;
-        if (postBeatGlyphs) {
-            const postX = this._postBeatGlyphs.x;
-            for (const g of postBeatGlyphs) {
-                const topY = g.getBoundingBoxTop();
-                if (topY < 0) {
-                    this.insertSkylineTop(
-                        postX + g.getBoundingBoxLeft(),
-                        postX + g.getBoundingBoxRight(),
-                        topY * -1
-                    );
-                }
-                const bottomY = g.getBoundingBoxBottom();
-                if (bottomY > rendererBottom) {
-                    this.insertSkylineBottom(
-                        postX + g.getBoundingBoxLeft(),
-                        postX + g.getBoundingBoxRight(),
-                        bottomY - rendererBottom
-                    );
-                }
-            }
-        }
-
-        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
-        const v = this.voiceContainer;
-        const voiceX = v.x;
-        for (const beatGlyphs of v.beatGlyphs.values()) {
-            for (const beatContainer of beatGlyphs) {
-                const containerTop = beatContainer.getBoundingBoxTop();
-                const containerBottom = beatContainer.getBoundingBoxBottom();
-                const topOver = !Number.isNaN(containerTop) && containerTop < 0;
-                const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
-                if (!topOver && !botOver) {
-                    continue;
-                }
-                const base = voiceX + beatContainer.x;
-                const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
-                const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
-                if (xEnd <= xStart) {
-                    continue;
-                }
-                if (topOver) {
-                    this.insertSkylineTop(xStart, xEnd, containerTop * -1);
-                }
-                if (botOver) {
-                    this.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
-                }
-            }
-        }
-
-        for (const r of this._pendingBeatEffectRanges) {
-            const container = this.getBeatContainer(r.beat);
-            if (!container) {
-                continue;
-            }
-            const xStart = voiceX + container.x;
-            const xEnd = xStart + container.width;
-            if (r.minY < 0) {
-                this.insertSkylineTop(xStart, xEnd, r.minY * -1);
-            }
-            if (r.maxY > rendererBottom) {
-                this.insertSkylineBottom(xStart, xEnd, r.maxY - rendererBottom);
-            }
         }
     }
 

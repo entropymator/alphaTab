@@ -140,8 +140,7 @@ export class TabBarRenderer extends LineBarRenderer {
         }
     }
 
-    protected override populateBarLocalSkyline(): void {
-        super.populateBarLocalSkyline();
+    protected override emitSubclassBarLocalSkyline(): void {
         if (this.bar.isEmpty) {
             return;
         }
