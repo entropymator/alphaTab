@@ -7,6 +7,7 @@ import { TabRhythmMode } from '@coderline/alphatab/NotationSettings';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
+import { BeatContainerGlyph, type BeatContainerGlyphBase } from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
 import { SpacingGlyph } from '@coderline/alphatab/rendering/glyphs/SpacingGlyph';
 import { TabBeatContainerGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatContainerGlyph';
 import type { TabBeatGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatGlyph';
@@ -140,43 +141,43 @@ export class TabBarRenderer extends LineBarRenderer {
         }
     }
 
-    protected override emitSubclassBarLocalSkyline(): void {
-        if (this.bar.isEmpty) {
+    protected override emitBeatSkyline(beatContainer: BeatContainerGlyphBase): void {
+        if (!(beatContainer instanceof BeatContainerGlyph)) {
             return;
         }
         // Tab digits paint per-beat at the notehead extent — register the half-line
         // overflow per beat, not bar-wide. Top string = `tuning.length` (largest index).
         const stringCount = this.bar.staff.tuning.length;
+        let hasTop = false;
+        let hasBottom = false;
+        for (const note of beatContainer.beat.notes) {
+            if (note.string === stringCount) {
+                hasTop = true;
+            } else if (note.string === 1) {
+                hasBottom = true;
+            }
+        }
+        if (!hasTop && !hasBottom) {
+            return;
+        }
+        const base = this.voiceContainer.x + beatContainer.x;
+        const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
+        const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
+        if (xEnd <= xStart) {
+            return;
+        }
         const halfLine = this.lineSpacing / 2;
-        for (const voice of this.bar.voices) {
-            if (voice.isEmpty) {
-                continue;
-            }
-            for (const beat of voice.beats) {
-                let hasTop = false;
-                let hasBottom = false;
-                for (const note of beat.notes) {
-                    if (note.string === stringCount) {
-                        hasTop = true;
-                    } else if (note.string === 1) {
-                        hasBottom = true;
-                    }
-                }
-                if (!hasTop && !hasBottom) {
-                    continue;
-                }
-                const xStart = this.getBeatX(beat, BeatXPosition.PreNotes);
-                const xEnd = this.getBeatX(beat, BeatXPosition.PostNotes);
-                if (xEnd <= xStart) {
-                    continue;
-                }
-                if (hasTop) {
-                    this.insertSkylineTop(xStart, xEnd, halfLine);
-                }
-                if (hasBottom) {
-                    this.insertSkylineBottom(xStart, xEnd, halfLine);
-                }
-            }
+        if (hasTop) {
+            this.insertSkylineTop(xStart, xEnd, halfLine);
+        }
+        if (hasBottom) {
+            this.insertSkylineBottom(xStart, xEnd, halfLine);
+        }
+    }
+
+    protected override emitSubclassBarLocalSkyline(): void {
+        if (this.bar.isEmpty) {
+            return;
         }
         if (this._hasTuplets) {
             const tupletHeight = this.settings.notation.rhythmHeight + this.tupletSize;
