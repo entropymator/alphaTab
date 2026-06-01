@@ -83,15 +83,16 @@ export class SlashBarRenderer extends LineBarRenderer {
         }
     }
 
-    protected override emitSubclassBarLocalSkyline(): void {
-        if (this.voiceContainer.tupletGroups.size > 0) {
-            for (const groups of this.voiceContainer.tupletGroups.values()) {
-                for (const group of groups) {
-                    if (group.beats.length === 0) {
-                        continue;
-                    }
-                    const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
-                    const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
+    protected override emitHelperSkyline(h: BeamingHelper): void {
+        super.emitHelperSkyline(h);
+        if (h.hasTuplet) {
+            // Tuplets can span multiple helpers — emit the full group range
+            // exactly once, when the helper holds the group's first beat.
+            const group = h.beats[0].tupletGroup!;
+            if (group.beats.length > 0 && group.beats[0] === h.beats[0]) {
+                const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
+                const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
+                if (xEnd > xStart) {
                     this.insertSkylineTop(xStart, xEnd, this.tupletSize);
                 }
             }

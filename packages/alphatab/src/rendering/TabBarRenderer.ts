@@ -175,25 +175,6 @@ export class TabBarRenderer extends LineBarRenderer {
         }
     }
 
-    protected override emitSubclassBarLocalSkyline(): void {
-        if (this.bar.isEmpty) {
-            return;
-        }
-        if (this._hasTuplets) {
-            const tupletHeight = this.settings.notation.rhythmHeight + this.tupletSize;
-            for (const groups of this.voiceContainer.tupletGroups.values()) {
-                for (const group of groups) {
-                    if (group.beats.length === 0) {
-                        continue;
-                    }
-                    const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
-                    const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
-                    this.insertSkylineBottom(xStart, xEnd, tupletHeight);
-                }
-            }
-        }
-    }
-
     protected override createLinePreBeatGlyphs(): void {
         // Clef
         if (this.isFirstOfStaff) {
@@ -383,5 +364,18 @@ export class TabBarRenderer extends LineBarRenderer {
             return;
         }
         super.emitHelperSkyline(h);
+        if (h.hasTuplet) {
+            // Tuplets can span multiple helpers — emit the full group range
+            // exactly once, when the helper holds the group's first beat.
+            const group = h.beats[0].tupletGroup!;
+            if (group.beats.length > 0 && group.beats[0] === h.beats[0]) {
+                const tupletHeight = this.settings.notation.rhythmHeight + this.tupletSize;
+                const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
+                const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
+                if (xEnd > xStart) {
+                    this.insertSkylineBottom(xStart, xEnd, tupletHeight);
+                }
+            }
+        }
     }
 }
