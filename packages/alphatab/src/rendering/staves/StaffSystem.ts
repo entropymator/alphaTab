@@ -8,6 +8,7 @@ import {
     TrackNameOrientation,
     TrackNamePolicy
 } from '@coderline/alphatab/model/RenderStylesheet';
+import { SimileMark } from '@coderline/alphatab/model/SimileMark';
 import { type Track, TrackSubElement } from '@coderline/alphatab/model/Track';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { CanvasHelper, type ICanvas, TextAlign, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
@@ -372,7 +373,7 @@ export class StaffSystem {
                 if (renderer.isLinkedToPrevious) {
                     result.isLinkedToPrevious = true;
                 }
-                if (!renderer.canWrap) {
+                if (bar.simileMark === SimileMark.SecondOfDouble) {
                     result.canWrap = false;
                 }
             }

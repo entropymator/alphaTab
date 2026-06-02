@@ -239,13 +239,6 @@ export class BarRendererBase {
      */
     public isLinkedToPrevious: boolean = false;
 
-    /**
-     * Gets or sets whether this renderer can wrap to the next line
-     * or it needs to stay connected to the previous one.
-     * (e.g. when having double bar repeats we must not separate the 2 bars)
-     */
-    public canWrap: boolean = true;
-
     public get showMultiBarRest(): boolean {
         return true;
     }
@@ -682,10 +675,6 @@ export class BarRendererBase {
         this.topEffects.doLayout();
         this.bottomEffects.doLayout();
         this.resetBarLocalSkyline();
-
-        if (this.bar.simileMark === SimileMark.SecondOfDouble) {
-            this.canWrap = false;
-        }
 
         this.createPreBeatGlyphs();
         this.createBeatGlyphs();
