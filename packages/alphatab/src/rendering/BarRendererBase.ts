@@ -794,7 +794,6 @@ export class BarRendererBase {
 
         this.width = Math.ceil(this._postBeatGlyphs.x + this._postBeatGlyphs.width);
 
-        this.height += this.layoutingInfo.height;
         this.height = Math.ceil(this.height);
 
         this.staff!.registerStaffBottom(this.height);
