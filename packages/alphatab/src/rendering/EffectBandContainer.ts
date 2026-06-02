@@ -30,6 +30,24 @@ export class EffectBandContainer {
         return this._isTopContainer;
     }
 
+    // §E Step 5a audit — every `EffectInfo.onAlignGlyphs` implementation in the
+    // codebase, classified for the Step 5b/5c consolidation that moves
+    // alignGlyphs to a single call point (Phase 2 entry):
+    //
+    // | Implementer                       | Classification        | Notes |
+    // | --------------------------------- | --------------------- | ----- |
+    // | EffectInfo (base, no-op)          | max-of-idempotent     | empty body — trivially idempotent under repeated invocation. |
+    // | TabWhammyEffectInfo.onAlignGlyphs | max-of-idempotent     | reads/updates `[topMax, bottomMax]` in `staff._sharedLayoutData` keyed by `tab.whammy.offset`; each glyph's contribution is compared with `>` then assigned, so the result is the max over the glyph set and rerunning with the same (or a superset) input produces an unchanged or strictly-larger max. |
+    //
+    // Today (verified): `TabWhammyEffectInfo` is the only `onAlignGlyphs`
+    // override; all other effect-info classes inherit the no-op base. Both
+    // entries are `max-of-idempotent`. Future implementations must preserve
+    // this property — anything that is not `max-of-idempotent` (e.g. push-once
+    // accumulators, side-effectful mutations on non-monotonic state) violates
+    // the Step 5 contract because Step 5c reduces the four-call-points-per-
+    // cycle invocation pattern (doLayout, applyLayoutingInfo, scaleToWidth,
+    // reLayout) down to a single Phase-2 call. Idempotency under multiple
+    // invocations is what makes the single-call collapse safe.
     public alignGlyphs() {
         for (const effectBand of this._bands) {
             effectBand.resetHeight();
