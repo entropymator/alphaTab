@@ -162,8 +162,8 @@ export class MultiVoiceContainerGlyph extends Glyph {
             for (const b of beatGlyphs) {
                 b.applyLayoutingInfo(info);
             }
-            this._scaleToForce(Math.max(this.renderer.settings.display.stretchForce, info.minStretchForce));
         }
+        this._scaleToForce(Math.max(this.renderer.settings.display.stretchForce, info.minStretchForce));
     }
 
     public addGlyph(bg: BeatContainerGlyphBase): void {
