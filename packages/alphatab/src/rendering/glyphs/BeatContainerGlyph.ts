@@ -22,6 +22,15 @@ import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
  * @internal
  */
 export abstract class BeatContainerGlyphBase extends Glyph {
+    // Per-beat effect-glyph overflow ranges captured during Phase 1
+    // (`doLayout`) and consumed during the per-beat skyline emission in
+    // `BarRendererBase.scaleToWidth`'s positioning walk. Stored directly on
+    // the container so the per-beat walk can read its own data without going
+    // through a beatId-keyed map on the renderer — which also removes the
+    // need for the `MultiBarRestBeatContainerGlyph.beatId === -1` guard
+    // (its array simply stays empty).
+    public pendingEffectOverflows: { minY: number; maxY: number }[] = [];
+
     public abstract get beatId(): number;
     public abstract get absoluteDisplayStart(): number;
     public abstract get displayDuration(): number;

@@ -138,10 +138,6 @@ export class BarRendererBase {
     public beatEffectsMinY = Number.NaN;
     public beatEffectsMaxY = Number.NaN;
 
-    /** Captured during effect glyph {@link doLayout}; flushed per-beat inside the
-     *  voiceContainer position-settling walk (see scaleToWidth's per-beat callback). */
-    private _pendingBeatEffectsByBeat: Map<number, { minY: number; maxY: number }[]> = new Map();
-
     private _barLocalSkyline: BarLocalSkyline | null = null;
     private _preBeatLocalSkyline: BarLocalSkyline | null = null;
     private _postBeatLocalSkyline: BarLocalSkyline | null = null;
@@ -202,7 +198,6 @@ export class BarRendererBase {
         this._barLocalSkyline?.reset();
         this._preBeatLocalSkyline?.reset();
         this._postBeatLocalSkyline?.reset();
-        this._pendingBeatEffectsByBeat.clear();
         this._dynamicSkylineGlyphs.length = 0;
     }
 
@@ -273,13 +268,8 @@ export class BarRendererBase {
 
     public registerBeatEffectOverflowsForBeat(beat: Beat, minY: number, maxY: number): void {
         this.registerBeatEffectOverflows(minY, maxY);
-        const id = beat.id;
-        let ranges = this._pendingBeatEffectsByBeat.get(id);
-        if (!ranges) {
-            ranges = [];
-            this._pendingBeatEffectsByBeat.set(id, ranges);
-        }
-        ranges.push({ minY, maxY });
+        const container = this.getBeatContainer(beat);
+        container?.pendingEffectOverflows.push({ minY, maxY });
     }
 
     public registerOverflowTop(topOverflow: number): boolean {
@@ -375,19 +365,16 @@ export class BarRendererBase {
                 }
             }
 
-            const beatId = beatContainer.beatId;
-            if (beatId >= 0) {
-                const pending = this._pendingBeatEffectsByBeat.get(beatId);
-                if (pending) {
-                    const pendingXStart = base;
-                    const pendingXEnd = base + beatContainer.width;
-                    for (const r of pending) {
-                        if (r.minY < 0) {
-                            this.insertSkylineTop(pendingXStart, pendingXEnd, r.minY * -1);
-                        }
-                        if (r.maxY > rendererBottom) {
-                            this.insertSkylineBottom(pendingXStart, pendingXEnd, r.maxY - rendererBottom);
-                        }
+            const pending = beatContainer.pendingEffectOverflows;
+            if (pending.length > 0) {
+                const pendingXStart = base;
+                const pendingXEnd = base + beatContainer.width;
+                for (const r of pending) {
+                    if (r.minY < 0) {
+                        this.insertSkylineTop(pendingXStart, pendingXEnd, r.minY * -1);
+                    }
+                    if (r.maxY > rendererBottom) {
+                        this.insertSkylineBottom(pendingXStart, pendingXEnd, r.maxY - rendererBottom);
                     }
                 }
             }
