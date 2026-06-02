@@ -217,9 +217,11 @@ export class HorizontalScreenLayout extends ScoreLayout {
     private _alignRenderers(): void {
         this.width = 0;
         const system = this._system!;
+        // §E Step 5b — single Phase-2 entry reset of cross-bar staff state.
+        // Was a per-staff call inside the loop; moved here so the reset is one
+        // documented invocation per system Phase-2 entry.
+        system.resetAllStavesSharedLayoutData();
         for (const s of system.allStaves) {
-            s.resetSharedLayoutData();
-
             let w = 0;
             for (const renderer of s.barRenderers) {
                 renderer.x = w;

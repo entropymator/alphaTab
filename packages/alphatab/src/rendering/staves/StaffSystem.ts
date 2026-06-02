@@ -762,6 +762,28 @@ export class StaffSystem {
         this._accoladeVisibilityFingerprint = visibilityFingerprint;
     }
 
+    /**
+     * §E Step 5b — Phase-2 entry reset hook for cross-bar staff state held in
+     * `RenderStaff._sharedLayoutData`. Called by each layout's Phase-2 entry
+     * (`VerticalLayoutBase._scaleToWidth`, `HorizontalScreenLayout._alignRenderers`)
+     * before any `alignGlyphs` runs, so the max-of-idempotent
+     * `EffectInfo.onAlignGlyphs` writers (see §E Step 5a audit in
+     * `EffectBandContainer.alignGlyphs`) start from a clean slate per cycle.
+     *
+     * The per-revert reset in `RenderStaff.revertLastBar` remains a separate,
+     * semantically-distinct call site — it rolls back the staff's slice of
+     * cross-bar state when a bar is reverted (max-of accumulators are
+     * monotonically non-decreasing; without per-revert reset the max from a
+     * reverted bar would stay inflated until the next cycle). Step 11's
+     * `StaffLayoutCycle` substate atomically reassigns the whole bag on resize
+     * and obsoletes this method; Step 5b is the intermediate consolidation.
+     */
+    public resetAllStavesSharedLayoutData(): void {
+        for (const s of this.allStaves) {
+            s.resetSharedLayoutData();
+        }
+    }
+
     private _computeVisibilityFingerprint(): string {
         let fingerprint = '';
         for (const s of this.allStaves) {
