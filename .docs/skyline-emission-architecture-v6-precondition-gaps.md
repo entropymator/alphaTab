@@ -89,3 +89,22 @@ The DAG simplifies. Step 3 no longer needs to coordinate with Step 2 (BarNumberG
 ## Lesson for v6 and future plans
 
 The review process verified internal consistency but not value-per-step. Future plans should add a per-step "what breaks if we skip this?" column. If the answer is "nothing measurable; we just like the cleaner shape," consider whether the step is dogma in disguise. The architecture's value is in closing real anti-patterns and replacing error-prone mechanisms — purity-for-purity's-sake earns its keep only when the impurity actually causes bugs.
+
+## Step 13 / 15 / 16 / 17 — deferred to a future session
+
+`feature/skyline-effects-2` paused at 15 commits past the handoff baseline. Pending steps (with their v6-adjusted scope notes):
+
+- **Step 13 — Phase API split.** v5 specifies a rename + structural split (`scaleToWidth` → positioning-only `spacedLayout` + emission-only `finalize`). The split adds a **new walk over beat containers in `finalize`** to do skyline emission outside the per-beat-callback in `spacedLayout`. This conflicts with the handoff's "no new DOM walks" rule (commit cfb80602 explicitly removed walks of this shape). Three v6 paths to evaluate:
+  - **Rename-only.** Method renames for readability; emission stays inline with positioning. C-1 closure is verbal not structural. ~200 LOC mechanical refactor across BarRendererBase + every subclass.
+  - **Full v5 split.** Adds the new walk in `finalize`. Closes C-1 strictly. Unblocks Steps 16/17 cleanly.
+  - **Skip.** Accept that the migration is "done" at the current closure level. Steps 16/17 would not be reachable in their v5 form.
+
+- **Step 15 — typed `_sharedLayoutData`.** Replace string-keyed map with a typed container. Today there's exactly ONE consumer (`TabWhammyEffectInfo`), so the typed container has one field. Marginal value as a stand-alone change; revisit if Step 16/17 add more consumers.
+
+- **Step 16 — `GroupedEffectGlyph` cross-renderer end-X via `populateSkyline?`.** Closes B.25. Hard prereq: Step 13. The `_populateSkylineSystemFinalize` list + dispatch list infrastructure landed in Step 3 — Step 16 wires up the SystemFinalize sub-step (ii) dispatch site and the `GroupedEffectGlyph.populateSkyline?` implementation.
+
+- **Step 17 — `BeamingHelper.drawingInfos` Route B.** Closes B.11. Hard prereq: Step 13.
+
+The pending steps' value-tier classification matters more than their plan order: **Step 16 and Step 17 are tier-1** (real architectural improvements over the existing `_dynamicSkylineGlyphs` / `alignWithBeats` mechanisms). Their cost is gated by Step 13. **Step 13 itself is tier 1 or tier 3 depending on which path** — full split is tier 1 if the new walk is acceptable, dogma otherwise. **Step 15 is tier 2/3** — defensible only if Step 16/17 add consumers.
+
+A future session should start by deciding Step 13's path, then chain accordingly. The architecture is sound at the current closure level (404/404 visual + 1187/1187 unit byte-identical); the remaining steps are improvements rather than fixes.
