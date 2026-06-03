@@ -392,6 +392,15 @@ export class BarRendererBase {
         this._postBeatGlyphs.x = this._preBeatGlyphs.x + this._preBeatGlyphs.width + containerWidth;
         this.width = width;
 
+        // §E Step 5c — single Phase-2-entry `alignGlyphs` call. Was previously
+        // invoked from doLayout, applyLayoutingInfo, and reLayout as well; per
+        // the Step 5a audit (see EffectBandContainer.alignGlyphs doc-comment
+        // table) every `EffectInfo.onAlignGlyphs` override is max-of-idempotent,
+        // so a single invocation here suffices. The `_sharedLayoutData` reset
+        // that feeds these calls is consolidated in Step 5b
+        // (`StaffSystem.resetAllStavesSharedLayoutData` invoked just before
+        // this method runs in `VerticalLayoutBase._scaleToWidth` /
+        // `HorizontalScreenLayout._alignRenderers`).
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
@@ -523,8 +532,6 @@ export class BarRendererBase {
         this.width = Math.ceil(this._postBeatGlyphs.x + this._postBeatGlyphs.width);
         this.computedWidth = this.width;
 
-        this.topEffects.alignGlyphs();
-        this.bottomEffects.alignGlyphs();
         this._registerStaffOverflow();
 
         return true;
@@ -668,10 +675,6 @@ export class BarRendererBase {
         this.createPostBeatGlyphs();
 
         this._registerLayoutingInfo();
-
-        // Align so band-internal x/width are settled before scale/finalize.
-        this.topEffects.alignGlyphs();
-        this.bottomEffects.alignGlyphs();
 
         this.updateSizes();
 
@@ -940,8 +943,6 @@ export class BarRendererBase {
     public reLayout(): void {
         this.topEffects.height = 0;
         this.bottomEffects.height = 0;
-        this.topEffects.alignGlyphs();
-        this.bottomEffects.alignGlyphs();
         this.updateSizes();
 
         // there are some glyphs which are shown only for renderers at the line start, so we simply recreate them
