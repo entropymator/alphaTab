@@ -275,13 +275,6 @@ export class RenderStaff {
         });
     }
 
-    public resetSkylines(): void {
-        this._systemSkyline?.reset();
-        for (const renderer of this.barRenderers) {
-            renderer.resetBarLocalSkyline();
-        }
-    }
-
     /**
      * Performs an early calculation of the expected staff height for the size calculation in the
      * accolade (e.g. for braces). This typically happens after the first bar renderers were created

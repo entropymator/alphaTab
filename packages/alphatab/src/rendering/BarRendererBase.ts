@@ -194,13 +194,38 @@ export class BarRendererBase {
         return this._postBeatGlyphs.x;
     }
 
-    public resetBarLocalSkyline(): void {
+    /**
+     * §E Step 11 (slim) — atomic per-cycle reset for this renderer.
+     *
+     * Every field listed here is per-cycle state that must be cleared at the
+     * start of a fresh layout cycle (doLayout entry). New per-cycle fields
+     * added in future work MUST be added to this method to preserve the
+     * atomic-reset contract — the field-by-field enumeration is what catches
+     * cross-cycle bleed (B.9 / B.31) at refactor time rather than as a latent
+     * visual bug.
+     *
+     * Fields NOT in this method survive across cycles by design:
+     *   - `voiceContainer`, `helpers`, `_postBeatGlyphs` — Phase-1 content,
+     *     rebuilt only if the bar's model changes.
+     *   - `_preBeatGlyphs` — conditionally rebuilt by `recreatePreBeatGlyphs`
+     *     when `isFirstOfStaff` flips (B.4; Step 10 future work consolidates
+     *     this into a substate-discard pattern).
+     *   - `bar`, `staff`, `scoreRenderer`, model refs — owned across cycles.
+     *
+     * The reLayout path (resize) currently does NOT call this method —
+     * skylines and ties carry across cycles on resize, which is B.9 / B.31
+     * territory. Step 10's substate-discard would close this; for now Step 11
+     * is "slim" — document the contract, consolidate the existing resets,
+     * leave the resize-path gap as a known issue.
+     */
+    public resetCycleState(): void {
         this._barLocalSkyline?.reset();
         this._preBeatLocalSkyline?.reset();
         this._postBeatLocalSkyline?.reset();
         this._dynamicSkylineGlyphs.length = 0;
         this._populateSkylineFinalized.length = 0;
         this._populateSkylineSystemFinalize.length = 0;
+        this._ties = [];
     }
 
     /**
@@ -715,13 +740,13 @@ export class BarRendererBase {
             return;
         }
         this.helpers.initialize();
-        this._ties = [];
         this._preBeatGlyphs.renderer = this;
         this.voiceContainer.renderer = this;
         this._postBeatGlyphs.renderer = this;
         this.topEffects.doLayout();
         this.bottomEffects.doLayout();
-        this.resetBarLocalSkyline();
+        // §E Step 11 (slim) — atomic per-cycle reset; covers _ties too.
+        this.resetCycleState();
 
         this.createPreBeatGlyphs();
         this.createBeatGlyphs();
