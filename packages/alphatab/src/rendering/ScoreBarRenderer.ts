@@ -148,9 +148,9 @@ export class ScoreBarRenderer extends LineBarRenderer {
         return this.getScoreY(this.bar.staff.standardNotationLineCount - 1);
     }
 
-    public override applyLayoutingInfo(): boolean {
-        const result = super.applyLayoutingInfo();
-        if (result && this.bar.isMultiVoice) {
+    public override applyLayoutingInfo(): void {
+        super.applyLayoutingInfo();
+        if (this.bar.isMultiVoice) {
             // Scalar overflow only; per-x emits later in populateBarLocalSkyline.
             const top: number = this.getScoreY(-2);
             const bottom: number = this.getScoreY(this.heightLineCount * 2);
@@ -162,7 +162,6 @@ export class ScoreBarRenderer extends LineBarRenderer {
                 this.registerOverflowBottom(Math.abs(minMax[1]) - bottom);
             }
         }
-        return result;
     }
 
     // Multi-voice rest displacement already lives in the beat container bbox; the base sweep captures it.

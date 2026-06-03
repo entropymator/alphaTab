@@ -467,7 +467,15 @@ export class StaffSystem {
         let totalContentWidth = 0;
 
         for (const mb of this.masterBarsRenderers) {
-            if (mb.layoutingInfo.computedWithMinDuration > this.minDuration) {
+            // §E Step 8b — gate the per-renderer re-apply on "this bar's info
+            // was actually recomputed in this reconcile loop." Previously the
+            // call ran for every renderer of every bar and the version-cookie
+            // short-circuit inside `applyLayoutingInfo` did the no-op skipping;
+            // with the cookie deleted, the caller takes responsibility. Bars
+            // not affected by the min-duration change keep their previous
+            // applied positions (consistent with their unchanged broker state).
+            const wasRecomputed = mb.layoutingInfo.computedWithMinDuration > this.minDuration;
+            if (wasRecomputed) {
                 mb.layoutingInfo.recomputeSpringConstants(this.minDuration);
             }
 
@@ -475,7 +483,9 @@ export class StaffSystem {
             let maxContent = 0;
             let realWidth = 0;
             for (const r of mb.renderers) {
-                r.applyLayoutingInfo();
+                if (wasRecomputed) {
+                    r.applyLayoutingInfo();
+                }
                 if (r.computedWidth > realWidth) {
                     realWidth = r.computedWidth;
                 }

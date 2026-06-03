@@ -545,8 +545,6 @@ export class BarRendererBase {
         }
     }
 
-    private _appliedLayoutingInfo: number = 0;
-
     public afterReverted() {
         this.staff = undefined;
         this.registerMultiSystemSlurs(undefined);
@@ -560,12 +558,18 @@ export class BarRendererBase {
         this._registerStaffOverflow();
     }
 
-    public applyLayoutingInfo(): boolean {
-        if (this._appliedLayoutingInfo >= this.layoutingInfo.version) {
-            return false;
-        }
-
-        this._appliedLayoutingInfo = this.layoutingInfo.version;
+    /**
+     * Pull the current `BarLayoutingInfo` broker state into this renderer's
+     * positions (pre-beat width, voice-container x, post-beat x/width, total
+     * width). §E Step 8b deleted the `_appliedLayoutingInfo` version cookie
+     * that previously short-circuited this method: every call now runs the
+     * body unconditionally. Apply is value-idempotent on a stable broker (see
+     * [reconcile-min-duration.md §3](.docs/investigations/reconcile-min-duration.md)),
+     * so callers that want to skip work for not-actually-dirty bars must gate
+     * the call themselves — see `StaffSystem.reconcileMinDurationIfDirty`'s
+     * per-bar `wasRecomputed` predicate.
+     */
+    public applyLayoutingInfo(): void {
         // if we need additional space in the preBeat group we simply
         // add a new spacer
         this._preBeatGlyphs.width = this.layoutingInfo.preBeatSize;
@@ -582,8 +586,6 @@ export class BarRendererBase {
         this.computedWidth = this.width;
 
         this._registerStaffOverflow();
-
-        return true;
     }
 
     public isFinalized: boolean = false;
