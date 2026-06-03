@@ -451,7 +451,7 @@ export class BarRendererBase {
 
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
-                h.alignWithBeats();
+                h.invalidateDrawingInfos();
                 this.emitHelperSkyline(h);
             }
         }

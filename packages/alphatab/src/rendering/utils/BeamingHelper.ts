@@ -8,7 +8,6 @@ import type { Note } from '@coderline/alphatab/model/Note';
 import type { Staff } from '@coderline/alphatab/model/Staff';
 import type { Voice } from '@coderline/alphatab/model/Voice';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
-import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { AccidentalHelper } from '@coderline/alphatab/rendering/utils/AccidentalHelper';
 import type { BeamDirection } from '@coderline/alphatab/rendering/utils/BeamDirection';
 import type { BeamingRuleLookup } from '@coderline/alphatab/rendering/utils/BeamingRuleLookup';
@@ -106,12 +105,30 @@ export class BeamingHelper {
         this._beamingRuleLookup = beamingRuleLookup;
     }
 
-    public alignWithBeats() {
-        for (const v of this.drawingInfos.values()) {
-            v.startX = this._renderer.getBeatX(v.startBeat!, BeatXPosition.Stem);
-            v.endX = this._renderer.getBeatX(v.endBeat!, BeatXPosition.Stem);
-            this.drawingInfos.clear();
-        }
+    /**
+     * §E Step 17 (slim) — Phase-2-entry invalidation of cached
+     * {@link drawingInfos}. The OLD `alignWithBeats` body iterated
+     * `drawingInfos.values()` to refresh `startX`/`endX` from
+     * `getBeatX(..., Stem)` AND called `this.drawingInfos.clear()` from
+     * inside the loop — the mid-iteration clear exited the iterator after
+     * one entry, so the X-update was dead code: the net effect was
+     * `drawingInfos.clear()`. Renamed and reduced to that single
+     * operation. Phase-2 emit (`emitHelperSkyline` →
+     * `_computeBeamingBounds` → `ensureBeamDrawingInfo`) repopulates from
+     * scratch with post-spring X.
+     *
+     * v5 Step 17 specified Route B (delete `ensureBeamDrawingInfo` cache
+     * miss entirely; eager-populate in Phase 2; compute overflow probe
+     * directly via `getFlagTopY/Bottom + max-slope clamp` without
+     * middle-element shifts). Deferred as tier-3 — the direct-compute
+     * probe trades precision for a beam-cache C-1 closure that has no
+     * empirical payoff against current code. The cache-miss rebuild in
+     * `_computeBeamingBounds` remains the source of truth for Y; this
+     * invalidation seam is the only mutation point in the cache's
+     * lifecycle outside that rebuild.
+     */
+    public invalidateDrawingInfos() {
+        this.drawingInfos.clear();
     }
 
     public finish(): void {
