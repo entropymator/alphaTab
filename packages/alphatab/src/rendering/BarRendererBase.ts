@@ -11,7 +11,7 @@ import {
     BeatContainerGlyph,
     type BeatContainerGlyphBase
 } from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
-import type { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import type { Glyph, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import { LeftToRightLayoutingGlyphGroup } from '@coderline/alphatab/rendering/glyphs/LeftToRightLayoutingGlyphGroup';
 import { MultiVoiceContainerGlyph } from '@coderline/alphatab/rendering/glyphs/MultiVoiceContainerGlyph';
 import { ContinuationTieGlyph, type ITieGlyph, type TieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
@@ -199,6 +199,8 @@ export class BarRendererBase {
         this._preBeatLocalSkyline?.reset();
         this._postBeatLocalSkyline?.reset();
         this._dynamicSkylineGlyphs.length = 0;
+        this._populateSkylineFinalized.length = 0;
+        this._populateSkylineSystemFinalize.length = 0;
     }
 
     /**
@@ -207,11 +209,38 @@ export class BarRendererBase {
      * etc.). Such glyphs register themselves here from their doLayout, and we
      * re-emit their per-x skyline contribution at scaleToWidth time when their
      * bbox returns its final value.
+     *
+     * §E Step 3 superseded this registry with the phase-typed
+     * {@link Glyph.populateSkyline} hook (see {@link _populateSkyline_finalized} /
+     * {@link _populateSkyline_systemFinalize} below). `BarTempoGlyph` migrated;
+     * `GroupedEffectGlyph` migrates in Step 16. `BarNumberGlyph` remains as the
+     * sole surviving tenant per v6 — its bbox override is a documented
+     * exception (per-staff visibility suppression) rather than a side-channel
+     * for staleness; the registry's deferred-emit covers the first-bar-of-
+     * first-system staleness window when `firstVisibleStaff === undefined`.
      */
     private readonly _dynamicSkylineGlyphs: { glyph: Glyph; group: 'pre' | 'post' }[] = [];
 
     public registerDynamicSkylineGlyph(glyph: Glyph, group: 'pre' | 'post' = 'pre'): void {
         this._dynamicSkylineGlyphs.push({ glyph, group });
+    }
+
+    /**
+     * §E Step 3 — phase-typed dispatch list for glyphs that opt in via
+     * {@link Glyph.populateSkyline}. Phase `'finalized'` fires at the end of
+     * `scaleToWidth` (Phase 3). Phase `'systemFinalize'` fires at SystemFinalize
+     * sub-step (ii) and is currently unused; Step 16 adds the dispatch site and
+     * the first tenant (`GroupedEffectGlyph`).
+     */
+    private readonly _populateSkylineFinalized: Glyph[] = [];
+    private readonly _populateSkylineSystemFinalize: Glyph[] = [];
+
+    public registerPopulateSkyline(glyph: Glyph, phase: SkylinePhase): void {
+        if (phase === 'finalized') {
+            this._populateSkylineFinalized.push(glyph);
+        } else {
+            this._populateSkylineSystemFinalize.push(glyph);
+        }
     }
 
     public get topOverflow() {
@@ -307,13 +336,23 @@ export class BarRendererBase {
         return changed;
     }
 
-    protected insertSkylineTop(xStart: number, xEnd: number, topHeight: number): void {
+    /**
+     * Emit a top-skyline segment into `barLocalSkyline`. Public to allow
+     * {@link Glyph.populateSkyline} tenants to contribute from outside the
+     * renderer class (§E Step 3).
+     */
+    public insertSkylineTop(xStart: number, xEnd: number, topHeight: number): void {
         if (topHeight > 0 && xEnd > xStart) {
             this.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, topHeight, 0);
         }
     }
 
-    protected insertSkylineBottom(xStart: number, xEnd: number, bottomHeight: number): void {
+    /**
+     * Emit a bottom-skyline segment into `barLocalSkyline`. Public to allow
+     * {@link Glyph.populateSkyline} tenants to contribute from outside the
+     * renderer class (§E Step 3).
+     */
+    public insertSkylineBottom(xStart: number, xEnd: number, bottomHeight: number): void {
         if (bottomHeight > 0 && xEnd > xStart) {
             this.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, bottomHeight, 0);
         }
@@ -408,6 +447,13 @@ export class BarRendererBase {
         this.bottomEffects.alignGlyphs();
 
         this._emitDynamicSkylineGlyphs(rendererBottom);
+        // §E Step 3 — Phase 3 `populateSkyline?` dispatch. Glyphs register here
+        // from their doLayout; the hook fires once at the end of scaleToWidth
+        // when renderer-local positions are settled. Pre-Step-13 this dispatch
+        // lives here; Step 13's `finalize` extraction will move it there.
+        for (const g of this._populateSkylineFinalized) {
+            g.populateSkyline?.({ phase: 'finalized', renderer: this });
+        }
         this.emitSubclassBarLocalSkyline();
     }
 

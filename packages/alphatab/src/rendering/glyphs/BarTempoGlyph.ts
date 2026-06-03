@@ -1,8 +1,9 @@
 import type { Automation } from '@coderline/alphatab/model/Automation';
 import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
-import { CanvasHelper, TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
+import { CanvasHelper, type ICanvas, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
+import type { SkylineCtx } from '@coderline/alphatab/rendering/glyphs/Glyph';
 
 interface TempoAutomationLayout {
     textWidth: number;
@@ -28,26 +29,23 @@ export class BarTempoGlyph extends EffectGlyph {
 
     public override doLayout(): void {
         super.doLayout();
-        // bbox depends on the renderer's `getRatioPositionX` which uses
-        // voiceContainer.x / _postBeatGlyphs.x — final only at scaleToWidth.
-        this.renderer.registerDynamicSkylineGlyph(this, 'pre');
+        // §E Step 3 — bbox depends on the renderer's `getRatioPositionX` which
+        // uses voiceContainer.x / _postBeatGlyphs.x (final only at scaleToWidth).
+        // Register for the Phase 3 `populateSkyline?` dispatch instead of the
+        // OLD `_dynamicSkylineGlyphs` registry.
+        this.renderer.registerPopulateSkyline(this, 'finalized');
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
-        this._symbolWidth =
-            this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
+        this._symbolWidth = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
         // Mirrors the text-less branch in `paint`: engraving-settings width, not smufl metric.
-        this._noteShift =
-            res.engravingSettings.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! / 2;
-        this.height =
-            this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
+        this._noteShift = res.engravingSettings.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! / 2;
+        this.height = this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
 
         const canvas = this.renderer.scoreRenderer.canvas!;
         canvas.font = res.elementFonts.get(NotationElement.EffectMarker)!;
         this._automationLayouts = [];
         for (const automation of this._tempoAutomations) {
-            const textWidth = automation.text
-                ? canvas.measureText(`${automation.text} `).width
-                : 0;
+            const textWidth = automation.text ? canvas.measureText(`${automation.text} `).width : 0;
             const valueWidth = canvas.measureText(` = ${automation.value.toString()}`).width;
             this._automationLayouts.push({ textWidth, valueWidth });
         }
@@ -82,6 +80,26 @@ export class BarTempoGlyph extends EffectGlyph {
             }
         }
         return Number.isFinite(max) ? max : this.x;
+    }
+
+    public override populateSkyline(ctx: SkylineCtx): void {
+        // Mirrors the OLD `_emitDynamicSkylineGlyphs` body for a `group='pre'`
+        // tenant: emit the (now-final) bbox extent into the renderer's
+        // bar-local skyline (top/bottom).
+        const rendererBottom = ctx.renderer.height;
+        const topY = this.getBoundingBoxTop();
+        const bottomY = this.getBoundingBoxBottom();
+        const xL = this.getBoundingBoxLeft();
+        const xR = this.getBoundingBoxRight();
+        if (xR <= xL) {
+            return;
+        }
+        if (topY < 0) {
+            ctx.renderer.insertSkylineTop(xL, xR, topY * -1);
+        }
+        if (bottomY > rendererBottom) {
+            ctx.renderer.insertSkylineBottom(xL, xR, bottomY - rendererBottom);
+        }
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
