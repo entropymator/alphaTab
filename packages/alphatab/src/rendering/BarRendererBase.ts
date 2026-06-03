@@ -335,8 +335,11 @@ export class BarRendererBase {
 
         // barLocalSkyline holds scale-dependent emissions (voiceContainer beats,
         // beam helpers, pending effect ranges, dynamic-bbox glyphs). Reset here
-        // so multi-call scaleToWidth (alignRenderers) doesn't accumulate stale
-        // segments. pre/postBeatLocalSkyline stay (managed by calculateOverflows).
+        // as a defensive zero point so this method is idempotent under repeated
+        // invocation. After §E Step 7, `scaleToWidth` is called exactly once
+        // per renderer per cycle (HorizontalScreenLayout's second call site in
+        // `_alignRenderers` was deleted); the reset is now strictly defensive.
+        // pre/postBeatLocalSkyline stay (managed by calculateOverflows).
         this.barLocalSkyline.reset();
 
         const rendererBottom = this.height;

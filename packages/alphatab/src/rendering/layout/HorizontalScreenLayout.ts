@@ -176,9 +176,15 @@ export class HorizontalScreenLayout extends ScoreLayout {
         for (const r of result.renderers) {
             const barDisplayWidth =
                 r.staff!.system.staves.length > 1 ? r.bar.masterBar.displayWidth : r.bar.displayWidth;
-            if (barDisplayWidth > 0) {
-                r.scaleToWidth(barDisplayWidth);
-            }
+            // §E Step 7 — scaleToWidth must run exactly once per renderer per
+            // cycle. If the bar carries an explicit displayWidth, use it; else
+            // re-scale to the renderer's natural (post-doLayout) width so beam
+            // helpers and Phase-2 alignGlyphs settle. The OLD code skipped
+            // scaleToWidth here when displayWidth was 0 and relied on a
+            // redundant call in `_alignRenderers` to handle that case — Step 7
+            // moves the fallback inline so `_alignRenderers` no longer needs
+            // a second invocation.
+            r.scaleToWidth(barDisplayWidth > 0 ? barDisplayWidth : r.width);
             const w = r.x + r.width;
             if (w > result.width) {
                 result.width = w;
@@ -217,18 +223,23 @@ export class HorizontalScreenLayout extends ScoreLayout {
     private _alignRenderers(): void {
         this.width = 0;
         const system = this._system!;
-        // §E Step 5b — single Phase-2 entry reset of cross-bar staff state.
-        // Was a per-staff call inside the loop; moved here so the reset is one
-        // documented invocation per system Phase-2 entry.
-        system.resetAllStavesSharedLayoutData();
+        // §E Step 7 — Phase 2 (scaleToWidth, which also runs alignGlyphs per
+        // §E Step 5c) has already executed once per renderer in `_scaleBars`
+        // immediately after each `addBars`. The previous version of this
+        // method called `renderer.scaleToWidth(renderer.width)` per renderer
+        // as a second pass (load-bearing only for bars with displayWidth=0,
+        // now handled by `_scaleBars`'s fallback) and `system.resetAllStavesSharedLayoutData()`
+        // before that pass; both have moved or retired. No reset is needed
+        // here because HorizontalScreenLayout creates a fresh StaffSystem per
+        // render (`supportsResize === false`), so `_sharedLayoutData` starts
+        // empty at the first `_scaleBars` and accumulates correctly across
+        // the per-bar alignGlyphs invocations. This loop now only does final
+        // x/y positioning + width accumulation.
         for (const s of system.allStaves) {
             let w = 0;
             for (const renderer of s.barRenderers) {
                 renderer.x = w;
                 renderer.y = s.topPadding + s.topOverflow;
-                // note: this will ensure aspects like beaming helpers
-                // and overflows are prepared for finalization
-                renderer.scaleToWidth(renderer.width);
                 w += renderer.width;
             }
 

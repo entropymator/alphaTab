@@ -1,0 +1,137 @@
+/**
+ * §H Step 7 sentinel — `BarRendererBase.scaleToWidth` runs at most once per
+ * renderer per cycle, at final width.
+ *
+ * After v5 Step 7, `HorizontalScreenLayout._alignRenderers` no longer invokes
+ * `renderer.scaleToWidth(renderer.width)` a second time; the per-bar call in
+ * `_scaleBars` is the sole invocation (with a fallback to the natural width
+ * when `bar.displayWidth === 0`). VerticalLayoutBase's `_scaleToWidth` already
+ * called scaleToWidth exactly once per renderer per cycle. The §H Step 7
+ * invariant: runtime counter == 1 per renderer per cycle, both layouts.
+ *
+ * Implementation: temporarily replace `BarRendererBase.prototype.scaleToWidth`
+ * with a wrapper that increments a Map<renderer, count>, runs the render, then
+ * restores the original. Assertions iterate systems → staves → barRenderers
+ * and confirm each renderer was scaled exactly once.
+ */
+
+import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
+import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
+import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
+import { ByteBuffer } from '@coderline/alphatab/io/ByteBuffer';
+import { LayoutMode } from '@coderline/alphatab/LayoutMode';
+import { JsonConverter } from '@coderline/alphatab/model/JsonConverter';
+import type { Score } from '@coderline/alphatab/model/Score';
+import { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
+import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
+import type { ScoreRendererWrapper } from '@coderline/alphatab/rendering/ScoreRendererWrapper';
+import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
+import { Settings } from '@coderline/alphatab/Settings';
+import { describe, expect, it } from 'vitest';
+import { TestUiFacade } from '../visualTests/TestUiFacade';
+import { VisualTestHelper } from '../visualTests/VisualTestHelper';
+
+async function loadScore(tex: string): Promise<Score> {
+    const settings = new Settings();
+    const importer = new AlphaTexImporter();
+    importer.init(ByteBuffer.fromString(tex), settings);
+    return importer.readScore();
+}
+
+function collectRenderers(api: AlphaTabApiBase<unknown>): BarRendererBase[] {
+    const wrapper = api.renderer as unknown as ScoreRendererWrapper;
+    const inner = wrapper.instance as unknown as ScoreRenderer;
+    // VerticalLayoutBase exposes `systems: StaffSystem[]`; HorizontalScreenLayout
+    // exposes a single private `_system: StaffSystem | null`. Try both.
+    const layout = inner.layout as unknown as Record<string, unknown>;
+    const systemsArray = layout.systems as readonly StaffSystem[] | undefined;
+    const singleSystem = layout._system as StaffSystem | null | undefined;
+    const systems: StaffSystem[] = systemsArray
+        ? [...systemsArray]
+        : singleSystem
+          ? [singleSystem]
+          : [];
+    const out: BarRendererBase[] = [];
+    for (const s of systems) {
+        for (const g of s.staves) {
+            for (const staff of g.staves) {
+                for (const r of staff.barRenderers) {
+                    out.push(r);
+                }
+            }
+        }
+    }
+    return out;
+}
+
+async function renderAndCount(
+    tex: string,
+    width: number,
+    layoutMode: LayoutMode
+): Promise<{ counts: Map<BarRendererBase, number>; renderers: BarRendererBase[] }> {
+    await VisualTestHelper.prepareAlphaSkia();
+    const score = await loadScore(tex);
+    const settings = new Settings();
+    settings.display.layoutMode = layoutMode;
+    VisualTestHelper.prepareSettingsForTest(settings);
+
+    const counts = new Map<BarRendererBase, number>();
+    const originalScaleToWidth = BarRendererBase.prototype.scaleToWidth;
+    BarRendererBase.prototype.scaleToWidth = function (this: BarRendererBase, w: number): void {
+        counts.set(this, (counts.get(this) ?? 0) + 1);
+        originalScaleToWidth.call(this, w);
+    };
+
+    const uiFacade = new TestUiFacade();
+    uiFacade.rootContainer.width = width;
+    const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
+
+    try {
+        await new Promise<void>((resolve, reject) => {
+            api.renderer.postRenderFinished.on(() => resolve());
+            api.error.on(e => {
+                reject(
+                    new AlphaTabError(AlphaTabErrorType.General, `Render failed (${e.message})`, e)
+                );
+            });
+            const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
+            api.renderScore(renderScore, [0]);
+            setTimeout(() => reject(new Error('render timed out')), 5000);
+        });
+        const renderers = collectRenderers(api);
+        return { counts, renderers };
+    } finally {
+        BarRendererBase.prototype.scaleToWidth = originalScaleToWidth;
+        api.destroy();
+    }
+}
+
+describe('ScaleToWidthCallCount', () => {
+    it('§H Step 7: vertical layout — scaleToWidth runs exactly once per renderer per cycle', async () => {
+        const tex = `
+            \\track "T1"
+            \\staff {score}
+            C4.4 *4 | C4.4 *4 | C4.4 *4 | C4.4 *4
+        `;
+        const { counts, renderers } = await renderAndCount(tex, 1500, LayoutMode.Page);
+
+        expect(renderers.length).toBeGreaterThan(0);
+        for (const r of renderers) {
+            expect(counts.get(r) ?? 0).toBe(1);
+        }
+    });
+
+    it('§H Step 7: horizontal layout — scaleToWidth runs exactly once per renderer per cycle', async () => {
+        const tex = `
+            \\track "T1"
+            \\staff {score}
+            C4.4 *4 | C4.4 *4 | C4.4 *4
+        `;
+        const { counts, renderers } = await renderAndCount(tex, 1500, LayoutMode.Horizontal);
+
+        expect(renderers.length).toBeGreaterThan(0);
+        for (const r of renderers) {
+            expect(counts.get(r) ?? 0).toBe(1);
+        }
+    });
+});
