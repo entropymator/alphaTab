@@ -1027,7 +1027,13 @@ export class BarRendererBase {
         // but we only need to recreate them for the renderers that were the first of the line or are now the first of the line
         if ((this.wasFirstOfStaff && !this.isFirstOfStaff) || (!this.wasFirstOfStaff && this.isFirstOfStaff)) {
             this.recreatePreBeatGlyphs();
-            this._postBeatGlyphs.doLayout();
+            // §E Step 10 (slim) — `_postBeatGlyphs.doLayout()` deleted here
+            // (B.24): `LeftToRightLayoutingGlyphGroup.doLayout` is empty, so
+            // the call was dead code. The full Step 10 substate-discard
+            // pattern is dogma against the current implementation: the same
+            // operation `recreatePreBeatGlyphs` performs IS a substate
+            // discard in everything but name. v6 retains the explicit method
+            // name as more readable than `cycle._preBeatGlyphs = …`.
         }
 
         this._registerLayoutingInfo();
