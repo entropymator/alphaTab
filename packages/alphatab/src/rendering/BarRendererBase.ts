@@ -747,6 +747,27 @@ export class BarRendererBase {
         }
     }
 
+    /**
+     * §E Step 16 / §D.6 sub-step (ii) — dispatch `populateSkyline?` for glyphs
+     * registered at the `'systemFinalize'` phase. Cross-renderer chain walks
+     * (e.g. `GroupedEffectGlyph`) rely on every renderer in the staff having
+     * `isFinalized = true`, set in sub-step (i). Clears each band's
+     * cycle-scoped published span list before dispatch so resize doesn't
+     * accumulate stale entries; the dispatch then republishes from a fully
+     * finalized chain.
+     */
+    public dispatchPopulateSkylineSystemFinalize(): void {
+        for (const band of this.topEffects.bands) {
+            band.clearPublishedSpans();
+        }
+        for (const band of this.bottomEffects.bands) {
+            band.clearPublishedSpans();
+        }
+        for (const g of this._populateSkylineSystemFinalize) {
+            g.populateSkyline?.({ phase: 'systemFinalize', renderer: this });
+        }
+    }
+
     private _registerStaffOverflow() {
         this.staff!.registerOverflowTop(this.topOverflow);
         this.staff!.registerOverflowBottom(this.bottomOverflow);

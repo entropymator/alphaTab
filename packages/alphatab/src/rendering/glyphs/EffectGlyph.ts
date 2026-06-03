@@ -1,4 +1,5 @@
 import type { Beat } from '@coderline/alphatab/model/Beat';
+import type { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
 
 /**
@@ -23,6 +24,14 @@ export class EffectGlyph extends Glyph {
      * the effect glyph is expanded when using {@link EffectBarGlyphSizing.groupedOnBeat}.
      */
     public previousGlyph: EffectGlyph | null = null;
+
+    /**
+     * Back-reference to the owning {@link EffectBand}, set in
+     * {@link EffectBand._createOrResizeGlyph}. `GroupedEffectGlyph`'s
+     * `populateSkyline?` (Step 16) uses this to publish the chain's true
+     * cross-renderer span range without a band-of-glyph reverse map.
+     */
+    public band: EffectBand | null = null;
 
     public constructor(x: number = 0, y: number = 0) {
         super(x, y);

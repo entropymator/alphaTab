@@ -29,8 +29,25 @@ export class EffectBand extends Glyph {
 
     public placedMagnitude: number = 0;
 
+    /**
+     * Cross-renderer span ranges published by {@link GroupedEffectGlyph}'s
+     * `populateSkyline?` at SystemFinalize sub-step (ii). The chain head
+     * publishes its true painted xEnd (which may exceed `this.renderer.width`)
+     * so {@link computeLocalXRange} reflects the chain's full painted span at
+     * placement time. Cleared per cycle by {@link clearPublishedSpans}.
+     */
+    private _publishedSpans: { xStart: number; xEnd: number }[] = [];
+
     public get container(): EffectBandContainer {
         return this._container;
+    }
+
+    public publishSpanRange(xStart: number, xEnd: number): void {
+        this._publishedSpans.push({ xStart, xEnd });
+    }
+
+    public clearPublishedSpans(): void {
+        this._publishedSpans.length = 0;
     }
 
     public constructor(voice: Voice, info: EffectInfo, container: EffectBandContainer) {
@@ -137,6 +154,7 @@ export class EffectBand extends Glyph {
                 g = this.info.createNewGlyph(this.renderer, b);
                 g.renderer = this.renderer;
                 g.beat = b;
+                g.band = this;
                 g.doLayout();
                 this._effectGlyphs[b.voice.index].set(b.index, g);
                 this._uniqueEffectGlyphs[b.voice.index].push(g);
@@ -164,6 +182,7 @@ export class EffectBand extends Glyph {
                 g = this.info.createNewGlyph(this.renderer, b);
                 g.renderer = this.renderer;
                 g.beat = b;
+                g.band = this;
                 g.doLayout();
                 this._effectGlyphs[b.voice.index].set(b.index, g);
                 this._uniqueEffectGlyphs[b.voice.index].push(g);
@@ -267,6 +286,14 @@ export class EffectBand extends Glyph {
                     }
                 }
             }
+            for (const span of this._publishedSpans) {
+                if (span.xStart < xStart) {
+                    xStart = span.xStart;
+                }
+                if (span.xEnd > xEnd) {
+                    xEnd = span.xEnd;
+                }
+            }
             out.xStart = xStart;
             out.xEnd = xEnd;
             return true;
@@ -283,6 +310,20 @@ export class EffectBand extends Glyph {
                 if (right > max) {
                     max = right;
                 }
+            }
+        }
+        // §E Step 16 — fold cross-renderer chain spans (published by
+        // `GroupedEffectGlyph.populateSkyline?` at SystemFinalize sub-step (ii))
+        // into the band's placement xRange. The chain head's published xEnd may
+        // exceed `this.renderer.width`; placement composes the absolute window
+        // as `renderer.x + xEnd`, which is what closes B.25 — subsequent bands
+        // querying intermediate renderer columns see the chain's painted area.
+        for (const span of this._publishedSpans) {
+            if (span.xStart < min) {
+                min = span.xStart;
+            }
+            if (span.xEnd > max) {
+                max = span.xEnd;
             }
         }
         if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
