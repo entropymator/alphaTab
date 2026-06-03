@@ -579,10 +579,12 @@ export class BarRendererBase {
         container.x = this._preBeatGlyphs.x + this._preBeatGlyphs.width;
         container.applyLayoutingInfo(this.layoutingInfo);
 
-        // on the post glyphs we add the spacing before all other glyphs
-        this._postBeatGlyphs.x = Math.floor(container.x + container.width);
+        // §E Step 9 — `_postBeatGlyphs.x` is single-write at end of Phase 2
+        // (`scaleToWidth`). Compute postBeatX locally for the
+        // computedWidth/width calculation without writing to the field.
         this._postBeatGlyphs.width = this.layoutingInfo.postBeatSize;
-        this.width = Math.ceil(this._postBeatGlyphs.x + this._postBeatGlyphs.width);
+        const postBeatX = Math.floor(container.x + container.width);
+        this.width = Math.ceil(postBeatX + this._postBeatGlyphs.width);
         this.computedWidth = this.width;
 
         this._registerStaffOverflow();
