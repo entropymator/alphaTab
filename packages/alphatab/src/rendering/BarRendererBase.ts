@@ -704,26 +704,47 @@ export class BarRendererBase {
         return didChangeOverflows;
     }
 
-    public finalizeRenderer(): boolean {
+    /**
+     * §E Step 12 / §D.6 sub-step (i) — per-renderer finalize-minus-ties.
+     *
+     * Sets `isFinalized = true` so cross-renderer chain walks (Step 16's
+     * `GroupedEffectGlyph` `populateSkyline?`) can rely on every renderer
+     * in the staff being finalized before sub-step (ii) reads their state.
+     * Tie writes are split out to {@link finalizeTies} (sub-step ii) so the
+     * "set isFinalized before any cross-renderer dependency reads it"
+     * ordering holds across the whole staff.
+     */
+    public finalizeRendererMinusTies(): void {
         this.isFinalized = true;
+    }
 
+    /**
+     * §E Step 12 / §D.6 sub-step (ii) — per-renderer tie writes.
+     *
+     * Runs `_finalizeTies` on own ties + multi-system slurs (which may write
+     * into spanned renderers' `barLocalSkyline`s). When the writes change
+     * THIS renderer's overflows, re-register with the staff so sub-step (iii)
+     * sees the updated state.
+     *
+     * The OLD `needsSecondPass` outer loop in `RenderStaff.finalizeStaff`
+     * (which re-ran finalize+union+place when tie writes changed overflows)
+     * is unreachable in the 4-substep ordering: tie writes happen here,
+     * before sub-step (iii)'s union and sub-step (iv)'s placeAndApply, so
+     * placement already reflects the with-tie state on the first pass.
+     */
+    public finalizeTies(): void {
         let didChangeOverflows = false;
-
         if (this._finalizeTies(this._ties)) {
             didChangeOverflows = true;
         }
-
         const multiSystemSlurs = this._multiSystemSlurs;
         if (multiSystemSlurs && this._finalizeTies(multiSystemSlurs)) {
             didChangeOverflows = true;
         }
-
         if (didChangeOverflows) {
             this.updateSizes();
             this._registerStaffOverflow();
         }
-
-        return didChangeOverflows;
     }
 
     private _registerStaffOverflow() {

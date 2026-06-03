@@ -307,36 +307,41 @@ export class RenderStaff {
         this.systemSkyline.reset();
         this.effectPlacement.reset();
 
-        let needsSecondPass = false;
+        // §E Step 12 / §D.6 — SystemFinalize 4-substep ordering. The OLD
+        // single-loop + `needsSecondPass` re-run pattern is replaced by an
+        // explicit 4-pass sequence. Each pass completes for ALL renderers
+        // before the next pass starts; tie writes in (ii) land before
+        // (iii)'s union and (iv)'s placement read the skyline, so no
+        // second pass is needed.
+
+        // (i) per-renderer: finalize-minus-ties. Sets isFinalized=true
+        // before any cross-renderer chain walk reads it (Step 16 territory).
         for (const renderer of this.barRenderers) {
             renderer.registerMultiSystemSlurs(this.system.layout!.slurRegistry.getAllContinuations(renderer));
-            if (renderer.finalizeRenderer()) {
-                needsSecondPass = true;
-            }
+            renderer.finalizeRendererMinusTies();
+        }
+
+        // (ii) per-renderer: tie writes (own + spanned renderers'
+        // barLocalSkylines). Cross-renderer `GroupedEffectGlyph`
+        // `populateSkyline?` dispatch (Step 16) hooks in here.
+        for (const renderer of this.barRenderers) {
+            renderer.finalizeTies();
+        }
+
+        // (iii) per-renderer: union bar-local skyline into staff skyline.
+        // Runs after every renderer's tie writes so spanned-renderer
+        // contributions are visible.
+        for (const renderer of this.barRenderers) {
             this.height = Math.max(this.height, renderer.height);
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
+        // (iv) once per staff: placeAndApply effect bands.
         this.effectPlacement.placeAndApply();
 
-        let topOverflow: number = this.topOverflow;
+        const topOverflow: number = this.topOverflow;
         for (const renderer of this.barRenderers) {
             renderer.y = this.topPadding + topOverflow;
-        }
-
-        if (needsSecondPass) {
-            this.systemSkyline.reset();
-            this.effectPlacement.reset();
-            for (const renderer of this.barRenderers) {
-                renderer.finalizeRenderer();
-                this._unionBarLocalIntoStaffSkyline(renderer);
-            }
-            this.effectPlacement.placeAndApply();
-
-            topOverflow = this.topOverflow;
-            for (const renderer of this.barRenderers) {
-                renderer.y = this.topPadding + topOverflow;
-            }
         }
 
         if (this.height > 0) {
