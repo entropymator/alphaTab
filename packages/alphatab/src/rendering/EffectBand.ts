@@ -42,23 +42,98 @@ export class EffectBand extends Glyph {
     public placedMagnitude: number = 0;
 
     /**
-     * Cross-renderer span ranges published by {@link GroupedEffectGlyph}.
-     * Cleared at the start of every SystemFinalize dispatch; relies on every
-     * renderer transiting that dispatch each cycle.
+     * Cached renderer-local x-range used by {@link computeLocalXRange}.
+     *
+     * The base snapshot (`_xRangeBase*`) is computed lazily on the first
+     * `computeLocalXRange` call after {@link alignGlyphs}, unioning every
+     * glyph's paint extent (and, for FullBar, the `(0, renderer.width)`
+     * baseline). The live fields (`_xRange*`) start each cycle equal to the
+     * base snapshot and are widened incrementally by {@link publishSpanRange}
+     * when {@link GroupedEffectGlyph} publishes cross-renderer span ranges
+     * during SystemFinalize. {@link clearPublishedSpans} resets the live
+     * fields back to the snapshot.
      */
-    private _publishedSpans: EffectBandXRange[] = [];
+    private _xRangeMin: number = 0;
+    private _xRangeMax: number = 0;
+    private _xRangeFound: boolean = false;
+    private _xRangeBaseMin: number = 0;
+    private _xRangeBaseMax: number = 0;
+    private _xRangeBaseFound: boolean = false;
+    private _xRangeBaseDirty: boolean = true;
 
     public get container(): EffectBandContainer {
         return this._container;
     }
 
     public publishSpanRange(xStart: number, xEnd: number): void {
-        const entry: EffectBandXRange = { xStart, xEnd };
-        this._publishedSpans.push(entry);
+        // Ensure live fields reflect the band's own glyph extents before
+        // widening them with the published span.
+        if (this._xRangeBaseDirty) {
+            this._refreshXRangeBase();
+        }
+        if (this._xRangeFound) {
+            if (xStart < this._xRangeMin) {
+                this._xRangeMin = xStart;
+            }
+            if (xEnd > this._xRangeMax) {
+                this._xRangeMax = xEnd;
+            }
+        } else {
+            this._xRangeMin = xStart;
+            this._xRangeMax = xEnd;
+            this._xRangeFound = true;
+        }
     }
 
     public clearPublishedSpans(): void {
-        this._publishedSpans.splice(0, this._publishedSpans.length);
+        // Reset live to base. If the base is stale (alignGlyphs invalidated
+        // it), defer recomputation to the next read/publish.
+        if (this._xRangeBaseDirty) {
+            this._xRangeMin = 0;
+            this._xRangeMax = 0;
+            this._xRangeFound = false;
+        } else {
+            this._xRangeMin = this._xRangeBaseMin;
+            this._xRangeMax = this._xRangeBaseMax;
+            this._xRangeFound = this._xRangeBaseFound;
+        }
+    }
+
+    private _refreshXRangeBase(): void {
+        let min = 0;
+        let max = 0;
+        let found = false;
+        if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
+            // FullBar bands always cover at least `[0, renderer.width)`.
+            min = 0;
+            max = this.renderer.width;
+            found = true;
+        }
+        for (const v of this._uniqueEffectGlyphs) {
+            for (const g of v) {
+                const left = g.getBoundingBoxLeft();
+                const right = g.getBoundingBoxRight();
+                if (!found) {
+                    min = left;
+                    max = right;
+                    found = true;
+                } else {
+                    if (left < min) {
+                        min = left;
+                    }
+                    if (right > max) {
+                        max = right;
+                    }
+                }
+            }
+        }
+        this._xRangeBaseMin = min;
+        this._xRangeBaseMax = max;
+        this._xRangeBaseFound = found;
+        this._xRangeMin = min;
+        this._xRangeMax = max;
+        this._xRangeFound = found;
+        this._xRangeBaseDirty = false;
     }
 
     public constructor(voice: Voice, info: EffectInfo, container: EffectBandContainer) {
@@ -270,6 +345,14 @@ export class EffectBand extends Glyph {
     }
 
     public alignGlyphs(): void {
+        // Invalidate the cached x-range; it will be lazily rebuilt on the next
+        // computeLocalXRange/publishSpanRange call after glyph extents have
+        // fully settled.
+        this._xRangeBaseDirty = true;
+        this._xRangeMin = 0;
+        this._xRangeMax = 0;
+        this._xRangeFound = false;
+
         for (let v: number = 0; v < this._effectGlyphs.length; v++) {
             for (const beatIndex of this._effectGlyphs[v].keys()) {
                 const g = this.renderer.bar.voices[v].beats[beatIndex];
@@ -282,83 +365,26 @@ export class EffectBand extends Glyph {
     /**
      * Writes the renderer-local x range used by {@link EffectSystemPlacement}
      * into `out`. Unions glyph paint extents (not `x`/`width` — many effect
-     * glyphs keep `width = 0`). Returns `false` when the band has no usable
+     * glyphs keep `width = 0`) with any cross-renderer spans published via
+     * {@link publishSpanRange}. Returns `false` when the band has no usable
      * range (empty or every glyph reports a degenerate paint extent).
+     *
+     * O(1) after the cache is built. The first call after {@link alignGlyphs}
+     * lazily walks `_uniqueEffectGlyphs` once; subsequent calls and incremental
+     * widening from {@link publishSpanRange} are O(1).
      */
     public computeLocalXRange(out: EffectBandXRange): boolean {
         if (this.isEmpty) {
             return false;
         }
-        if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
-            let xStart = 0;
-            let xEnd = this.renderer.width;
-            for (const v of this._uniqueEffectGlyphs) {
-                for (const g of v) {
-                    const left = g.getBoundingBoxLeft();
-                    if (left < xStart) {
-                        xStart = left;
-                    }
-                    const right = g.getBoundingBoxRight();
-                    if (right > xEnd) {
-                        xEnd = right;
-                    }
-                }
-            }
-            for (const span of this._publishedSpans) {
-                if (span.xStart < xStart) {
-                    xStart = span.xStart;
-                }
-                if (span.xEnd > xEnd) {
-                    xEnd = span.xEnd;
-                }
-            }
-            out.xStart = xStart;
-            out.xEnd = xEnd;
-            return true;
+        if (this._xRangeBaseDirty) {
+            this._refreshXRangeBase();
         }
-        let min = 0;
-        let max = 0;
-        let found = false;
-        for (const v of this._uniqueEffectGlyphs) {
-            for (const g of v) {
-                const left = g.getBoundingBoxLeft();
-                const right = g.getBoundingBoxRight();
-                if (!found) {
-                    min = left;
-                    max = right;
-                    found = true;
-                } else {
-                    if (left < min) {
-                        min = left;
-                    }
-                    if (right > max) {
-                        max = right;
-                    }
-                }
-            }
-        }
-        // Fold cross-renderer chain spans into the placement xRange. The chain
-        // head's published xEnd may exceed `this.renderer.width`; placement
-        // composes the absolute window as `renderer.x + xEnd`.
-        for (const span of this._publishedSpans) {
-            if (!found) {
-                min = span.xStart;
-                max = span.xEnd;
-                found = true;
-            } else {
-                if (span.xStart < min) {
-                    min = span.xStart;
-                }
-                if (span.xEnd > max) {
-                    max = span.xEnd;
-                }
-            }
-        }
-        if (!found || max < min) {
+        if (!this._xRangeFound || this._xRangeMax < this._xRangeMin) {
             return false;
         }
-        out.xStart = min;
-        out.xEnd = max;
+        out.xStart = this._xRangeMin;
+        out.xEnd = this._xRangeMax;
         return true;
     }
 
