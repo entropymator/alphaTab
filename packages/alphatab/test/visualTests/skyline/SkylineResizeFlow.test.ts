@@ -1,24 +1,6 @@
 /**
  * Integration tests for skyline lifecycle through resize / restructure flows.
- *
- * These tests exercise the rendering pipeline at multiple widths and
- * inspect the resulting `BarLocalSkyline` and `StaffSystemSkyline` state
- * to verify the Phase 1 invariants:
- *
- *   - Bar-local skylines reflect the content envelope of every renderer
- *     after every render.
- *   - Staff-system skylines re-assemble correctly when bars get distributed
- *     across a different number of systems.
- *   - Re-layout paths (resize) do not leak stale skyline state.
- *   - A single resize from one width to another produces consistent skyline
- *     state for the new width (no orphaned data).
- *
- * Each test that needs a fresh layout creates its own API to keep tests
- * isolated from one another. The harness exposes a `renderOnce` (fresh
- * API per render) and a `renderWithResize` (single resize from W1 to W2
- * on a shared API) so the resize path itself is exercised meaningfully.
  */
-
 import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
 import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
 import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
@@ -27,24 +9,23 @@ import { JsonConverter } from '@coderline/alphatab/model/JsonConverter';
 import type { Score } from '@coderline/alphatab/model/Score';
 import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
 import type { ScoreRendererWrapper } from '@coderline/alphatab/rendering/ScoreRendererWrapper';
-import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import { Settings } from '@coderline/alphatab/Settings';
 import { describe, expect, it } from 'vitest';
 import { TestUiFacade } from '../TestUiFacade';
 import { VisualTestHelper } from '../VisualTestHelper';
+import type { ScoreLayoutInternals } from './SkylineTestHarness';
 
 /**
  * @record
  * @internal
  */
-interface StaffSkylineSnapshot {
+interface StaffSkylineResizeSnapshot {
     systemIndex: number;
     staffIndex: number;
     /**
      * Stable identifier composed of `staffId` (factory id, e.g. "score" / "tab")
-     * and the track index. Used to group bars across systems that belong to
-     * the same logical staff. `staffIndex` alone is NOT a stable identifier
-     * because the score-staff and tab-staff of the same track share it.
+     * and the track index. `staffIndex` alone is NOT stable because the
+     * score-staff and tab-staff of the same track share it.
      */
     staffKey: string;
     upMax: number;
@@ -59,17 +40,9 @@ interface StaffSkylineSnapshot {
  * @record
  * @internal
  */
-interface ScoreLayoutInternals {
-    systems: readonly StaffSystem[];
-}
-
-/**
- * @record
- * @internal
- */
 interface SkylineResizeSnapshots {
-    initial: StaffSkylineSnapshot[];
-    resized: StaffSkylineSnapshot[];
+    initial: StaffSkylineResizeSnapshot[];
+    resized: StaffSkylineResizeSnapshot[];
 }
 
 /**
@@ -92,19 +65,19 @@ class SkylineResizeFlowHelper {
         return importer.readScore();
     }
 
-    public static captureSnapshot(api: AlphaTabApiBase<unknown>): StaffSkylineSnapshot[] {
+    public static captureSnapshot(api: AlphaTabApiBase<unknown>): StaffSkylineResizeSnapshot[] {
         const wrapper = api.renderer as unknown as ScoreRendererWrapper;
         const inner = wrapper.instance as unknown as ScoreRenderer;
         const systems = (inner.layout as unknown as ScoreLayoutInternals).systems;
 
-        const out: StaffSkylineSnapshot[] = [];
+        const out: StaffSkylineResizeSnapshot[] = [];
         for (const system of systems) {
             for (const group of system.staves) {
                 for (const staff of group.staves) {
                     if (!staff.isVisible) {
                         continue;
                     }
-                    out.push({
+                    const snap: StaffSkylineResizeSnapshot = {
                         systemIndex: system.index,
                         staffIndex: staff.staffIndex,
                         staffKey: `${staff.staffTrackGroup.track.index}/${staff.staffId}`,
@@ -114,7 +87,8 @@ class SkylineResizeFlowHelper {
                         barDownMaxes: staff.barRenderers.map(r => r.barLocalSkyline.downSky.maxHeight()),
                         barWidths: staff.barRenderers.map(r => r.width),
                         barLineLocalX: staff.barRenderers.map(r => r.x)
-                    });
+                    };
+                    out.push(snap);
                 }
             }
         }
@@ -122,7 +96,7 @@ class SkylineResizeFlowHelper {
     }
 
     /** Single render at one width via a fresh API. */
-    public static async renderOnce(tex: string, width: number): Promise<StaffSkylineSnapshot[]> {
+    public static async renderOnce(tex: string, width: number): Promise<StaffSkylineResizeSnapshot[]> {
         await VisualTestHelper.prepareAlphaSkia();
         const score = await SkylineResizeFlowHelper.loadScore(tex);
         const settings = new Settings();
@@ -132,10 +106,12 @@ class SkylineResizeFlowHelper {
         uiFacade.rootContainer.width = width;
         const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
+        let captured: StaffSkylineResizeSnapshot[] = [];
         try {
-            return await new Promise<StaffSkylineSnapshot[]>((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => {
                 api.renderer.postRenderFinished.on(() => {
-                    resolve(SkylineResizeFlowHelper.captureSnapshot(api));
+                    captured = SkylineResizeFlowHelper.captureSnapshot(api);
+                    resolve();
                 });
                 api.error.on(e => {
                     reject(
@@ -153,6 +129,7 @@ class SkylineResizeFlowHelper {
         } finally {
             api.destroy();
         }
+        return captured;
     }
 
     /**
@@ -173,8 +150,8 @@ class SkylineResizeFlowHelper {
         uiFacade.rootContainer.width = initialWidth;
         const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
-        let initialSnap: StaffSkylineSnapshot[] = [];
-        let resizedSnap: StaffSkylineSnapshot[] = [];
+        let initialSnap: StaffSkylineResizeSnapshot[] = [];
+        let resizedSnap: StaffSkylineResizeSnapshot[] = [];
         let isInitialPhase = true;
 
         try {
@@ -209,7 +186,8 @@ class SkylineResizeFlowHelper {
             api.destroy();
         }
 
-        return { initial: initialSnap, resized: resizedSnap };
+        const result: SkylineResizeSnapshots = { initial: initialSnap, resized: resizedSnap };
+        return result;
     }
 
     /**
@@ -217,17 +195,19 @@ class SkylineResizeFlowHelper {
      * (system, then renderer-index) order. Keyed by `staffKey` so the score-
      * staff and tab-staff of the same track are correctly separated.
      */
-    public static envelopesByStaff(snapshot: StaffSkylineSnapshot[]): Map<string, UpDownArrays> {
+    public static envelopesByStaff(snapshot: StaffSkylineResizeSnapshot[]): Map<string, UpDownArrays> {
         const byStaff = new Map<string, UpDownArrays>();
-        const ordered = [...snapshot].sort((a, b) => {
+        const ordered = snapshot.slice();
+        ordered.sort((a, b) => {
             if (a.staffKey !== b.staffKey) {
-                return a.staffKey < b.staffKey ? -1 : 1;
+                return a.staffKey.localeCompare(b.staffKey);
             }
             return a.systemIndex - b.systemIndex;
         });
         for (const s of ordered) {
             if (!byStaff.has(s.staffKey)) {
-                byStaff.set(s.staffKey, { up: [], down: [] });
+                const empty: UpDownArrays = { up: [], down: [] };
+                byStaff.set(s.staffKey, empty);
             }
             const e = byStaff.get(s.staffKey)!;
             for (const v of s.barUpMaxes) {
@@ -240,8 +220,66 @@ class SkylineResizeFlowHelper {
         return byStaff;
     }
 
-    public static totalBarsInSnapshot(snapshot: StaffSkylineSnapshot[]): number {
-        return snapshot.reduce((sum, s) => sum + s.barWidths.length, 0);
+    public static totalBarsInSnapshot(snapshot: StaffSkylineResizeSnapshot[]): number {
+        let total = 0;
+        for (const s of snapshot) {
+            total += s.barWidths.length;
+        }
+        return total;
+    }
+
+    public static sumMagnitudes(snapshot: StaffSkylineResizeSnapshot[]): number {
+        let total = 0;
+        for (const st of snapshot) {
+            for (const v of st.barUpMaxes) {
+                total += v;
+            }
+            for (const v of st.barDownMaxes) {
+                total += v;
+            }
+        }
+        return total;
+    }
+
+    public static maxOrZero(values: number[]): number {
+        let max = 0;
+        for (const v of values) {
+            if (v > max) {
+                max = v;
+            }
+        }
+        return max;
+    }
+
+    public static distinctSystemCount(snapshot: StaffSkylineResizeSnapshot[]): number {
+        const seen = new Set<number>();
+        for (const s of snapshot) {
+            seen.add(s.systemIndex);
+        }
+        return seen.size;
+    }
+
+    public static anyBarHasContent(staff: StaffSkylineResizeSnapshot): boolean {
+        for (const v of staff.barUpMaxes) {
+            if (v > 0) {
+                return true;
+            }
+        }
+        for (const v of staff.barDownMaxes) {
+            if (v > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static anyStaffHasContent(snapshot: StaffSkylineResizeSnapshot[]): boolean {
+        for (const s of snapshot) {
+            if (s.upMax > 0 || s.downMax > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 
@@ -259,10 +297,7 @@ describe('SkylineResizeFlow', () => {
     it('initial render at a wide width populates the staff skyline', async () => {
         const snap = await SkylineResizeFlowHelper.renderOnce(resizeTex, 1300);
         expect(snap.length).toBeGreaterThan(0);
-        const anyContent = snap.some(s => s.upMax > 0 || s.downMax > 0);
-        expect(anyContent).toBe(true);
-        // Every bar-local skyline must reflect some content (positive
-        // up- or down-magnitude) since the score has notes on every bar.
+        expect(SkylineResizeFlowHelper.anyStaffHasContent(snap)).toBe(true);
         for (const staff of snap) {
             for (let i = 0; i < staff.barUpMaxes.length; i++) {
                 expect(staff.barUpMaxes[i] + staff.barDownMaxes[i]).toBeGreaterThan(0);
@@ -273,48 +308,38 @@ describe('SkylineResizeFlow', () => {
     it('initial render at a narrow width populates skylines across multiple systems', async () => {
         const snap = await SkylineResizeFlowHelper.renderOnce(resizeTex, 600);
         expect(snap.length).toBeGreaterThan(0);
-        const systems = new Set(snap.map(s => s.systemIndex));
-        // At narrow width the score should distribute across more than one system.
-        expect(systems.size).toBeGreaterThanOrEqual(2);
-        // Every staff that has content reports a non-zero staff-skyline max.
+        expect(SkylineResizeFlowHelper.distinctSystemCount(snap)).toBeGreaterThanOrEqual(2);
         for (const staff of snap) {
-            const hasContent = staff.barUpMaxes.some(v => v > 0) || staff.barDownMaxes.some(v => v > 0);
-            if (hasContent) {
+            if (SkylineResizeFlowHelper.anyBarHasContent(staff)) {
                 expect(staff.upMax + staff.downMax).toBeGreaterThan(0);
             }
         }
     });
 
     it('same bar count is produced regardless of width (fresh API per render)', async () => {
-        const [wide, narrow] = await Promise.all([
-            SkylineResizeFlowHelper.renderOnce(resizeTex, 1300),
-            SkylineResizeFlowHelper.renderOnce(resizeTex, 600)
-        ]);
+        const wide = await SkylineResizeFlowHelper.renderOnce(resizeTex, 1300);
+        const narrow = await SkylineResizeFlowHelper.renderOnce(resizeTex, 600);
         expect(SkylineResizeFlowHelper.totalBarsInSnapshot(wide)).toBe(
             SkylineResizeFlowHelper.totalBarsInSnapshot(narrow)
         );
     });
 
     it('per-staff envelope totals are stable across widths (fresh APIs)', async () => {
-        // Two independent renders at different widths should produce
-        // equivalent total skyline content per logical staff. We compare
-        // aggregates (max + sum) rather than per-bar arrays because
-        // layout choices can legitimately re-allocate effect-band content
-        // between adjacent bars (e.g. a multi-bar effect that anchors to
-        // a different bar when the system breaks differently).
-        const [wide, narrow] = await Promise.all([
-            SkylineResizeFlowHelper.renderOnce(resizeTex, 1300),
-            SkylineResizeFlowHelper.renderOnce(resizeTex, 600)
-        ]);
+        const wide = await SkylineResizeFlowHelper.renderOnce(resizeTex, 1300);
+        const narrow = await SkylineResizeFlowHelper.renderOnce(resizeTex, 600);
         const a = SkylineResizeFlowHelper.envelopesByStaff(wide);
         const b = SkylineResizeFlowHelper.envelopesByStaff(narrow);
         expect(a.size).toBe(b.size);
         for (const [staffKey, ea] of a) {
             const eb = b.get(staffKey)!;
-            // The peaks survive layout choices: the maximum up-side and
-            // down-side magnitude per staff must match across widths.
-            expect(Math.max(0, ...ea.up)).toBeCloseTo(Math.max(0, ...eb.up), 3);
-            expect(Math.max(0, ...ea.down)).toBeCloseTo(Math.max(0, ...eb.down), 3);
+            expect(SkylineResizeFlowHelper.maxOrZero(ea.up)).toBeCloseTo(
+                SkylineResizeFlowHelper.maxOrZero(eb.up),
+                3
+            );
+            expect(SkylineResizeFlowHelper.maxOrZero(ea.down)).toBeCloseTo(
+                SkylineResizeFlowHelper.maxOrZero(eb.down),
+                3
+            );
         }
     });
 
@@ -323,45 +348,24 @@ describe('SkylineResizeFlow', () => {
         const initial = snapshots.initial;
         const resized = snapshots.resized;
 
-        // Both renders must produce visible staves.
         expect(initial.length).toBeGreaterThan(0);
         expect(resized.length).toBeGreaterThan(0);
 
-        // The resized layout (narrow) should occupy at least as many
-        // systems as the initial wide layout.
-        const initialSystems = new Set(initial.map(s => s.systemIndex)).size;
-        const resizedSystems = new Set(resized.map(s => s.systemIndex)).size;
+        const initialSystems = SkylineResizeFlowHelper.distinctSystemCount(initial);
+        const resizedSystems = SkylineResizeFlowHelper.distinctSystemCount(resized);
         expect(resizedSystems).toBeGreaterThanOrEqual(initialSystems);
 
-        // The resized staff skylines must be non-empty for staves with
-        // content — guards against the regression where reflow leaves
-        // a staff skyline empty.
         for (const staff of resized) {
-            const hasContent = staff.barUpMaxes.some(v => v > 0) || staff.barDownMaxes.some(v => v > 0);
-            if (hasContent) {
+            if (SkylineResizeFlowHelper.anyBarHasContent(staff)) {
                 expect(staff.upMax + staff.downMax).toBeGreaterThan(0);
             }
         }
     });
 
     it('single resize narrow→wide preserves bar-local envelopes', async () => {
-        // After resize, every renderer's bar-local skyline must still
-        // reflect its glyph content. This catches the regression where
-        // a resize path discarded bar-local state.
         const snapshots = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 600, 900);
-        const initial = snapshots.initial;
-        const resized = snapshots.resized;
-
-        const sumInitial = initial.reduce(
-            (s, st) => s + st.barUpMaxes.reduce((a, b) => a + b, 0) + st.barDownMaxes.reduce((a, b) => a + b, 0),
-            0
-        );
-        const sumResized = resized.reduce(
-            (s, st) => s + st.barUpMaxes.reduce((a, b) => a + b, 0) + st.barDownMaxes.reduce((a, b) => a + b, 0),
-            0
-        );
-        // Total summed skyline magnitude is content-determined, so it
-        // must be the same across both renders even if layout differs.
+        const sumInitial = SkylineResizeFlowHelper.sumMagnitudes(snapshots.initial);
+        const sumResized = SkylineResizeFlowHelper.sumMagnitudes(snapshots.resized);
         expect(sumResized).toBeCloseTo(sumInitial, 5);
     });
 
@@ -382,38 +386,22 @@ describe('SkylineResizeFlow', () => {
     });
 
     it('staff skyline maxHeight is at least the max over its constituent bar-local maxHeights', async () => {
-        // Phase 1's staff-skyline assembly inserts per-bar scalars across
-        // the bar's renderer-local x range. Phase 2's effect-band placement
-        // pass then stacks effect bands on top of the assembled staff
-        // skyline, so the staff skyline's maxHeight is at least the max
-        // bar-local skyline maxHeight — bigger when effect bands push it
-        // further out.
         const snap = await SkylineResizeFlowHelper.renderOnce(resizeTex, 600);
         for (const staff of snap) {
-            const localUpMax = staff.barUpMaxes.reduce((a, b) => Math.max(a, b), 0);
-            const localDownMax = staff.barDownMaxes.reduce((a, b) => Math.max(a, b), 0);
+            const localUpMax = SkylineResizeFlowHelper.maxOrZero(staff.barUpMaxes);
+            const localDownMax = SkylineResizeFlowHelper.maxOrZero(staff.barDownMaxes);
             expect(staff.upMax).toBeGreaterThanOrEqual(localUpMax - 1e-5);
             expect(staff.downMax).toBeGreaterThanOrEqual(localDownMax - 1e-5);
         }
     });
 
     it('resize back to a width that fits the score in one system populates _systems', async () => {
-        // Regression test for the _resizeAndRenderScore last-system push fix:
-        // after a wide → narrow → wide-enough-for-one-system resize, the
-        // layout's _systems must include the single trailing system that
-        // holds every bar, so the skyline visible-staff iteration returns
-        // non-empty.
         const snapshots = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 1300, 600);
         expect(snapshots.initial.length).toBeGreaterThan(0);
         expect(snapshots.resized.length).toBeGreaterThan(0);
 
-        // Drive a second resize back to the wide width on a separate
-        // harness instance (renderWithResize only does one resize). Use
-        // the wider value that fits the score in a single system so we
-        // hit the previously-broken path: trailing-system fallthrough.
         const backToWide = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 600, 1300);
         expect(backToWide.resized.length).toBeGreaterThan(0);
-        const singleSystem = new Set(backToWide.resized.map(s => s.systemIndex));
-        expect(singleSystem.size).toBe(1);
+        expect(SkylineResizeFlowHelper.distinctSystemCount(backToWide.resized)).toBe(1);
     });
 });

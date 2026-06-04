@@ -10,7 +10,7 @@ import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSyst
  * @internal
  */
 interface OptionalSystemsRef {
-    systems?: readonly StaffSystem[] | undefined;
+    systems?: StaffSystem[] | undefined;
 }
 
 /**
@@ -40,15 +40,9 @@ export class SkylineDebugRenderer {
         if (!layoutAny || !Array.isArray(layoutAny.systems)) {
             return;
         }
-        const systems = layoutAny.systems as readonly StaffSystem[];
+        const systems = layoutAny.systems as StaffSystem[];
 
-        const topFill = AlphaSkiaCanvas.rgbaToColor(220, 30, 30, 80);
-        const topStroke = AlphaSkiaCanvas.rgbaToColor(220, 30, 30, 230);
-        const bottomFill = AlphaSkiaCanvas.rgbaToColor(30, 80, 220, 80);
-        const bottomStroke = AlphaSkiaCanvas.rgbaToColor(30, 80, 220, 230);
-
-        const previousColor = canvas.color;
-        const previousLineWidth = canvas.lineWidth;
+        // Diagnostic overlay paints last; no need to restore canvas state.
         canvas.lineWidth = 1.5;
 
         for (const system of systems) {
@@ -56,8 +50,6 @@ export class SkylineDebugRenderer {
             // StaffSystem.paint passes `cy + this.y + this.topPadding` to its
             // staves, so the canvas-y origin used by everything downstream
             // (including the painted noteheads) is `system.y + system.topPadding`.
-            // The overlay must include topPadding too or it sits ABOVE the
-            // actual rendered content for systems where topPadding > 0.
             const systemY = system.y + system.topPadding;
             for (const staffGroup of system.staves) {
                 for (const staff of staffGroup.staves) {
@@ -65,9 +57,6 @@ export class SkylineDebugRenderer {
                         continue;
                     }
                     const staffOriginX = systemX + staff.x;
-                    // The renderer's local y=0 sits at `topPadding + topOverflow` within the staff.
-                    // Mirror that anchor here so the up-side outline aligns with the staff edge
-                    // that the bar-local skyline measures from.
                     const referenceTopY =
                         staff.barRenderers.length > 0 ? systemY + staff.y + staff.barRenderers[0].y : systemY + staff.y;
 
@@ -82,8 +71,7 @@ export class SkylineDebugRenderer {
                         staffOriginX,
                         referenceTopY,
                         -1,
-                        topFill,
-                        topStroke
+                        220, 30, 30
                     );
 
                     SkylineDebugRenderer._traceSkyline(
@@ -92,22 +80,20 @@ export class SkylineDebugRenderer {
                         staffOriginX,
                         referenceBottomY,
                         1,
-                        bottomFill,
-                        bottomStroke
+                        30, 80, 220
                     );
                 }
             }
         }
-
-        canvas.color = previousColor;
-        canvas.lineWidth = previousLineWidth;
     }
 
     /**
      * Trace a single Skyline as a filled stepped envelope.
      * `referenceY` is the staff edge from which the skyline's outward
-     * magnitude is measured. `direction` is +1 (downSky, magnitude grows
-     * downward in canvas y) or -1 (upSky, magnitude grows upward).
+     * magnitude is measured. `direction` is +1 (downSky) or -1 (upSky).
+     * `r`/`g`/`b` are taken instead of a precomputed color value so the
+     * `rgbaToColor` call lands directly on the `canvas.color` setter — the
+     * transpiler doesn't preserve uint typing through intermediate variables.
      */
     private static _traceSkyline(
         canvas: AlphaSkiaCanvas,
@@ -115,23 +101,24 @@ export class SkylineDebugRenderer {
         originX: number,
         referenceY: number,
         direction: number,
-        fillColor: number,
-        strokeColor: number
+        r: number,
+        g: number,
+        b: number
     ): void {
         skyline.forEachSegment((xStart, xEnd, height) => {
             if (height <= 0) {
                 return;
             }
-            const drawXEnd = xEnd > originX + 10_000 ? originX + 10_000 : xEnd;
+            const drawXEnd = xEnd > originX + 10000 ? originX + 10000 : xEnd;
             const x0 = originX + xStart;
             const x1 = originX + drawXEnd;
             const y0 = referenceY;
             const y1 = referenceY + direction * height;
             const rectY = direction < 0 ? y1 : y0;
             const rectH = Math.abs(y1 - y0);
-            canvas.color = fillColor;
+            canvas.color = AlphaSkiaCanvas.rgbaToColor(r, g, b, 80);
             canvas.fillRect(x0, rectY, x1 - x0, rectH);
-            canvas.color = strokeColor;
+            canvas.color = AlphaSkiaCanvas.rgbaToColor(r, g, b, 230);
             canvas.strokeRect(x0, rectY, x1 - x0, rectH);
         });
     }

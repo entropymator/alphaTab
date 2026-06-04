@@ -52,10 +52,10 @@ export class EffectSystemPlacement {
         const bottom = this._bottom;
         const contentTop = this._contentTop;
         const contentBottom = this._contentBottom;
-        top.length = 0;
-        bottom.length = 0;
-        contentTop.length = 0;
-        contentBottom.length = 0;
+        top.splice(0, top.length);
+        bottom.splice(0, bottom.length);
+        contentTop.splice(0, contentTop.length);
+        contentBottom.splice(0, contentBottom.length);
 
         // container.height = post-placement max - pre-placement max.
         for (let i = 0; i < staff.barRenderers.length; i++) {
@@ -185,9 +185,9 @@ export class EffectSystemPlacement {
 
             // Two-phase: query without inserting so chain members don't see each other,
             // then commit every member at the group's max magnitude.
-            groupBands.length = 0;
-            groupXStarts.length = 0;
-            groupXEnds.length = 0;
+            groupBands.splice(0, groupBands.length);
+            groupXStarts.splice(0, groupXStarts.length);
+            groupXEnds.splice(0, groupXEnds.length);
             const xRange = this._xRangeScratch;
             let groupMagnitude = 0;
             for (let k = i; k < groupEnd; k++) {

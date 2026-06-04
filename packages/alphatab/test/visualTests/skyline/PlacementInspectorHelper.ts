@@ -3,28 +3,14 @@
  * (alphaSkia + AlphaTabApiBase) and emits a human-readable textual report
  * of every effect band's skyline placement decision.
  *
- * Used during bugfix rounds to compare expected vs. actual placement
- * numerically without having to eyeball PNG diffs. Lives under
- * `test/visualTests/skyline/` and is never imported by production code.
- *
- * Typical use:
- *
- * ```ts
- * import { PlacementInspector } from './PlacementInspector';
- *
- * it('repro', async () => {
- *     console.log(await PlacementInspector.inspectPlacement('C4 {txt "A"} C4 {su}'));
- * });
- * ```
- *
  * @internal
  */
-
 import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
 import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
 import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
 import { ScoreLoader } from '@coderline/alphatab/importer/ScoreLoader';
 import { ByteBuffer } from '@coderline/alphatab/io/ByteBuffer';
+import { LayoutMode } from '@coderline/alphatab/LayoutMode';
 import { JsonConverter } from '@coderline/alphatab/model/JsonConverter';
 import type { Score } from '@coderline/alphatab/model/Score';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
@@ -39,29 +25,14 @@ import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSyst
 import { Settings } from '@coderline/alphatab/Settings';
 import { TestUiFacade } from '../TestUiFacade';
 import { VisualTestHelper } from '../VisualTestHelper';
-
-/**
- * @record
- * @internal
- */
-interface PlacementXRange {
-    xStart: number;
-    xEnd: number;
-}
-
-/**
- * @record
- * @internal
- */
-interface ScoreLayoutInternals {
-    systems: readonly StaffSystem[];
-}
+import type { ScoreLayoutInternals } from './SkylineTestHarness';
+import type { EffectBandXRange } from '@coderline/alphatab/rendering/EffectBand';
 
 /**
  * @internal
  */
-export class PlacementInspector {
-    private static readonly _xRangeScratch: PlacementXRange = { xStart: 0, xEnd: 0 };
+export class PlacementInspectorHelper {
+    private static readonly _xRangeScratch: EffectBandXRange = { xStart: 0, xEnd: 0 };
 
     public static async loadScore(tex: string): Promise<Score> {
         const settings = new Settings();
@@ -88,6 +59,8 @@ export class PlacementInspector {
                 return 'GroupedOnBeatToEnd';
             case EffectBarGlyphSizing.FullBar:
                 return 'FullBar';
+            default:
+                return 'Unknown';
         }
     }
 
@@ -106,10 +79,11 @@ export class PlacementInspector {
     }
 
     public static n(value: number, fractionDigits: number = 2): string {
-        if (!Number.isFinite(value)) {
+        if (Number.isNaN(value) || value === Number.POSITIVE_INFINITY || value === -Number.POSITIVE_INFINITY) {
             return value.toString();
         }
-        const rounded = Number.parseFloat(value.toFixed(fractionDigits));
+        const factor = Math.pow(10, fractionDigits);
+        const rounded = Math.round(value * factor) / factor;
         return rounded.toString();
     }
 
@@ -117,11 +91,11 @@ export class PlacementInspector {
         const parts: string[] = [];
         sky.forEachSegment((xStart, xEnd, height) => {
             if (height > 0) {
-                parts.push(`(${PlacementInspector.n(xStart)},${PlacementInspector.n(xEnd)},${PlacementInspector.n(height)})`);
+                parts.push(`(${PlacementInspectorHelper.n(xStart)},${PlacementInspectorHelper.n(xEnd)},${PlacementInspectorHelper.n(height)})`);
             }
         });
         const max = sky.maxHeight();
-        return `${indent}${label}: [${parts.join('')}]  max=${PlacementInspector.n(max)}`;
+        return `${indent}${label}: [${parts.join('')}]  max=${PlacementInspectorHelper.n(max)}`;
     }
 
     public static effectName(band: EffectBand): string {
@@ -138,22 +112,22 @@ export class PlacementInspector {
 
     public static dumpBand(band: EffectBand, index: number, indent: string): string {
         const lines: string[] = [];
-        const hasRange = band.computeLocalXRange(PlacementInspector._xRangeScratch);
+        const hasRange = band.computeLocalXRange(PlacementInspectorHelper._xRangeScratch);
         const xLocal = hasRange
-            ? `(${PlacementInspector.n(PlacementInspector._xRangeScratch.xStart)},${PlacementInspector.n(PlacementInspector._xRangeScratch.xEnd)})`
+            ? `(${PlacementInspectorHelper.n(PlacementInspectorHelper._xRangeScratch.xStart)},${PlacementInspectorHelper.n(PlacementInspectorHelper._xRangeScratch.xEnd)})`
             : '<null>';
         const outerEdge = band.placedMagnitude + band.height;
         const firstBeatIdx = band.firstBeat ? band.firstBeat.index : -1;
         const lastBeatIdx = band.lastBeat ? band.lastBeat.index : -1;
         lines.push(
-            `${indent}[${index}] effect=${PlacementInspector.effectName(band)}  sizing=${PlacementInspector.sizingName(band.info.sizingMode)}  tier=${PlacementInspector.tier(band)}` +
+            `${indent}[${index}] effect=${PlacementInspectorHelper.effectName(band)}  sizing=${PlacementInspectorHelper.sizingName(band.info.sizingMode)}  tier=${PlacementInspectorHelper.tier(band)}` +
                 `  isEmpty=${band.isEmpty}`
         );
         lines.push(
-            `${indent}    firstBeat=${firstBeatIdx} lastBeat=${lastBeatIdx}  xLocal=${xLocal}  band.height=${PlacementInspector.n(band.height)}`
+            `${indent}    firstBeat=${firstBeatIdx} lastBeat=${lastBeatIdx}  xLocal=${xLocal}  band.height=${PlacementInspectorHelper.n(band.height)}`
         );
         lines.push(
-            `${indent}    placedMagnitude=${PlacementInspector.n(band.placedMagnitude)}  outerEdge=${PlacementInspector.n(outerEdge)}  band.y=${PlacementInspector.n(band.y)}`
+            `${indent}    placedMagnitude=${PlacementInspectorHelper.n(band.placedMagnitude)}  outerEdge=${PlacementInspectorHelper.n(outerEdge)}  band.y=${PlacementInspectorHelper.n(band.y)}`
         );
         return lines.join('\n');
     }
@@ -163,22 +137,22 @@ export class PlacementInspector {
         const contentTop = renderer.topOverflow - renderer.topEffects.height;
         const contentBottom = renderer.bottomOverflow - renderer.bottomEffects.height;
         lines.push(
-            `${indent}Renderer[${renderer.index}]  x=${PlacementInspector.n(renderer.x)}  width=${PlacementInspector.n(renderer.width)}` +
-                `  topOverflow=${PlacementInspector.n(renderer.topOverflow)} (content=${PlacementInspector.n(contentTop)}, effects=${PlacementInspector.n(renderer.topEffects.height)})` +
-                `  bottomOverflow=${PlacementInspector.n(renderer.bottomOverflow)} (content=${PlacementInspector.n(contentBottom)}, effects=${PlacementInspector.n(renderer.bottomEffects.height)})`
+            `${indent}Renderer[${renderer.index}]  x=${PlacementInspectorHelper.n(renderer.x)}  width=${PlacementInspectorHelper.n(renderer.width)}` +
+                `  topOverflow=${PlacementInspectorHelper.n(renderer.topOverflow)} (content=${PlacementInspectorHelper.n(contentTop)}, effects=${PlacementInspectorHelper.n(renderer.topEffects.height)})` +
+                `  bottomOverflow=${PlacementInspectorHelper.n(renderer.bottomOverflow)} (content=${PlacementInspectorHelper.n(contentBottom)}, effects=${PlacementInspectorHelper.n(renderer.bottomEffects.height)})`
         );
-        lines.push(PlacementInspector.dumpSegments('barLocal.up', renderer.barLocalSkyline.upSky, `${indent}    `));
-        lines.push(PlacementInspector.dumpSegments('barLocal.down', renderer.barLocalSkyline.downSky, `${indent}    `));
+        lines.push(PlacementInspectorHelper.dumpSegments('barLocal.up', renderer.barLocalSkyline.upSky, `${indent}    `));
+        lines.push(PlacementInspectorHelper.dumpSegments('barLocal.down', renderer.barLocalSkyline.downSky, `${indent}    `));
 
         const topBands = renderer.topEffects.bands;
         lines.push(`${indent}    topBands[${topBands.length}]:`);
         for (let i = 0; i < topBands.length; i++) {
-            lines.push(PlacementInspector.dumpBand(topBands[i], i, `${indent}      `));
+            lines.push(PlacementInspectorHelper.dumpBand(topBands[i], i, `${indent}      `));
         }
         const bottomBands = renderer.bottomEffects.bands;
         lines.push(`${indent}    bottomBands[${bottomBands.length}]:`);
         for (let i = 0; i < bottomBands.length; i++) {
-            lines.push(PlacementInspector.dumpBand(bottomBands[i], i, `${indent}      `));
+            lines.push(PlacementInspectorHelper.dumpBand(bottomBands[i], i, `${indent}      `));
         }
         return lines.join('\n');
     }
@@ -188,13 +162,13 @@ export class PlacementInspector {
         lines.push(
             `Staff  systemIndex=${system.index}  staffIndex=${staff.staffIndex}` +
                 `  track=${staff.staffTrackGroup.track.index}  id=${staff.staffId}` +
-                `  topOverflow=${PlacementInspector.n(staff.topOverflow)}  bottomOverflow=${PlacementInspector.n(staff.bottomOverflow)}` +
-                `  topPadding=${PlacementInspector.n(staff.topPadding)}  bottomPadding=${PlacementInspector.n(staff.bottomPadding)}`
+                `  topOverflow=${PlacementInspectorHelper.n(staff.topOverflow)}  bottomOverflow=${PlacementInspectorHelper.n(staff.bottomOverflow)}` +
+                `  topPadding=${PlacementInspectorHelper.n(staff.topPadding)}  bottomPadding=${PlacementInspectorHelper.n(staff.bottomPadding)}`
         );
-        lines.push(PlacementInspector.dumpSegments('  systemSkyline.upSky', staff.systemSkyline.upSky, ''));
-        lines.push(PlacementInspector.dumpSegments('  systemSkyline.downSky', staff.systemSkyline.downSky, ''));
+        lines.push(PlacementInspectorHelper.dumpSegments('  systemSkyline.upSky', staff.systemSkyline.upSky, ''));
+        lines.push(PlacementInspectorHelper.dumpSegments('  systemSkyline.downSky', staff.systemSkyline.downSky, ''));
         for (const renderer of staff.barRenderers) {
-            lines.push(PlacementInspector.dumpRenderer(renderer, '  '));
+            lines.push(PlacementInspectorHelper.dumpRenderer(renderer, '  '));
         }
         return lines.join('\n');
     }
@@ -215,7 +189,7 @@ export class PlacementInspector {
                     if (!staff.isVisible) {
                         continue;
                     }
-                    lines.push(PlacementInspector.dumpStaff(staff, system));
+                    lines.push(PlacementInspectorHelper.dumpStaff(staff, system));
                     lines.push('');
                 }
             }
@@ -228,7 +202,8 @@ export class PlacementInspector {
      * report. Designed for `console.log` output inside throwaway repro tests.
      */
     public static async inspectPlacement(tex: string, width: number = 1000): Promise<string> {
-        return PlacementInspector.inspectScore(await PlacementInspector.loadScore(tex), width, tex);
+        const score = await PlacementInspectorHelper.loadScore(tex);
+        return await PlacementInspectorHelper.inspectScore(score, width, tex);
     }
 
     /**
@@ -249,7 +224,8 @@ export class PlacementInspector {
         label: string = '<file>',
         matchVisualTest: boolean = true
     ): Promise<string> {
-        return PlacementInspector.inspectScore(PlacementInspector.loadScoreFromBytes(bytes), width, label, matchVisualTest);
+        const score = PlacementInspectorHelper.loadScoreFromBytes(bytes);
+        return await PlacementInspectorHelper.inspectScore(score, width, label, matchVisualTest);
     }
 
     public static async inspectScore(
@@ -266,8 +242,7 @@ export class PlacementInspector {
         if (matchVisualTest) {
             settings.display.justifyLastSystem = score.masterBars.length > 4;
             if (score.tracks.some(t => t.systemsLayout.length > 0)) {
-                const layoutModeModule = await import('@coderline/alphatab/LayoutMode');
-                settings.display.layoutMode = layoutModeModule.LayoutMode.Parchment;
+                settings.display.layoutMode = LayoutMode.Parchment;
             }
             tracks = score.tracks.map(t => t.index);
         } else {
@@ -278,10 +253,12 @@ export class PlacementInspector {
         uiFacade.rootContainer.width = width;
         const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
+        let report = '';
         try {
-            return await new Promise<string>((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => {
                 api.renderer.postRenderFinished.on(() => {
-                    resolve(PlacementInspector.captureReport(api, label, width));
+                    report = PlacementInspectorHelper.captureReport(api, label, width);
+                    resolve();
                 });
                 api.error.on(e => {
                     reject(
@@ -299,5 +276,6 @@ export class PlacementInspector {
         } finally {
             api.destroy();
         }
+        return report;
     }
 }

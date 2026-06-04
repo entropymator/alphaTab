@@ -1,20 +1,9 @@
 /**
- * §H Step 7 sentinel — `BarRendererBase.scaleToWidth` runs at most once per
- * renderer per cycle, at final width.
+ * Counter test: BarRendererBase.scaleToWidth runs at most once per renderer
+ * per cycle. Uses prototype monkey-patching, so web-only.
  *
- * After v5 Step 7, `HorizontalScreenLayout._alignRenderers` no longer invokes
- * `renderer.scaleToWidth(renderer.width)` a second time; the per-bar call in
- * `_scaleBars` is the sole invocation (with a fallback to the natural width
- * when `bar.displayWidth === 0`). VerticalLayoutBase's `_scaleToWidth` already
- * called scaleToWidth exactly once per renderer per cycle. The §H Step 7
- * invariant: runtime counter == 1 per renderer per cycle, both layouts.
- *
- * Implementation: temporarily replace `BarRendererBase.prototype.scaleToWidth`
- * with a wrapper that increments a Map<renderer, count>, runs the render, then
- * restores the original. Assertions iterate systems → staves → barRenderers
- * and confirm each renderer was scaled exactly once.
+ * @target web
  */
-
 import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
 import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
 import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
@@ -57,7 +46,7 @@ class ScaleToWidthCallCountHelper {
         // VerticalLayoutBase exposes `systems: StaffSystem[]`; HorizontalScreenLayout
         // exposes a single private `_system: StaffSystem | null`. Try both.
         const layout = inner.layout as unknown as Record<string, unknown>;
-        const systemsArray = layout.systems as readonly StaffSystem[] | undefined;
+        const systemsArray = layout.systems as StaffSystem[] | undefined;
         const singleSystem = layout._system as StaffSystem | null | undefined;
         const systems: StaffSystem[] = systemsArray
             ? [...systemsArray]

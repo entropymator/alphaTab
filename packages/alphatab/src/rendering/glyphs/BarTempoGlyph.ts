@@ -54,21 +54,24 @@ export class BarTempoGlyph extends EffectGlyph {
     }
 
     public override getBoundingBoxLeft(): number {
-        let min = Number.POSITIVE_INFINITY;
+        let min = 0;
+        let found = false;
         for (const a of this._tempoAutomations) {
             let startX = this.renderer.getRatioPositionX(a.ratioPosition);
             if (!a.text) {
                 startX -= this._noteShift;
             }
-            if (startX < min) {
+            if (!found || startX < min) {
                 min = startX;
+                found = true;
             }
         }
-        return Number.isFinite(min) ? min : this.x;
+        return found ? min : this.x;
     }
 
     public override getBoundingBoxRight(): number {
-        let max = Number.NEGATIVE_INFINITY;
+        let max = 0;
+        let found = false;
         for (let i = 0; i < this._tempoAutomations.length; i++) {
             const a = this._tempoAutomations[i];
             const layout = this._automationLayouts[i];
@@ -77,11 +80,12 @@ export class BarTempoGlyph extends EffectGlyph {
                 startX -= this._noteShift;
             }
             const rightX = startX + layout.textWidth + this._symbolWidth + layout.valueWidth;
-            if (rightX > max) {
+            if (!found || rightX > max) {
                 max = rightX;
+                found = true;
             }
         }
-        return Number.isFinite(max) ? max : this.x;
+        return found ? max : this.x;
     }
 
     public override populateSkyline(ctx: SkylineCtx): void {

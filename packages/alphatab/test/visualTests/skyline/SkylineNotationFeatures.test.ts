@@ -1,13 +1,6 @@
 /**
  * Skyline coverage tests for individual notation features.
- *
- * Verifies that the bar-local skyline correctly reflects the vertical
- * envelope of stems, flags, beams, and tuplets. Assertions are tolerant
- * of layout details — they target structural invariants (e.g. "the beam
- * region has greater above-staff height than the rest region") rather
- * than exact magnitudes which depend on font metrics and layout choices.
  */
-
 import { describe, expect, it } from 'vitest';
 import { SkylineTestHarness } from './SkylineTestHarness';
 

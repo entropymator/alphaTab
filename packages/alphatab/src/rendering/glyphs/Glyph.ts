@@ -72,12 +72,15 @@ export class Glyph {
     }
 
     /**
-     * Optional skyline contribution for glyphs whose bbox is only final after
-     * the bar (or staff) is laid out. Opt in by calling
-     * `renderer.registerPopulateSkyline(this, phase)` from `doLayout`. Fires
-     * once per cycle in the registered {@link SkylinePhase}.
+     * Skyline contribution for glyphs whose bbox is only final after the bar
+     * (or staff) is laid out. Opt in by calling
+     * `renderer.registerPopulateSkyline(this, phase)` from `doLayout` and
+     * overriding this method. Fires once per cycle in the registered
+     * {@link SkylinePhase}. Default no-op.
      */
-    public populateSkyline?(ctx: SkylineCtx): void;
+    public populateSkyline(_ctx: SkylineCtx): void {
+        // to be implemented in subclass
+    }
 
     public paint(_cx: number, _cy: number, _canvas: ICanvas): void {
         // to be implemented in subclass

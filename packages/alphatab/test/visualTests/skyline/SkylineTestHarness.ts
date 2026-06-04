@@ -1,13 +1,9 @@
 /**
- * Shared lightweight harness for skyline integration tests. Renders a tex
- * score via the full pipeline (alphaSkia + AlphaTabApiBase) and captures a
- * structured snapshot of every staff's skyline state.
+ * Shared harness for skyline integration tests. Drives the full alphaSkia
+ * pipeline.
  *
- * Lives under `test/visualTests/skyline/` and is never imported by
- * production code.
  * @internal
  */
-
 import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
 import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
 import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
@@ -40,9 +36,7 @@ export interface BarSkylineSnapshot {
     renderer: string;
     rendererLineLocalX: number;
     rendererWidth: number;
-    /** Bar-local up-side segments (height > 0 only). */
     upSegments: BarSegment[];
-    /** Bar-local down-side segments (height > 0 only). */
     downSegments: BarSegment[];
     upMax: number;
     downMax: number;
@@ -58,7 +52,6 @@ export interface StaffSkylineSnapshot {
     staffKey: string;
     upMax: number;
     downMax: number;
-    /** Concatenated bar snapshots in renderer order. */
     bars: BarSkylineSnapshot[];
 }
 
@@ -66,8 +59,8 @@ export interface StaffSkylineSnapshot {
  * @record
  * @internal
  */
-interface ScoreLayoutInternals {
-    systems: readonly StaffSystem[];
+export interface ScoreLayoutInternals {
+    systems: StaffSystem[];
 }
 
 /**
@@ -116,15 +109,17 @@ export class SkylineTestHarness {
                         const downSegs: BarSegment[] = [];
                         renderer.barLocalSkyline.upSky.forEachSegment((xStart, xEnd, height) => {
                             if (height > 0) {
-                                upSegs.push({ xStart, xEnd, height });
+                                const seg: BarSegment = { xStart, xEnd, height };
+                                upSegs.push(seg);
                             }
                         });
                         renderer.barLocalSkyline.downSky.forEachSegment((xStart, xEnd, height) => {
                             if (height > 0) {
-                                downSegs.push({ xStart, xEnd, height });
+                                const seg: BarSegment = { xStart, xEnd, height };
+                                downSegs.push(seg);
                             }
                         });
-                        bars.push({
+                        const bar: BarSkylineSnapshot = {
                             barIndex: renderer.bar.index,
                             renderer: SkylineTestHarness.classifyRenderer(staffId),
                             rendererLineLocalX: renderer.x,
@@ -133,16 +128,18 @@ export class SkylineTestHarness {
                             downSegments: downSegs,
                             upMax: renderer.barLocalSkyline.upSky.maxHeight(),
                             downMax: renderer.barLocalSkyline.downSky.maxHeight()
-                        });
+                        };
+                        bars.push(bar);
                     }
-                    out.push({
+                    const staffSnap: StaffSkylineSnapshot = {
                         systemIndex: system.index,
                         staffIndex: staff.staffIndex,
                         staffKey: `${staff.staffTrackGroup.track.index}/${staffId}`,
                         upMax: staff.systemSkyline.upSky.maxHeight(),
                         downMax: staff.systemSkyline.downSky.maxHeight(),
                         bars
-                    });
+                    };
+                    out.push(staffSnap);
                 }
             }
         }
@@ -160,10 +157,12 @@ export class SkylineTestHarness {
         uiFacade.rootContainer.width = width;
         const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
+        let captured: StaffSkylineSnapshot[] = [];
         try {
-            return await new Promise<StaffSkylineSnapshot[]>((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => {
                 api.renderer.postRenderFinished.on(() => {
-                    resolve(SkylineTestHarness.captureSnapshot(api));
+                    captured = SkylineTestHarness.captureSnapshot(api);
+                    resolve();
                 });
                 api.error.on(e => {
                     reject(
@@ -181,6 +180,7 @@ export class SkylineTestHarness {
         } finally {
             api.destroy();
         }
+        return captured;
     }
 
     /** Find the score-staff snapshot for the given track index. */

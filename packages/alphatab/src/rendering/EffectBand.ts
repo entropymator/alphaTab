@@ -58,7 +58,7 @@ export class EffectBand extends Glyph {
     }
 
     public clearPublishedSpans(): void {
-        this._publishedSpans.length = 0;
+        this._publishedSpans.splice(0, this._publishedSpans.length);
     }
 
     public constructor(voice: Voice, info: EffectInfo, container: EffectBandContainer) {
@@ -316,17 +316,24 @@ export class EffectBand extends Glyph {
             out.xEnd = xEnd;
             return true;
         }
-        let min = Number.POSITIVE_INFINITY;
-        let max = Number.NEGATIVE_INFINITY;
+        let min = 0;
+        let max = 0;
+        let found = false;
         for (const v of this._uniqueEffectGlyphs) {
             for (const g of v) {
                 const left = g.getBoundingBoxLeft();
-                if (left < min) {
-                    min = left;
-                }
                 const right = g.getBoundingBoxRight();
-                if (right > max) {
+                if (!found) {
+                    min = left;
                     max = right;
+                    found = true;
+                } else {
+                    if (left < min) {
+                        min = left;
+                    }
+                    if (right > max) {
+                        max = right;
+                    }
                 }
             }
         }
@@ -334,14 +341,20 @@ export class EffectBand extends Glyph {
         // head's published xEnd may exceed `this.renderer.width`; placement
         // composes the absolute window as `renderer.x + xEnd`.
         for (const span of this._publishedSpans) {
-            if (span.xStart < min) {
+            if (!found) {
                 min = span.xStart;
-            }
-            if (span.xEnd > max) {
                 max = span.xEnd;
+                found = true;
+            } else {
+                if (span.xStart < min) {
+                    min = span.xStart;
+                }
+                if (span.xEnd > max) {
+                    max = span.xEnd;
+                }
             }
         }
-        if (!Number.isFinite(min) || !Number.isFinite(max) || max < min) {
+        if (!found || max < min) {
             return false;
         }
         out.xStart = min;

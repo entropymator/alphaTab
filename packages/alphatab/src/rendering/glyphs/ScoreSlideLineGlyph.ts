@@ -19,7 +19,7 @@ import type { ScoreBeatContainerGlyph } from '@coderline/alphatab/rendering/Scor
  * @record
  * @internal
  */
-interface SlideSegment {
+interface ScoreSlideSegment {
     startX: number;
     startY: number;
     endX: number;
@@ -53,35 +53,41 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
 
     /** Computed lazily — geometry depends on `renderer.x`, only final post-system-layout. */
     public override getBoundingBoxLeft(): number {
-        let min = Number.POSITIVE_INFINITY;
+        let min = 0;
+        let found = false;
         const slideIn = this._computeSlideIn();
         if (slideIn) {
             min = Math.min(slideIn.startX, slideIn.endX);
+            found = true;
         }
         const slideOut = this._computeSlideOut();
         if (slideOut) {
             const localMin = Math.min(slideOut.startX, slideOut.endX);
-            if (localMin < min) {
+            if (!found || localMin < min) {
                 min = localMin;
+                found = true;
             }
         }
-        return Number.isFinite(min) ? min : this.x;
+        return found ? min : this.x;
     }
 
     public override getBoundingBoxRight(): number {
-        let max = Number.NEGATIVE_INFINITY;
+        let max = 0;
+        let found = false;
         const slideIn = this._computeSlideIn();
         if (slideIn) {
             max = Math.max(slideIn.startX, slideIn.endX);
+            found = true;
         }
         const slideOut = this._computeSlideOut();
         if (slideOut) {
             const localMax = Math.max(slideOut.startX, slideOut.endX);
-            if (localMax > max) {
+            if (!found || localMax > max) {
                 max = localMax;
+                found = true;
             }
         }
-        return Number.isFinite(max) ? max : this.x;
+        return found ? max : this.x;
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
@@ -109,7 +115,7 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
         }
     }
 
-    private _computeSlideIn(): SlideSegment | null {
+    private _computeSlideIn(): ScoreSlideSegment | null {
         const startNoteRenderer: ScoreBarRenderer = this.renderer as ScoreBarRenderer;
         const sizeX: number = startNoteRenderer.smuflMetrics.simpleSlideWidth;
         let endX =
@@ -142,7 +148,7 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
         return container.accidentalsWidth;
     }
 
-    private _computeSlideOut(): SlideSegment | null {
+    private _computeSlideOut(): ScoreSlideSegment | null {
         const startNoteRenderer: ScoreBarRenderer = this.renderer as ScoreBarRenderer;
         const sizeX: number = startNoteRenderer.smuflMetrics.simpleSlideWidth;
         const offsetX: number = startNoteRenderer.smuflMetrics.postNoteEffectPadding;

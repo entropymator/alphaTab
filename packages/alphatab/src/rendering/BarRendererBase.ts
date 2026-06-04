@@ -207,9 +207,9 @@ export class BarRendererBase {
         this._barLocalSkyline?.reset();
         this._preBeatLocalSkyline?.reset();
         this._postBeatLocalSkyline?.reset();
-        this._dynamicSkylineGlyphs.length = 0;
-        this._populateSkylineFinalized.length = 0;
-        this._populateSkylineSystemFinalize.length = 0;
+        this._dynamicSkylineGlyphs.splice(0, this._dynamicSkylineGlyphs.length);
+        this._populateSkylineFinalized.splice(0, this._populateSkylineFinalized.length);
+        this._populateSkylineSystemFinalize.splice(0, this._populateSkylineSystemFinalize.length);
         this._ties = [];
     }
 
@@ -399,7 +399,7 @@ export class BarRendererBase {
 
         this._emitDynamicSkylineGlyphs(this.height);
         for (const g of this._populateSkylineFinalized) {
-            g.populateSkyline?.({ phase: SkylinePhase.Finalized, renderer: this });
+            g.populateSkyline({ phase: SkylinePhase.Finalized, renderer: this });
         }
         this.emitSubclassBarLocalSkyline();
     }
@@ -649,7 +649,7 @@ export class BarRendererBase {
             band.clearPublishedSpans();
         }
         for (const g of this._populateSkylineSystemFinalize) {
-            g.populateSkyline?.({ phase: SkylinePhase.SystemFinalize, renderer: this });
+            g.populateSkyline({ phase: SkylinePhase.SystemFinalize, renderer: this });
         }
     }
 
@@ -965,7 +965,7 @@ export class BarRendererBase {
         this._preBeatGlyphs.renderer = this;
         // Drop entries from the previous glyph set; the new glyphs will
         // re-register themselves via createPreBeatGlyphs.
-        this._dynamicSkylineGlyphs.length = 0;
+        this._dynamicSkylineGlyphs.splice(0, this._dynamicSkylineGlyphs.length);
         this.createPreBeatGlyphs();
     }
 

@@ -1,17 +1,7 @@
 /**
- * §H Step 1c sentinel — `_calculateAccoladeSpacing` idempotency.
- *
- * After v5 Step 1c, the `_accoladeSpacingCalculated` first-call gate is gone
- * and `_calculateAccoladeSpacing` may be invoked at every `addBars` /
- * `revertLastBar`. The contract: the accolade contribution to `system.width`
- * must be applied exactly once per cycle, never accumulated across calls.
- *
- * This test drives a multi-bar single-system score through the full renderer
- * and asserts that the accolade contribution to `system.width` matches what a
- * single accolade application would produce (catches `+=` regressions on
- * `system.width` / `system.computedWidth` / `system.accoladeWidth`).
+ * Asserts the accolade contribution to system.width is applied exactly once
+ * per cycle.
  */
-
 import { AlphaTabApiBase } from '@coderline/alphatab/AlphaTabApiBase';
 import { AlphaTabError, AlphaTabErrorType } from '@coderline/alphatab/AlphaTabError';
 import { AlphaTexImporter } from '@coderline/alphatab/importer/AlphaTexImporter';
@@ -42,7 +32,7 @@ interface SystemMetrics {
  * @internal
  */
 interface ScoreLayoutInternals {
-    systems: readonly StaffSystem[];
+    systems: StaffSystem[];
 }
 
 /**
@@ -66,8 +56,9 @@ class AccoladeIdempotenceHelper {
         uiFacade.rootContainer.width = width;
         const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
+        let captured: SystemMetrics | null = null;
         try {
-            return await new Promise<SystemMetrics>((resolve, reject) => {
+            await new Promise<void>((resolve, reject) => {
                 api.renderer.postRenderFinished.on(() => {
                     const wrapper = api.renderer as unknown as ScoreRendererWrapper;
                     const inner = wrapper.instance as unknown as ScoreRenderer;
@@ -79,12 +70,14 @@ class AccoladeIdempotenceHelper {
                     const s = systems[0];
                     const firstStaffGroup = s.staves[0];
                     const firstStaff = firstStaffGroup.staves[0];
-                    resolve({
+                    const metrics: SystemMetrics = {
                         accoladeWidth: s.accoladeWidth,
                         width: s.width,
                         computedWidth: s.computedWidth,
                         barWidths: firstStaff.barRenderers.map(r => r.width)
-                    });
+                    };
+                    captured = metrics;
+                    resolve();
                 });
                 api.error.on(e => {
                     reject(
@@ -102,15 +95,20 @@ class AccoladeIdempotenceHelper {
         } finally {
             api.destroy();
         }
+        return captured!;
+    }
+
+    public static sum(values: number[]): number {
+        let total = 0;
+        for (const v of values) {
+            total += v;
+        }
+        return total;
     }
 }
 
 describe('AccoladeIdempotence', () => {
-    it('§H Step 1c: accolade contribution applied exactly once for a multi-bar single-system score', async () => {
-        // Five identical-content bars on a single staff. Render width is large enough
-        // to keep them all on one system (no wrap, no revert). With stable visibility
-        // the accolade contribution should be added exactly once, regardless of how
-        // many times `_calculateAccoladeSpacing` is invoked during system assembly.
+    it('accolade contribution applied exactly once for a multi-bar single-system score', async () => {
         const tex = `
             \\track "T1"
             \\staff {score}
@@ -122,22 +120,15 @@ describe('AccoladeIdempotence', () => {
         expect(metrics.barWidths.length).toBe(5);
         expect(metrics.accoladeWidth).toBeGreaterThanOrEqual(0);
 
-        // The accolade contribution to system.width is exactly the once-applied
-        // accoladeWidth. A `+=` regression would inflate the difference by
-        // (N-1) × accoladeWidth.
-        const sumBarWidths = metrics.barWidths.reduce((a, b) => a + b, 0);
+        const sumBarWidths = AccoladeIdempotenceHelper.sum(metrics.barWidths);
         const accoladePortion = metrics.width - sumBarWidths;
         expect(accoladePortion).toBeCloseTo(metrics.accoladeWidth, 1);
 
-        // computedWidth has the same contract.
         const computedAccoladePortion = metrics.computedWidth - sumBarWidths;
         expect(computedAccoladePortion).toBeCloseTo(metrics.accoladeWidth, 1);
     });
 
-    it('§H Step 1c: accolade contribution stable across renders with same inputs', async () => {
-        // Idempotency across complete renders: same score + same width → same
-        // accolade. This catches a different regression class than the per-render
-        // sentinel above: cross-render bleed via cache or state retention.
+    it('accolade contribution stable across renders with same inputs', async () => {
         const tex = `
             \\track "T1"
             \\staff {score}

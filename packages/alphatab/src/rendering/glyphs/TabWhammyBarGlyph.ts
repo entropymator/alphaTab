@@ -55,7 +55,7 @@ export class TabWhammyBarGlyph extends EffectGlyph {
             if (nextRenderer && nextRenderer.staff === this.renderer.staff) {
                 const sameRenderer = nextRenderer === this.renderer;
                 if (sameRenderer || nextBeat.hasWhammyBar) {
-                    const endXPositionType =
+                    const endXPositionType: BeatXPosition =
                         nextBeat.hasWhammyBar &&
                         (this.renderer.settings.notation.notationMode !== NotationMode.SongBook ||
                             nextBeat.whammyBarType !== WhammyType.Dip)

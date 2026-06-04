@@ -22,7 +22,7 @@ export class EffectBandContainer {
     private _renderer: BarRendererBase;
     private _isTopContainer: boolean;
 
-    public get bands(): readonly EffectBand[] {
+    public get bands(): EffectBand[] {
         return this._bands;
     }
 
