@@ -556,6 +556,15 @@ export class BarRendererBase {
 
     public afterStaffBarReverted() {
         // Bar-local skylines stay — remaining bars' content is unchanged.
+        // Per-band internals (`placedMagnitude`, `y`, `publishedSpans`)
+        // are NOT reset here. Invariant: after `revertLastBar`, the layout
+        // proceeds to add bars to the next system and ultimately calls
+        // `StaffSystem.finalizeSystem` → `RenderStaff.finalizeStaff`,
+        // which transits through both `dispatchSystemFinalizeSkyline`
+        // (clears each band's publishedSpans) and
+        // `effectPlacement.placeAndApply` (recomputes placedMagnitude/y).
+        // So any stale per-band state from the reverted cycle is
+        // overwritten before the next paint reads it.
         this.topEffects.height = 0;
         this.bottomEffects.height = 0;
         this._registerStaffOverflow();
@@ -645,6 +654,13 @@ export class BarRendererBase {
         this.staff!.registerOverflowBottom(this.bottomOverflow);
     }
 
+    /**
+     * Public wrapper for `_registerStaffOverflow`. Kept as a one-line
+     * passthrough (instead of making the underlying method public) so the
+     * naming-by-visibility convention (`_`-prefixed = `private`/`protected`)
+     * stays consistent with the rest of the file and any subclass that
+     * later needs to wrap the call has a public seam to override.
+     */
     public registerStaffOverflows(): void {
         this._registerStaffOverflow();
     }
@@ -653,6 +669,13 @@ export class BarRendererBase {
      * Public entry point for `updateSizes`. Called by the staff after tie
      * writes mutate a renderer's overflow, to recompute width/height before
      * the staff-skyline union runs.
+     *
+     * Kept as a wrapper (not folded into `updateSizes` made public)
+     * because `LineBarRenderer.updateSizes` is a `protected override` —
+     * widening the base to `public` would require widening every override
+     * in the subclass chain, and the transpiler's visibility rewrites
+     * don't track that consistently across class hierarchies. The wrapper
+     * is one indirection per renderer per finalizeStaff dirty cycle.
      */
     public refreshSizes(): void {
         this.updateSizes();

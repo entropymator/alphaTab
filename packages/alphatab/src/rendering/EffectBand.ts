@@ -284,6 +284,18 @@ export class EffectBand extends Glyph {
         this.height = this.originalHeight;
     }
 
+    // NOTE on per-call cross-renderer lookups (`previousContainer`,
+    // `previousBand`, `prevBar`, `prevVoice`, `prevLastBeat`): these were
+    // considered for hoisting into per-band cached fields. They look stable
+    // for the band's lifetime, but `_container.previousContainer` resolves
+    // via `_renderer.previousRenderer` which can change during system
+    // formation (`StaffSystem.revertLastBar` moves bar renderers between
+    // systems; see `_stableSortKey` doc above for the renderer.index
+    // mutability story). A cached previousContainer set at band
+    // construction time would point past a stale boundary after a revert.
+    // Skipped — the per-call cost is bounded (one map lookup + a few
+    // pointer derefs) and runs only on the band's first beat of each
+    // grouped chain crossing a renderer boundary.
     private _createOrResizeGlyph(sizing: EffectBarGlyphSizing, b: Beat): EffectGlyph {
         let g: EffectGlyph;
         switch (sizing) {

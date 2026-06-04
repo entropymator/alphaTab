@@ -77,6 +77,13 @@ export class Glyph {
      * `renderer.registerPopulateSkyline(this, phase)` from `doLayout` and
      * overriding this method. Fires once per cycle in the registered
      * {@link SkylinePhase}. Default no-op.
+     *
+     * Kept as an empty-body virtual (not abstract) so subclasses that
+     * never register themselves don't have to implement it, and so the
+     * C# transpiler can synthesise a single virtual slot on the base
+     * class. The dispatch list (`_populateSkylineFinalized` /
+     * `_populateSkylineSystemFinalize`) only holds glyphs that opt in, so
+     * the no-op body is never actually invoked in production.
      */
     public populateSkyline(_ctx: SkylineCtx): void {
         // to be implemented in subclass

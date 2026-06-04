@@ -35,6 +35,11 @@ export class EffectSystemPlacement {
         const bottom = this._bottom;
         const contentTop = this._contentTop;
         const contentBottom = this._contentBottom;
+        // `splice(0, length)` is the transpile-safe array clear; `length = 0`
+        // emits a read-only `Count = 0` assignment in C#. The splice does
+        // allocate a removed-array return value per call (4 here, plus 3 in
+        // the per-group loop below), which there is no zero-alloc workaround
+        // for at the IList<T> level — documented and accepted.
         top.splice(0, top.length);
         bottom.splice(0, bottom.length);
         contentTop.splice(0, contentTop.length);

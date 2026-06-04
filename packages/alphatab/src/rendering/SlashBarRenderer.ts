@@ -88,6 +88,12 @@ export class SlashBarRenderer extends LineBarRenderer {
         if (h.hasTuplet) {
             // Tuplets can span multiple helpers — emit the full group range
             // exactly once, when the helper holds the group's first beat.
+            // An "iterate `voiceContainer.tupletGroups` once after the
+            // helper loop" structural alternative was considered to share
+            // logic with `TabBarRenderer.emitHelperSkyline`, but the
+            // per-helper first-beat guard is a single equality compare and
+            // the alternative requires a second renderer-wide hook —
+            // larger surface change for marginal gain. Kept as-is.
             const group = h.beats[0].tupletGroup!;
             if (group.beats.length > 0 && group.beats[0] === h.beats[0]) {
                 const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
