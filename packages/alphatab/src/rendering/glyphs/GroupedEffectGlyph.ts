@@ -40,6 +40,13 @@ export abstract class GroupedEffectGlyph extends EffectGlyph {
             // renderer; the band's per-glyph bbox loop already covers it.
             return;
         }
+        // Walk to the chain tail. NOTE: a head-side `chainTail` cache (set
+        // at link-establishment time in `EffectBand._createOrResizeGlyph`)
+        // would be unsafe — `revertLastBar` can split a chain across systems
+        // without unlinking the glyphs, and `isLinkedWithNext` is the only
+        // safe boundary check (it gates on the next renderer's system).
+        // This walk runs once per chain head per cycle (SystemFinalize
+        // phase), so the cost is O(chainLength) once per cycle.
         let last: GroupedEffectGlyph = this.nextGlyph as GroupedEffectGlyph;
         while (last.isLinkedWithNext) {
             last = last.nextGlyph as GroupedEffectGlyph;

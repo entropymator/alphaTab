@@ -55,7 +55,14 @@ export class EffectBandContainer {
     }
 
     public get isLinkedToPreviousRenderer() {
-        return this._bands.some(b => b.isLinkedToPrevious);
+        // Plain loop avoids the per-call closure allocation that
+        // `Array.some(b => ...)` pays.
+        for (let i = 0, n = this._bands.length; i < n; i++) {
+            if (this._bands[i].isLinkedToPrevious) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public constructor(renderer: BarRendererBase, isTopContainer: boolean) {
@@ -102,8 +109,13 @@ export class EffectBandContainer {
     }
 
     public doLayout() {
-        this._bands = [];
-        this._bandLookup = new Map<number, Map<string, EffectBand>>();
+        // Reuse the existing collections instead of allocating fresh ones
+        // each layout pass. `splice(0, length)` is the transpile-safe array
+        // clear (per SYNTAX.md, `length = 0` emits a read-only assignment in
+        // C#). The outer Map's `.clear()` drops every per-voice nested Map
+        // with it, so no separate inner clear is needed.
+        this._bands.splice(0, this._bands.length);
+        this._bandLookup.clear();
         this.height = 0;
     }
 

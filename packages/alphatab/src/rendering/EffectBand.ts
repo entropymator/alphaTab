@@ -188,12 +188,16 @@ export class EffectBand extends Glyph {
             voice.index * 1048576; // 2^20
     }
 
-    public *iterateAllGlyphs() {
-        for (const v of this._effectGlyphs) {
-            for (const g of v.values()) {
-                yield g;
-            }
-        }
+    /**
+     * Per-voice insertion-ordered view of every glyph the band owns.
+     * Consumers iterate two nested arrays directly — no generator state
+     * machine, no Map iterator allocation. Treat as read-only; the band
+     * owns lifetime. Typed `EffectGlyph[][]` (not `readonly (readonly
+     * EffectGlyph[])[]`) because the transpiler cannot synthesise nested
+     * `IReadOnlyList` properties cleanly.
+     */
+    public get glyphsByVoice(): EffectGlyph[][] {
+        return this._uniqueEffectGlyphs;
     }
 
     public finalizeBand() {
@@ -204,13 +208,15 @@ export class EffectBand extends Glyph {
         if (!this.info.contributesToBeatSpacing) {
             return;
         }
-        for (let v = 0; v < this._effectGlyphs.length; v++) {
-            const voiceBeats = this.renderer.bar.voices[v]?.beats;
-            if (!voiceBeats) {
-                continue;
-            }
-            for (const [beatIndex, glyph] of this._effectGlyphs[v]) {
-                const beat = voiceBeats[beatIndex];
+        // Iterate `_uniqueEffectGlyphs` to avoid the per-iteration tuple
+        // destructure that `for (const [beatIndex, glyph] of map)` allocates,
+        // and to read `g.beat` directly instead of going through
+        // `voices[v].beats[beatIndex]`. Matches alignGlyphs.
+        for (let v = 0; v < this._uniqueEffectGlyphs.length; v++) {
+            const voiceGlyphs = this._uniqueEffectGlyphs[v];
+            for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
+                const glyph = voiceGlyphs[i];
+                const beat = glyph.beat;
                 if (!beat) {
                     continue;
                 }
@@ -398,10 +404,14 @@ export class EffectBand extends Glyph {
         this._xRangeMax = 0;
         this._xRangeFound = false;
 
-        for (let v: number = 0; v < this._effectGlyphs.length; v++) {
-            for (const beatIndex of this._effectGlyphs[v].keys()) {
-                const g = this.renderer.bar.voices[v].beats[beatIndex];
-                this._alignGlyph(this.info.sizingMode, g);
+        // Iterate `_uniqueEffectGlyphs` (insertion-ordered, holds the
+        // glyphs directly with `g.beat` available) instead of
+        // `_effectGlyphs[v].keys()` + voice/beat lookup. Same set; one fewer
+        // map probe per glyph.
+        for (let v: number = 0; v < this._uniqueEffectGlyphs.length; v++) {
+            const voiceGlyphs = this._uniqueEffectGlyphs[v];
+            for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
+                this._alignGlyph(this.info.sizingMode, voiceGlyphs[i].beat!);
             }
         }
         this.info.onAlignGlyphs(this);

@@ -10,6 +10,7 @@ import type { NoteXPosition, NoteYPosition } from '@coderline/alphatab/rendering
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import type { BeatContainerGlyphBase } from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import { StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
@@ -172,16 +173,26 @@ export class MultiVoiceContainerGlyph extends Glyph {
         const topOver = !Number.isNaN(containerTop) && containerTop < 0;
         const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
 
+        // Hoist the `barLocalSkyline` lazy getter once for this beat —
+        // every emit below resolves to `barLocalSkyline.insertPlaced` after
+        // the `topHeight > 0 && xEnd > xStart` guard that the
+        // `insertSkylineTop/Bottom` wrappers apply. We replicate the guard
+        // inline and skip the wrapper/getter per emit.
+        const sky = renderer.barLocalSkyline;
+
         // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
         if (topOver || botOver) {
             const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
             const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
             if (xEnd > xStart) {
                 if (topOver) {
-                    renderer.insertSkylineTop(xStart, xEnd, containerTop * -1);
+                    // containerTop < 0 ⇒ outer-edge height > 0; wrapper guard
+                    // covered.
+                    sky.insertPlaced(StaffSide.Top, xStart, xEnd, containerTop * -1, 0);
                 }
                 if (botOver) {
-                    renderer.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
+                    // containerBottom > rendererBottom ⇒ height > 0.
+                    sky.insertPlaced(StaffSide.Bottom, xStart, xEnd, containerBottom - rendererBottom, 0);
                 }
             }
         }
@@ -192,12 +203,14 @@ export class MultiVoiceContainerGlyph extends Glyph {
         if (pending.length > 0) {
             const pendingXStart = base;
             const pendingXEnd = base + beatContainer.width;
-            for (const r of pending) {
-                if (r.minY < 0) {
-                    renderer.insertSkylineTop(pendingXStart, pendingXEnd, r.minY * -1);
-                }
-                if (r.maxY > rendererBottom) {
-                    renderer.insertSkylineBottom(pendingXStart, pendingXEnd, r.maxY - rendererBottom);
+            if (pendingXEnd > pendingXStart) {
+                for (const r of pending) {
+                    if (r.minY < 0) {
+                        sky.insertPlaced(StaffSide.Top, pendingXStart, pendingXEnd, r.minY * -1, 0);
+                    }
+                    if (r.maxY > rendererBottom) {
+                        sky.insertPlaced(StaffSide.Bottom, pendingXStart, pendingXEnd, r.maxY - rendererBottom, 0);
+                    }
                 }
             }
         }

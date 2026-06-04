@@ -48,13 +48,15 @@ export class TabWhammyEffectInfo extends EffectInfo {
             [0, 0]
         );
         band.renderer.staff!.setSharedLayoutData(TabWhammyEffectInfo.offsetSharedDataKey, info);
-        for (const g of band.iterateAllGlyphs()) {
-            const tb = g as TabWhammyBarGlyph;
-            if (tb.originalTopOffset > info[0]) {
-                info[0] = tb.originalTopOffset;
-            }
-            if (tb.originalBottomOffset > info[1]) {
-                info[1] = tb.originalBottomOffset;
+        for (const voiceGlyphs of band.glyphsByVoice) {
+            for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
+                const tb = voiceGlyphs[i] as TabWhammyBarGlyph;
+                if (tb.originalTopOffset > info[0]) {
+                    info[0] = tb.originalTopOffset;
+                }
+                if (tb.originalBottomOffset > info[1]) {
+                    info[1] = tb.originalBottomOffset;
+                }
             }
         }
     }
@@ -66,11 +68,13 @@ export class TabWhammyEffectInfo extends EffectInfo {
         );
         const top = info[0];
         const bottom = info[1];
-        for (const g of band.iterateAllGlyphs()) {
-            const tb = g as TabWhammyBarGlyph;
-            tb.topOffset = top;
-            tb.bottomOffset = bottom;
-            tb.height = top + bottom;
+        for (const voiceGlyphs of band.glyphsByVoice) {
+            for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
+                const tb = voiceGlyphs[i] as TabWhammyBarGlyph;
+                tb.topOffset = top;
+                tb.bottomOffset = bottom;
+                tb.height = top + bottom;
+            }
         }
         band.height = top + bottom;
     }
