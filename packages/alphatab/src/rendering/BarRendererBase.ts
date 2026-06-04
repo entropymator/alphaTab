@@ -249,6 +249,14 @@ export class BarRendererBase {
         this._populateSkylineFinalized.splice(0, this._populateSkylineFinalized.length);
         this._populateSkylineSystemFinalize.splice(0, this._populateSkylineSystemFinalize.length);
         this._ties = [];
+        // `beatEffectsMinY/MaxY` are accumulated by `registerBeatEffectOverflows`
+        // (called from effect-glyph `doLayout` cascade). Without this reset, a
+        // shrinking effect-glyph extent in a later cycle would still see the
+        // wider previous-cycle accumulation. NaN sentinel kept (matches the
+        // existing `Number.isNaN` guards in `calculateOverflows`); switching to
+        // ±Infinity would require auditing every reader.
+        this.beatEffectsMinY = Number.NaN;
+        this.beatEffectsMaxY = Number.NaN;
     }
 
     /**

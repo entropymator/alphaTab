@@ -168,7 +168,15 @@ export class StaffSystem {
     // chicken-egg approximation documented in the body is preserved: bracket
     // b.width is refreshed for paint, but accoladeWidth stays at its previously
     // computed value so system.width does not grow with overflow accumulation.
-    private _accoladeVisibilityFingerprint: string | null = null;
+    /**
+     * Visibility fingerprint of {@link allStaves}: a numeric bitset packing
+     * each staff's `isVisible` flag (MSB-first) into a JS number. `-1` is the
+     * sentinel for "not yet computed". Limit: 53 staves (JS safe-integer
+     * range) — well above any realistic score (typical: 1-16). Replaces a
+     * per-call string concat that allocated a fresh string each accolade
+     * pass.
+     */
+    private _accoladeVisibilityFingerprint: number = -1;
 
     private _brackets: SystemBracket[] = [];
     private _staffToBracket = new Map<RenderStaff, SystemBracket>();
@@ -768,10 +776,13 @@ export class StaffSystem {
         }
     }
 
-    private _computeVisibilityFingerprint(): string {
-        let fingerprint = '';
+    private _computeVisibilityFingerprint(): number {
+        // Pack one bit per staff into a numeric bitset. `* 2` (not `<< 1`) so
+        // we stay in JS double-precision safe-integer range; bitwise ops would
+        // cap at 32 bits. See `_accoladeVisibilityFingerprint` for the limit.
+        let fingerprint = 0;
         for (const s of this.allStaves) {
-            fingerprint += s.isVisible ? '1' : '0';
+            fingerprint = fingerprint * 2 + (s.isVisible ? 1 : 0);
         }
         return fingerprint;
     }

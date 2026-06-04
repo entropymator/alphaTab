@@ -18,7 +18,7 @@ import { FlagGlyph } from '@coderline/alphatab/rendering/glyphs/FlagGlyph';
 import { RepeatCountGlyph } from '@coderline/alphatab/rendering/glyphs/RepeatCountGlyph';
 import { SpacingGlyph } from '@coderline/alphatab/rendering/glyphs/SpacingGlyph';
 import { BeamDirection } from '@coderline/alphatab/rendering/utils/BeamDirection';
-import { BeamingHelper, BeamingHelperDrawInfo } from '@coderline/alphatab/rendering/utils/BeamingHelper';
+import { BeamingHelper, type BeamingHelperDrawInfo } from '@coderline/alphatab/rendering/utils/BeamingHelper';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 
 /**
@@ -226,7 +226,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
 
     protected calculateBeamYWithDirection(h: BeamingHelper, x: number, direction: BeamDirection): number {
         this.ensureBeamDrawingInfo(h, direction);
-        return h.drawingInfos.get(direction)!.calcY(x);
+        return h.getDrawingInfo(direction).calcY(x);
     }
 
     private _paintTupletHelper(
@@ -952,7 +952,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
         } else {
             const direction = this.getBeamDirection(h);
             this.ensureBeamDrawingInfo(h, direction);
-            const drawingInfo = h.drawingInfos.get(direction)!;
+            const drawingInfo = h.getDrawingInfo(direction);
             const tupletDirection = this.getTupletBeamDirection(h);
             if (direction === BeamDirection.Up) {
                 topY = Math.min(drawingInfo.startY, drawingInfo.endY);
@@ -1027,7 +1027,11 @@ export abstract class LineBarRenderer extends BarRendererBase {
     }
 
     protected initializeBeamDrawingInfo(h: BeamingHelper, direction: BeamDirection) {
-        const drawingInfo = new BeamingHelperDrawInfo();
+        // Populate the helper's pre-allocated per-direction slot in place; the
+        // caller marks it valid after `ensureBeamDrawingInfo` finishes its
+        // mid-element shifts. Reusing the slot avoids the per-cycle allocation
+        // that the prior `new BeamingHelperDrawInfo()` + `Map.set` pattern paid.
+        const drawingInfo = h.getDrawingInfo(direction);
 
         const firstBeat = h.beats[0];
         const lastBeat = h.beats[h.beats.length - 1];
@@ -1091,7 +1095,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
     }
 
     protected ensureBeamDrawingInfo(h: BeamingHelper, direction: BeamDirection): void {
-        if (h.drawingInfos.has(direction)) {
+        if (h.hasDrawingInfo(direction)) {
             return;
         }
 
@@ -1102,7 +1106,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
         // 3. any middle elements (notes or rests) shift this diagonal line up/down to avoid overlaps
 
         const drawingInfo = this.initializeBeamDrawingInfo(h, direction);
-        h.drawingInfos.set(direction, drawingInfo);
+        h.markDrawingInfoValid(direction);
 
         const barCount: number = ModelUtils.getIndex(h.shortestDuration) - 2;
 
