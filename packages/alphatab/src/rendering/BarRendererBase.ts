@@ -252,10 +252,20 @@ export class BarRendererBase {
     }
 
     /**
-     * Legacy registry for pre-beat glyphs whose bbox depends on bar-layout
-     * state only final after {@link scaleToWidth} (e.g. `BarNumberGlyph`'s
-     * per-staff visibility suppression). Each entry's bbox is re-read at
+     * Legacy registry for pre-beat glyphs whose bbox depends on
+     * system-/staff-layout state that is only final after {@link scaleToWidth}
+     * (e.g. `BarNumberGlyph`'s per-staff visibility suppression keyed off
+     * `staff.system.firstVisibleStaff`). Each entry's bbox is re-read at
      * {@link scaleToWidth} time and emitted into {@link barLocalSkyline}.
+     *
+     * Do not hoist the emit earlier (e.g. into {@link doLayout} or
+     * {@link calculateOverflows}-from-`doLayout`): at `doLayout` time the
+     * owning `RenderStaff.addBar` has not yet run `_updateVisibility`, and
+     * `StaffSystem.addBars` has not yet assigned `firstVisibleStaff`, so a
+     * `BarNumberGlyph` on a non-first staff would emit a phantom obstacle.
+     * The values are guaranteed stable only by the time
+     * `StaffSystem._applyLayoutAndUpdateWidth` drives `scaleToWidth`.
+     *
      * Prefer the phase-typed {@link Glyph.populateSkyline} hook for new glyphs.
      */
     private readonly _dynamicSkylineGlyphs: Glyph[] = [];
@@ -447,6 +457,12 @@ export class BarRendererBase {
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
+        // Re-emitted on every cycle because this is the earliest seam at which
+        // every tenant's bbox dependencies are stable; specifically,
+        // `BarNumberGlyph` reads `staff.system.firstVisibleStaff` which is only
+        // assigned by `StaffSystem.addBars` after every `RenderStaff.addBar`
+        // (and hence every renderer's `doLayout`) has run. See
+        // {@link _dynamicSkylineGlyphs} for why earlier seams are unsafe.
         this._emitDynamicSkylineGlyphs(this.height);
         for (const g of this._populateSkylineFinalized) {
             g.populateSkyline({ phase: SkylinePhase.Finalized, renderer: this });

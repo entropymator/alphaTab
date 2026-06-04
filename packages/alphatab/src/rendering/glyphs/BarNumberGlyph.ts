@@ -22,8 +22,12 @@ export class BarNumberGlyph extends Glyph {
         this.width = size.width;
         this.height = size.height;
         this.y -= this.height;
-        // bbox depends on `staff.system.firstVisibleStaff` which is not yet
-        // decided at calculateOverflows time — re-emit at scaleToWidth.
+        // bbox depends on `staff.system.firstVisibleStaff` which is assigned
+        // by `StaffSystem.addBars` only after every `RenderStaff.addBar` (and
+        // hence every renderer's `doLayout`) has returned. The dynamic-skyline
+        // emit is therefore deferred to `BarRendererBase.scaleToWidth`, the
+        // first cycle seam at which that field is stable; do not hoist it
+        // earlier.
         this.renderer.registerDynamicSkylineGlyph(this);
     }
 
