@@ -3,6 +3,16 @@ import { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/Skylin
 import { describe, expect, it } from 'vitest';
 
 /**
+ * @record
+ * @internal
+ */
+interface SkylineSegmentExpect {
+    s: number;
+    e: number;
+    h: number;
+}
+
+/**
  * @internal
  */
 class SkylineFixtures {
@@ -252,15 +262,23 @@ describe('Skyline — unionShifted', () => {
         sky.insert(10, 30, 5, 0);
         sky.insert(50, 70, 8, 0);
 
-        const fromCb: Array<{ s: number; e: number; h: number }> = [];
+        const fromCb: SkylineSegmentExpect[] = [];
         sky.forEachSegment((xStart: number, xEnd: number, height: number) => {
             fromCb.push({ s: xStart, e: xEnd, h: height });
         });
-        const fromIdx: Array<{ s: number; e: number; h: number }> = [];
+        const fromIdx: SkylineSegmentExpect[] = [];
         for (let i: number = 0; i < sky.segmentCount; i = i + 1) {
             fromIdx.push({ s: sky.segmentXStart(i), e: sky.segmentXEnd(i), h: sky.segmentHeight(i) });
         }
-        expect(fromIdx).toEqual(fromCb);
+        // Per-element scalar comparison (named-record arrays lack structural
+        // equality in the C# transpilation target — see SYNTAX.md notes on
+        // @record class identity).
+        expect(fromIdx.length).toBe(fromCb.length);
+        for (let i: number = 0; i < fromIdx.length; i = i + 1) {
+            expect(fromIdx[i].s).toBe(fromCb[i].s);
+            expect(fromIdx[i].e).toBe(fromCb[i].e);
+            expect(fromIdx[i].h).toBe(fromCb[i].h);
+        }
     });
 });
 
