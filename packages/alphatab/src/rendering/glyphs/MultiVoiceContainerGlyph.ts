@@ -53,12 +53,30 @@ export class MultiVoiceContainerGlyph extends Glyph {
         return y;
     }
 
-    public scaleToWidth(width: number, onBeatSettled?: (b: BeatContainerGlyphBase) => void): void {
+    /**
+     * Positions every beat container under this multi-voice container at its
+     * Phase-2 width AND emits the per-beat skyline contribution (container
+     * overflow, beat-effect ranges captured during effect-glyph doLayout,
+     * subclass-specific `emitBeatSkyline` hook) into the owning renderer's
+     * `barLocalSkyline`. Positioning and emission share the same beat walk:
+     * each beat's emission happens at the moment its width settles, which is
+     * one iteration AFTER the beat's `x` is known (when the next beat's
+     * position fixes the previous beat's width). The "no new DOM walks" rule
+     * (see commit cfb80602) forbids a separate post-pass.
+     */
+    public scaleToWidth(width: number): void {
         const force: number = this.renderer.layoutingInfo.spaceToForce(width);
-        this._scaleToForce(force, onBeatSettled);
+        this._scaleToForce(force, true);
     }
 
-    private _scaleToForce(force: number, onBeatSettled?: (b: BeatContainerGlyphBase) => void): void {
+    /**
+     * Positioning-only variant used by {@link applyLayoutingInfo} mid-Phase-2.
+     * Emission is suppressed because `applyLayoutingInfo` re-positions while
+     * the surrounding renderer state isn't ready to absorb skyline writes —
+     * the proper emission happens later from {@link scaleToWidth} once the
+     * full Phase 2 settles.
+     */
+    private _scaleToForce(force: number, emit: boolean): void {
         this.width = this.renderer.layoutingInfo.calculateVoiceWidth(force);
         const positions = this.renderer.layoutingInfo.buildOnTimePositions(force);
         for (const beatGlyphs of this.beatGlyphs.values()) {
@@ -133,20 +151,63 @@ export class MultiVoiceContainerGlyph extends Glyph {
                     const previous = beatGlyphs[i - 1];
                     const beatWidth: number = currentBeatGlyph.x - previous.x;
                     previous.scaleToWidth(beatWidth);
-                    if (onBeatSettled) {
-                        onBeatSettled(previous);
+                    if (emit) {
+                        this._emitBeatContainerSkyline(previous);
                     }
                 }
                 // for the last glyph size based on the full width
                 if (i === j - 1) {
                     const beatWidth: number = this.width - beatGlyphs[beatGlyphs.length - 1].x;
                     currentBeatGlyph.scaleToWidth(beatWidth);
-                    if (onBeatSettled) {
-                        onBeatSettled(currentBeatGlyph);
+                    if (emit) {
+                        this._emitBeatContainerSkyline(currentBeatGlyph);
                     }
                 }
             }
         }
+    }
+
+    private _emitBeatContainerSkyline(beatContainer: BeatContainerGlyphBase): void {
+        const renderer = this.renderer;
+        const rendererBottom = renderer.height;
+        const base = this.x + beatContainer.x;
+        const containerTop = beatContainer.getBoundingBoxTop();
+        const containerBottom = beatContainer.getBoundingBoxBottom();
+        const topOver = !Number.isNaN(containerTop) && containerTop < 0;
+        const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
+
+        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
+        if (topOver || botOver) {
+            const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
+            const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
+            if (xEnd > xStart) {
+                if (topOver) {
+                    renderer.insertSkylineTop(xStart, xEnd, containerTop * -1);
+                }
+                if (botOver) {
+                    renderer.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
+                }
+            }
+        }
+
+        // Flush any beat-effect ranges captured during effect-glyph doLayout —
+        // folded into the positioning walk that's already iterating beat
+        // containers (no new DOM walk).
+        const pending = beatContainer.pendingEffectOverflows;
+        if (pending.length > 0) {
+            const pendingXStart = base;
+            const pendingXEnd = base + beatContainer.width;
+            for (const r of pending) {
+                if (r.minY < 0) {
+                    renderer.insertSkylineTop(pendingXStart, pendingXEnd, r.minY * -1);
+                }
+                if (r.maxY > rendererBottom) {
+                    renderer.insertSkylineBottom(pendingXStart, pendingXEnd, r.maxY - rendererBottom);
+                }
+            }
+        }
+
+        renderer.emitBeatSkyline(beatContainer);
     }
 
     public registerLayoutingInfo(info: BarLayoutingInfo): void {
@@ -163,7 +224,7 @@ export class MultiVoiceContainerGlyph extends Glyph {
                 b.applyLayoutingInfo(info);
             }
         }
-        this._scaleToForce(Math.max(this.renderer.settings.display.stretchForce, info.minStretchForce));
+        this._scaleToForce(Math.max(this.renderer.settings.display.stretchForce, info.minStretchForce), false);
     }
 
     public addGlyph(bg: BeatContainerGlyphBase): void {

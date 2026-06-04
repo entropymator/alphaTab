@@ -141,7 +141,7 @@ export class TabBarRenderer extends LineBarRenderer {
         }
     }
 
-    protected override emitBeatSkyline(beatContainer: BeatContainerGlyphBase): void {
+    public override emitBeatSkyline(beatContainer: BeatContainerGlyphBase): void {
         if (!(beatContainer instanceof BeatContainerGlyph)) {
             return;
         }

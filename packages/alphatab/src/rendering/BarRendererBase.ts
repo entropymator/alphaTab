@@ -406,48 +406,12 @@ export class BarRendererBase {
         // pre/postBeatLocalSkyline stay (managed by calculateOverflows).
         this.barLocalSkyline.reset();
 
-        const rendererBottom = this.height;
-        const vc = this.voiceContainer;
-        const voiceX = vc.x;
-        // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
-        // The onBeatSettled callback also flushes any beat-effect ranges that
-        // landed on this container during effect-glyph doLayout — folded into
-        // the positioning walk that's already iterating beat containers.
-        vc.scaleToWidth(containerWidth, beatContainer => {
-            const containerTop = beatContainer.getBoundingBoxTop();
-            const containerBottom = beatContainer.getBoundingBoxBottom();
-            const topOver = !Number.isNaN(containerTop) && containerTop < 0;
-            const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
-            const base = voiceX + beatContainer.x;
-            if (topOver || botOver) {
-                const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
-                const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
-                if (xEnd > xStart) {
-                    if (topOver) {
-                        this.insertSkylineTop(xStart, xEnd, containerTop * -1);
-                    }
-                    if (botOver) {
-                        this.insertSkylineBottom(xStart, xEnd, containerBottom - rendererBottom);
-                    }
-                }
-            }
-
-            const pending = beatContainer.pendingEffectOverflows;
-            if (pending.length > 0) {
-                const pendingXStart = base;
-                const pendingXEnd = base + beatContainer.width;
-                for (const r of pending) {
-                    if (r.minY < 0) {
-                        this.insertSkylineTop(pendingXStart, pendingXEnd, r.minY * -1);
-                    }
-                    if (r.maxY > rendererBottom) {
-                        this.insertSkylineBottom(pendingXStart, pendingXEnd, r.maxY - rendererBottom);
-                    }
-                }
-            }
-
-            this.emitBeatSkyline(beatContainer);
-        });
+        // Per-beat positioning AND skyline emission both live on
+        // `MultiVoiceContainerGlyph` — the container owns the beat walk, so
+        // the per-beat-settled skyline contribution (container overflow,
+        // pendingEffectOverflows, `emitBeatSkyline` subclass hook) is its
+        // concern. `BarRendererBase` only orchestrates the broader Phase 2.
+        this.voiceContainer.scaleToWidth(containerWidth);
 
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
@@ -471,7 +435,7 @@ export class BarRendererBase {
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
-        this._emitDynamicSkylineGlyphs(rendererBottom);
+        this._emitDynamicSkylineGlyphs(this.height);
         // §E Step 3 — Phase 3 `populateSkyline?` dispatch. Glyphs register here
         // from their doLayout; the hook fires once at the end of scaleToWidth
         // when renderer-local positions are settled. Pre-Step-13 this dispatch
@@ -522,7 +486,7 @@ export class BarRendererBase {
 
     protected emitHelperSkyline(_h: BeamingHelper): void {}
 
-    protected emitBeatSkyline(_beatContainer: BeatContainerGlyphBase): void {}
+    public emitBeatSkyline(_beatContainer: BeatContainerGlyphBase): void {}
 
     protected emitSubclassBarLocalSkyline(): void {}
 
