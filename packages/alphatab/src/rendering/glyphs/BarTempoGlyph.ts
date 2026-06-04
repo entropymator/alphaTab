@@ -12,6 +12,8 @@ import { type SkylineCtx, SkylinePhase } from '@coderline/alphatab/rendering/gly
 interface TempoAutomationLayout {
     textWidth: number;
     valueWidth: number;
+    textPrefix: string;
+    valuePostfix: string;
 }
 
 /**
@@ -26,12 +28,28 @@ export class BarTempoGlyph extends EffectGlyph {
     private _symbolWidth: number = 0;
     private _noteShift: number = 0;
 
+    // Per-cycle bbox cache. Both bbox extents are determined by
+    // `getRatioPositionX` (driven by voiceContainer.x / postBeatGlyphsStart) +
+    // the immutable per-automation layout cache. The renderer's X frame is only
+    // final after `scaleToWidth`, so the cache is invalidated at the top of
+    // `populateSkyline` (the registered post-`scaleToWidth` callback) and at
+    // `doLayout` entry for first-cycle freshness. Within one cycle, the bbox
+    // readers fire multiple times (populateSkyline directly + inherited
+    // top/bottom via calculateOverflows + EffectBand.computeLocalXRange) and
+    // reuse the memoized value.
+    private _cachedBoundingBoxLeft: number = 0;
+    private _cachedBoundingBoxRight: number = 0;
+    private _cachedBoundingBoxLeftValid: boolean = false;
+    private _cachedBoundingBoxRightValid: boolean = false;
+
     public constructor(tempoAutomations: Automation[]) {
         super(0, 0);
         this._tempoAutomations = tempoAutomations;
     }
 
     public override doLayout(): void {
+        this._cachedBoundingBoxLeftValid = false;
+        this._cachedBoundingBoxRightValid = false;
         super.doLayout();
         // bbox depends on `getRatioPositionX`, which reads voiceContainer.x /
         // _postBeatGlyphs.x — both only final at scaleToWidth time.
@@ -47,13 +65,27 @@ export class BarTempoGlyph extends EffectGlyph {
         canvas.font = res.elementFonts.get(NotationElement.EffectMarker)!;
         this._automationLayouts = [];
         for (const automation of this._tempoAutomations) {
-            const textWidth = automation.text ? canvas.measureText(`${automation.text} `).width : 0;
-            const valueWidth = canvas.measureText(` = ${automation.value.toString()}`).width;
-            this._automationLayouts.push({ textWidth, valueWidth });
+            // Pre-format the paint-time strings once; `automation.text` /
+            // `automation.value` are model-immutable per render so paint can
+            // read these verbatim instead of allocating + measuring per call.
+            const textPrefix = automation.text ? `${automation.text} ` : '';
+            const valuePostfix = ` = ${automation.value.toString()}`;
+            const textWidth = automation.text ? canvas.measureText(textPrefix).width : 0;
+            const valueWidth = canvas.measureText(valuePostfix).width;
+            const layout: TempoAutomationLayout = {
+                textWidth: textWidth,
+                valueWidth: valueWidth,
+                textPrefix: textPrefix,
+                valuePostfix: valuePostfix
+            };
+            this._automationLayouts.push(layout);
         }
     }
 
     public override getBoundingBoxLeft(): number {
+        if (this._cachedBoundingBoxLeftValid) {
+            return this._cachedBoundingBoxLeft;
+        }
         let min = 0;
         let found = false;
         for (const a of this._tempoAutomations) {
@@ -66,10 +98,16 @@ export class BarTempoGlyph extends EffectGlyph {
                 found = true;
             }
         }
-        return found ? min : this.x;
+        const result = found ? min : this.x;
+        this._cachedBoundingBoxLeft = result;
+        this._cachedBoundingBoxLeftValid = true;
+        return result;
     }
 
     public override getBoundingBoxRight(): number {
+        if (this._cachedBoundingBoxRightValid) {
+            return this._cachedBoundingBoxRight;
+        }
         let max = 0;
         let found = false;
         for (let i = 0; i < this._tempoAutomations.length; i++) {
@@ -85,10 +123,19 @@ export class BarTempoGlyph extends EffectGlyph {
                 found = true;
             }
         }
-        return found ? max : this.x;
+        const result = found ? max : this.x;
+        this._cachedBoundingBoxRight = result;
+        this._cachedBoundingBoxRightValid = true;
+        return result;
     }
 
     public override populateSkyline(ctx: SkylineCtx): void {
+        // Invalidate the bbox cache: this callback fires post-`scaleToWidth`,
+        // when `voiceContainer.x` / `postBeatGlyphsStart` are now final for the
+        // cycle. Subsequent bbox readers (inherited top/bottom +
+        // EffectBand.computeLocalXRange) reuse the values computed here.
+        this._cachedBoundingBoxLeftValid = false;
+        this._cachedBoundingBoxRightValid = false;
         // Emit the now-final bbox extent into the renderer's bar-local skyline.
         const rendererBottom = ctx.renderer.height;
         const topY = this.getBoundingBoxTop();
@@ -107,7 +154,9 @@ export class BarTempoGlyph extends EffectGlyph {
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {
-        for (const automation of this._tempoAutomations) {
+        for (let i = 0; i < this._tempoAutomations.length; i++) {
+            const automation = this._tempoAutomations[i];
+            const layout = this._automationLayouts[i];
             let x = cx + this.renderer.getRatioPositionX(automation.ratioPosition);
 
             const res = this.renderer.resources;
@@ -123,10 +172,11 @@ export class BarTempoGlyph extends EffectGlyph {
             const b = canvas.textBaseline;
             canvas.textBaseline = TextBaseline.Alphabetic;
             if (automation.text) {
-                const text = `${automation.text} `; // additional space
-                const size = canvas.measureText(text);
-                canvas.fillText(text, x, notePosY);
-                x += size.width;
+                // Reuse the pre-formatted prefix + measured width from doLayout
+                // (model-immutable per render); avoids the per-paint
+                // string-allocation + measureText round-trip.
+                canvas.fillText(layout.textPrefix, x, notePosY);
+                x += layout.textWidth;
             } else {
                 x -= res.engravingSettings.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! / 2;
             }
@@ -142,10 +192,11 @@ export class BarTempoGlyph extends EffectGlyph {
                 this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! *
                 res.engravingSettings.tempoNoteScale;
 
-            canvas.fillText(` = ${automation.value.toString()}`, x, notePosY);
+            // Pre-formatted value postfix + measured width cached at doLayout.
+            canvas.fillText(layout.valuePostfix, x, notePosY);
             canvas.textBaseline = b;
 
-            x += canvas.measureText(` = ${automation.value.toString()}`).width;
+            x += layout.valueWidth;
         }
     }
 }
