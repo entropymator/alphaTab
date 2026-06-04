@@ -117,53 +117,82 @@ export class Skyline {
         if (lo >= hi || newHeight <= 0) {
             return;
         }
-        this._splitAt(lo);
-        this._splitAt(hi);
-        for (let k: number = 0; k < this._segments.length - 1; k = k + 1) {
-            const segStart: number = this._segments[k].xStart;
-            const segEnd: number = this._segments[k + 1].xStart;
-            if (segEnd <= lo) {
-                continue;
-            }
-            if (segStart >= hi) {
-                break;
-            }
-            if (this._segments[k].height < newHeight) {
-                this._segments[k].height = newHeight;
+        // Split at `lo`, capturing the index of the first segment in the
+        // raised range. Splitting at `hi` then may shift `hi` indices but
+        // never the `lo` index, so it is safe to keep `loIdx` afterwards.
+        const loIdx: number = this._splitAt(lo);
+        const hiIdx: number = this._splitAt(hi);
+        // Raise heights over the half-open index range [loIdx, hiIdx).
+        for (let i: number = loIdx; i < hiIdx; i = i + 1) {
+            if (this._segments[i].height < newHeight) {
+                this._segments[i].height = newHeight;
             }
         }
-        this._mergeAdjacent();
-    }
-
-    private _splitAt(x: number): void {
-        if (x <= this.xMin || x >= this.xMax) {
-            return;
+        // Merge only inside the touched window: any new same-height
+        // adjacency can only appear at the boundary with the left
+        // neighbour (loIdx-1 / loIdx), inside the raised range itself
+        // (segments that were already >= newHeight stay distinct from
+        // those that were raised to newHeight), or at the boundary with
+        // the right neighbour (hiIdx-1 / hiIdx). Segments outside this
+        // window are untouched and were already in canonical form.
+        const mergeLo: number = loIdx > 0 ? loIdx - 1 : 0;
+        // hiIdx is the index of the first segment AFTER the raised range.
+        // We must consider the adjacency between hiIdx-1 and hiIdx, so
+        // iterate up to and including hiIdx-1.
+        let mergeIdx: number = mergeLo;
+        let mergeEnd: number = hiIdx; // upper bound (inclusive) on left-of-pair index
+        // Cap `mergeEnd` so we never look past the last non-sentinel segment.
+        if (mergeEnd > this._segments.length - 2) {
+            mergeEnd = this._segments.length - 2;
         }
-        for (let k: number = 0; k < this._segments.length - 1; k = k + 1) {
-            const segStart: number = this._segments[k].xStart;
-            const segEnd: number = this._segments[k + 1].xStart;
-            if (segStart === x) {
-                return;
-            }
-            if (segStart < x && x < segEnd) {
-                const newSeg: SkylineSegment = this._pool.acquire();
-                newSeg.xStart = x;
-                newSeg.height = this._segments[k].height;
-                this._segments.splice(k + 1, 0, newSeg);
-                return;
-            }
-        }
-    }
-
-    private _mergeAdjacent(): void {
-        let k: number = 0;
-        while (k < this._segments.length - 2) {
-            if (this._segments[k].height === this._segments[k + 1].height) {
-                const removed: SkylineSegment = this._segments.splice(k + 1, 1)[0];
+        while (mergeIdx <= mergeEnd) {
+            if (
+                mergeIdx < this._segments.length - 2 &&
+                this._segments[mergeIdx].height === this._segments[mergeIdx + 1].height
+            ) {
+                const removed: SkylineSegment = this._segments.splice(mergeIdx + 1, 1)[0];
                 this._pool.release(removed);
+                mergeEnd = mergeEnd - 1;
+                // do not advance mergeIdx: re-check current index against the new neighbour
             } else {
-                k = k + 1;
+                mergeIdx = mergeIdx + 1;
             }
         }
+    }
+
+    /**
+     * Splits the skyline at `x` so that some segment afterwards has
+     * `xStart === x`. Returns the index of that segment. If `x <= xMin`
+     * the baseline (index 0) is returned. If `x >= xMax` the sentinel
+     * index (`_segments.length - 1`) is returned.
+     */
+    private _splitAt(x: number): number {
+        if (x <= this.xMin) {
+            return 0;
+        }
+        if (x >= this.xMax) {
+            return this._segments.length - 1;
+        }
+        // Binary search for the largest index k with segments[k].xStart <= x.
+        // Segments are sorted strictly increasing by xStart.
+        let lo: number = 0;
+        let hi: number = this._segments.length - 1;
+        while (lo < hi) {
+            const mid: number = Math.floor((lo + hi + 1) / 2);
+            if (this._segments[mid].xStart <= x) {
+                lo = mid;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        // Now segments[lo].xStart <= x < segments[lo+1].xStart.
+        if (this._segments[lo].xStart === x) {
+            return lo;
+        }
+        const newSeg: SkylineSegment = this._pool.acquire();
+        newSeg.xStart = x;
+        newSeg.height = this._segments[lo].height;
+        this._segments.splice(lo + 1, 0, newSeg);
+        return lo + 1;
     }
 }
