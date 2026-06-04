@@ -328,19 +328,24 @@ export class RenderStaff {
         // Tie writes go first so any height/overflow changes settle before the
         // chain walk reads renderer geometry. `updateSizes` /
         // `registerStaffOverflows` for renderers whose ties grew overflow run
-        // once per renderer at the end, rather than inline per tie.
-        const dirtyRenderers = new Set<BarRendererBase>();
+        // once per renderer at the end, rather than inline per tie. Renderers
+        // whose tie writes grew their own overflow flip `tiesDirty`; the
+        // trailing pass consumes and clears the flag — set→consume→clear stays
+        // fully inside this method, so no allocation per finalizeStaff.
         for (const renderer of this.barRenderers) {
-            this._finalizeRendererTies(renderer, renderer.ties, dirtyRenderers);
+            this._finalizeRendererTies(renderer, renderer.ties);
             const multiSystemSlurs = renderer.multiSystemSlurs;
             if (multiSystemSlurs) {
-                this._finalizeRendererTies(renderer, multiSystemSlurs, dirtyRenderers);
+                this._finalizeRendererTies(renderer, multiSystemSlurs);
             }
             renderer.dispatchSystemFinalizeSkyline();
         }
-        for (const renderer of dirtyRenderers) {
-            renderer.refreshSizes();
-            renderer.registerStaffOverflows();
+        for (const renderer of this.barRenderers) {
+            if (renderer.tiesDirty) {
+                renderer.refreshSizes();
+                renderer.registerStaffOverflows();
+                renderer.clearTiesDirty();
+            }
         }
 
         // (iii) Union bar-local skyline into the staff skyline.
@@ -375,15 +380,11 @@ export class RenderStaff {
      * Ties never span renderers earlier than `owner`, so the walk starts at
      * `owner.index` and breaks as soon as a renderer starts past the tie's
      * right edge — bounded by `spans` per tie instead of by `R`. Renderers
-     * that grow their own overflow during this pass are added to
-     * `dirtyRenderers` so `updateSizes` / `registerStaffOverflows` runs once
-     * for each at the end of sub-step (ii), not inline per tie.
+     * that grow their own overflow during this pass flip their `tiesDirty`
+     * flag so `updateSizes` / `registerStaffOverflows` runs once for each at
+     * the end of sub-step (ii), not inline per tie.
      */
-    private _finalizeRendererTies(
-        owner: BarRendererBase,
-        ties: Iterable<ITieGlyph>,
-        dirtyRenderers: Set<BarRendererBase>
-    ): void {
+    private _finalizeRendererTies(owner: BarRendererBase, ties: Iterable<ITieGlyph>): void {
         const staffRenderers = this.barRenderers;
         const startIndex = owner.index;
         for (const t of ties) {
@@ -420,12 +421,12 @@ export class RenderStaff {
                 if (target === owner) {
                     if (tieTopOverflow > 0) {
                         if (target.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
-                            dirtyRenderers.add(target);
+                            target.markTiesDirty();
                         }
                     }
                     if (tieBottomOverflow > 0) {
                         if (target.registerOverflowRangeBottom(xStart, xEnd, tieBottomOverflow)) {
-                            dirtyRenderers.add(target);
+                            target.markTiesDirty();
                         }
                     }
                 } else {

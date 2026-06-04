@@ -97,9 +97,34 @@ export class BarRendererBase {
 
     private _multiSystemSlurs?: ContinuationTieGlyph[];
 
+    /**
+     * Set during {@link RenderStaff.finalizeStaff} sub-step (ii) when a tie
+     * write grew this renderer's `_contentTopOverflow` / `_contentBottomOverflow`.
+     * The staff orchestrator consumes and clears it within the same
+     * `finalizeStaff` invocation, so the flag never crosses cycles.
+     */
+    private _tiesDirty: boolean = false;
+
     /** Ties whose start beat lives on this renderer. */
     public get ties(): ITieGlyph[] {
         return this._ties;
+    }
+
+    /**
+     * Marker flipped by {@link RenderStaff._finalizeRendererTies} when a tie
+     * write grew this renderer's overflow. Replaces a per-finalizeStaff
+     * `Set<BarRendererBase>` allocation.
+     */
+    public markTiesDirty(): void {
+        this._tiesDirty = true;
+    }
+
+    public get tiesDirty(): boolean {
+        return this._tiesDirty;
+    }
+
+    public clearTiesDirty(): void {
+        this._tiesDirty = false;
     }
 
     /**
