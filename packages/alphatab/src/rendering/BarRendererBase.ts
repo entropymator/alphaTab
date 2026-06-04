@@ -413,6 +413,19 @@ export class BarRendererBase {
         // calculateOverflows and stay untouched here.
         this.barLocalSkyline.reset();
 
+        // Canonical per-cycle invalidator for beam drawing-info caches: the
+        // spring-X is about to be re-laid-out by the voice container below,
+        // making every cached `BeamingHelperDrawInfo` stale. Invalidating
+        // once here (rather than per-helper in the emit loop) lets
+        // `ensureBeamDrawingInfo`'s cache-existence check serve the later
+        // `calculateBeamingOverflows` pass (Phase 2.5) as cache hits against
+        // the entries `emitHelperSkyline` (Phase 2) populated.
+        for (const v of this.helpers.beamHelpers) {
+            for (const h of v) {
+                h.invalidateDrawingInfos();
+            }
+        }
+
         // The voice container owns the beat walk and emits per-beat skyline
         // contributions (container overflow, pendingEffectOverflows,
         // `emitBeatSkyline` subclass hook) in the same pass.
@@ -420,7 +433,6 @@ export class BarRendererBase {
 
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
-                h.invalidateDrawingInfos();
                 this.emitHelperSkyline(h);
             }
         }
