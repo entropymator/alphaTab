@@ -34,6 +34,19 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
     private _startNote: Note;
     private _parent: BeatContainerGlyph;
 
+    // Per-cycle slide-segment cache. See `ScoreSlideLineGlyph` for the
+    // rationale: bbox-left + bbox-right + paint each invoke both compute
+    // helpers, and the OUT path crosses renderers via `getRendererForBar` +
+    // `getBeatX` / `getNoteY`. Paired `*CacheValid: boolean` flags rather
+    // than nullable-as-sentinel for clean C# transpile (see `BarTempoGlyph`,
+    // commit dcf6cd20). Invalidation seam: `doLayout` entry, which
+    // `RenderStaff._finalizeRendererTies` calls once per cycle before any
+    // bbox/paint read.
+    private _slideInCache: SlideSegment | null = null;
+    private _slideInCacheValid: boolean = false;
+    private _slideOutCache: SlideSegment | null = null;
+    private _slideOutCacheValid: boolean = false;
+
     // the slide line cannot overflow anything and there are ties drawn in here
     public readonly checkForOverflow = false;
 
@@ -46,6 +59,10 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
     }
 
     public override doLayout(): void {
+        this._slideInCacheValid = false;
+        this._slideInCache = null;
+        this._slideOutCacheValid = false;
+        this._slideOutCache = null;
         this.width = 0;
     }
 
@@ -113,6 +130,16 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
     }
 
     private _computeSlideIn(): SlideSegment | null {
+        if (this._slideInCacheValid) {
+            return this._slideInCache;
+        }
+        const result = this._computeSlideInUncached();
+        this._slideInCache = result;
+        this._slideInCacheValid = true;
+        return result;
+    }
+
+    private _computeSlideInUncached(): SlideSegment | null {
         const startNoteRenderer: TabBarRenderer = this.renderer as TabBarRenderer;
         const sizeX: number = this.renderer.smuflMetrics.simpleSlideWidth;
         const sizeY: number = this.renderer.smuflMetrics.simpleSlideHeight;
@@ -159,6 +186,16 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
     }
 
     private _computeSlideOut(): SlideSegment | null {
+        if (this._slideOutCacheValid) {
+            return this._slideOutCache;
+        }
+        const result = this._computeSlideOutUncached();
+        this._slideOutCache = result;
+        this._slideOutCacheValid = true;
+        return result;
+    }
+
+    private _computeSlideOutUncached(): SlideSegment | null {
         const startNoteRenderer: TabBarRenderer = this.renderer as TabBarRenderer;
         const sizeX: number = this.renderer.smuflMetrics.simpleSlideWidth;
         const sizeY: number = this.renderer.smuflMetrics.simpleSlideHeight;

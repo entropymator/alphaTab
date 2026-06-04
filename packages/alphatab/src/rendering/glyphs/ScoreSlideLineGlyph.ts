@@ -36,6 +36,21 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
     private _startNote: Note;
     private _parent: BeatContainerGlyph;
 
+    // Per-cycle slide-segment cache. `_computeSlideIn` / `_computeSlideOut`
+    // are invoked up to 6× per cycle (bbox-left + bbox-right + paint, each
+    // computing IN and OUT). The OUT path in particular hits a
+    // `getRendererForBar` Map lookup plus cross-renderer `getBeatX` / `getNoteY`
+    // calls — all settled by Phase-3 `isFinalized`, which fires before any of
+    // these reads. Use paired `*CacheValid: boolean` flags rather than
+    // nullable-as-sentinel because the C# transpile doesn't unwrap `T | null`
+    // with `!` cleanly (see `BarTempoGlyph`, commit dcf6cd20). The cache is
+    // invalidated at `doLayout` entry — `RenderStaff._finalizeRendererTies`
+    // calls `tie.doLayout()` once per cycle before any bbox/paint read.
+    private _slideInCache: ScoreSlideSegment | null = null;
+    private _slideInCacheValid: boolean = false;
+    private _slideOutCache: ScoreSlideSegment | null = null;
+    private _slideOutCacheValid: boolean = false;
+
     // the slide line cannot overflow anything and there are ties drawn in here
     public readonly checkForOverflow = false;
 
@@ -48,6 +63,10 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
     }
 
     public override doLayout(): void {
+        this._slideInCacheValid = false;
+        this._slideInCache = null;
+        this._slideOutCacheValid = false;
+        this._slideOutCache = null;
         this.width = 0;
     }
 
@@ -116,6 +135,16 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
     }
 
     private _computeSlideIn(): ScoreSlideSegment | null {
+        if (this._slideInCacheValid) {
+            return this._slideInCache;
+        }
+        const result = this._computeSlideInUncached();
+        this._slideInCache = result;
+        this._slideInCacheValid = true;
+        return result;
+    }
+
+    private _computeSlideInUncached(): ScoreSlideSegment | null {
         const startNoteRenderer: ScoreBarRenderer = this.renderer as ScoreBarRenderer;
         const sizeX: number = startNoteRenderer.smuflMetrics.simpleSlideWidth;
         let endX =
@@ -149,6 +178,16 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
     }
 
     private _computeSlideOut(): ScoreSlideSegment | null {
+        if (this._slideOutCacheValid) {
+            return this._slideOutCache;
+        }
+        const result = this._computeSlideOutUncached();
+        this._slideOutCache = result;
+        this._slideOutCacheValid = true;
+        return result;
+    }
+
+    private _computeSlideOutUncached(): ScoreSlideSegment | null {
         const startNoteRenderer: ScoreBarRenderer = this.renderer as ScoreBarRenderer;
         const sizeX: number = startNoteRenderer.smuflMetrics.simpleSlideWidth;
         const offsetX: number = startNoteRenderer.smuflMetrics.postNoteEffectPadding;
