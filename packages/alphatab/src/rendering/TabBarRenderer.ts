@@ -146,17 +146,14 @@ export class TabBarRenderer extends LineBarRenderer {
             return;
         }
         // Tab digits paint per-beat at the notehead extent — register the half-line
-        // overflow per beat, not bar-wide. Top string = `tuning.length` (largest index).
+        // overflow per beat, not bar-wide. Top string = `tuning.length` (largest 1-indexed
+        // value); bottom string = 1. Use model-finish caches on Beat (Beat.minStringNote
+        // tracks the lowest-numbered string used, Beat.maxStringNote the highest) to avoid
+        // re-walking beat.notes on every layout cycle.
+        const beat = beatContainer.beat;
         const stringCount = this.bar.staff.tuning.length;
-        let hasTop = false;
-        let hasBottom = false;
-        for (const note of beatContainer.beat.notes) {
-            if (note.string === stringCount) {
-                hasTop = true;
-            } else if (note.string === 1) {
-                hasBottom = true;
-            }
-        }
+        const hasTop = beat.maxStringNote !== null && beat.maxStringNote.string === stringCount;
+        const hasBottom = beat.minStringNote !== null && beat.minStringNote.string === 1;
         if (!hasTop && !hasBottom) {
             return;
         }
