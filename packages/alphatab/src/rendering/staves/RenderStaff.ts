@@ -303,43 +303,38 @@ export class RenderStaff {
 
         this.height = 0;
 
-        // `_scaleToWidth` has settled each renderer's x/width by now.
+        // Each renderer's x/width has been settled by the Phase-2 scaleToWidth pass.
         this.systemSkyline.reset();
         this.effectPlacement.reset();
 
-        // §E Step 12 / §D.6 — SystemFinalize 4-substep ordering. The OLD
-        // single-loop + `needsSecondPass` re-run pattern is replaced by an
-        // explicit 4-pass sequence. Each pass completes for ALL renderers
-        // before the next pass starts; tie writes in (ii) land before
-        // (iii)'s union and (iv)'s placement read the skyline, so no
-        // second pass is needed.
+        // SystemFinalize 4-substep ordering. Each sub-step completes for every
+        // renderer before the next starts. Tie writes in (ii) land before
+        // (iii)'s union and (iv)'s placement read the staff skyline, so a
+        // second pass is unnecessary.
 
-        // (i) per-renderer: finalize-minus-ties. Sets isFinalized=true
-        // before any cross-renderer chain walk reads it (Step 16 territory).
+        // (i) Mark every renderer finalized before any cross-renderer chain
+        // walk reads it.
         for (const renderer of this.barRenderers) {
             renderer.registerMultiSystemSlurs(this.system.layout!.slurRegistry.getAllContinuations(renderer));
             renderer.finalizeRendererMinusTies();
         }
 
-        // (ii) per-renderer: tie writes (own + spanned renderers'
-        // barLocalSkylines) and cross-renderer `GroupedEffectGlyph`
-        // `populateSkyline?` dispatch. Tie writes go first so any
-        // height/overflow changes settle before the chain walk reads
+        // (ii) Tie writes (which may target spanned renderers' barLocalSkylines)
+        // and cross-renderer `populateSkyline` dispatch. Tie writes go first so
+        // any height/overflow changes settle before the chain walk reads
         // renderer geometry.
         for (const renderer of this.barRenderers) {
             renderer.finalizeTies();
             renderer.dispatchSystemFinalizeSkyline();
         }
 
-        // (iii) per-renderer: union bar-local skyline into staff skyline.
-        // Runs after every renderer's tie writes so spanned-renderer
-        // contributions are visible.
+        // (iii) Union bar-local skyline into the staff skyline.
         for (const renderer of this.barRenderers) {
             this.height = Math.max(this.height, renderer.height);
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
-        // (iv) once per staff: placeAndApply effect bands.
+        // (iv) Place effect bands once per staff.
         this.effectPlacement.placeAndApply();
 
         const topOverflow: number = this.topOverflow;

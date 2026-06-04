@@ -26,10 +26,9 @@ export class EffectGlyph extends Glyph {
     public previousGlyph: EffectGlyph | null = null;
 
     /**
-     * Back-reference to the owning {@link EffectBand}, set in
-     * {@link EffectBand._createOrResizeGlyph}. `GroupedEffectGlyph`'s
-     * `populateSkyline?` (Step 16) uses this to publish the chain's true
-     * cross-renderer span range without a band-of-glyph reverse map.
+     * Back-reference to the owning {@link EffectBand}, set when the band
+     * creates the glyph. Used by {@link GroupedEffectGlyph.populateSkyline} to
+     * publish the chain's cross-renderer span range back to its band.
      */
     public band: EffectBand | null = null;
 

@@ -29,10 +29,8 @@ export class BarTempoGlyph extends EffectGlyph {
 
     public override doLayout(): void {
         super.doLayout();
-        // §E Step 3 — bbox depends on the renderer's `getRatioPositionX` which
-        // uses voiceContainer.x / _postBeatGlyphs.x (final only at scaleToWidth).
-        // Register for the Phase 3 `populateSkyline?` dispatch instead of the
-        // OLD `_dynamicSkylineGlyphs` registry.
+        // bbox depends on `getRatioPositionX`, which reads voiceContainer.x /
+        // _postBeatGlyphs.x — both only final at scaleToWidth time.
         this.renderer.registerPopulateSkyline(this, 'finalized');
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
@@ -83,9 +81,7 @@ export class BarTempoGlyph extends EffectGlyph {
     }
 
     public override populateSkyline(ctx: SkylineCtx): void {
-        // Mirrors the OLD `_emitDynamicSkylineGlyphs` body for a `group='pre'`
-        // tenant: emit the (now-final) bbox extent into the renderer's
-        // bar-local skyline (top/bottom).
+        // Emit the now-final bbox extent into the renderer's bar-local skyline.
         const rendererBottom = ctx.renderer.height;
         const topY = this.getBoundingBoxTop();
         const bottomY = this.getBoundingBoxBottom();

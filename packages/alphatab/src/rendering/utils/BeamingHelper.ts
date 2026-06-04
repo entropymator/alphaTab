@@ -106,26 +106,9 @@ export class BeamingHelper {
     }
 
     /**
-     * §E Step 17 (slim) — Phase-2-entry invalidation of cached
-     * {@link drawingInfos}. The OLD `alignWithBeats` body iterated
-     * `drawingInfos.values()` to refresh `startX`/`endX` from
-     * `getBeatX(..., Stem)` AND called `this.drawingInfos.clear()` from
-     * inside the loop — the mid-iteration clear exited the iterator after
-     * one entry, so the X-update was dead code: the net effect was
-     * `drawingInfos.clear()`. Renamed and reduced to that single
-     * operation. Phase-2 emit (`emitHelperSkyline` →
-     * `_computeBeamingBounds` → `ensureBeamDrawingInfo`) repopulates from
-     * scratch with post-spring X.
-     *
-     * v5 Step 17 specified Route B (delete `ensureBeamDrawingInfo` cache
-     * miss entirely; eager-populate in Phase 2; compute overflow probe
-     * directly via `getFlagTopY/Bottom + max-slope clamp` without
-     * middle-element shifts). Deferred as tier-3 — the direct-compute
-     * probe trades precision for a beam-cache C-1 closure that has no
-     * empirical payoff against current code. The cache-miss rebuild in
-     * `_computeBeamingBounds` remains the source of truth for Y; this
-     * invalidation seam is the only mutation point in the cache's
-     * lifecycle outside that rebuild.
+     * Invalidates cached {@link drawingInfos} at Phase-2 entry. The Phase-2
+     * emit path (`emitHelperSkyline` → `_computeBeamingBounds` →
+     * `ensureBeamDrawingInfo`) repopulates the cache with post-spring X.
      */
     public invalidateDrawingInfos() {
         this.drawingInfos.clear();

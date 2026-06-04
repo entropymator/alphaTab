@@ -467,13 +467,9 @@ export class StaffSystem {
         let totalContentWidth = 0;
 
         for (const mb of this.masterBarsRenderers) {
-            // §E Step 8b — gate the per-renderer re-apply on "this bar's info
-            // was actually recomputed in this reconcile loop." Previously the
-            // call ran for every renderer of every bar and the version-cookie
-            // short-circuit inside `applyLayoutingInfo` did the no-op skipping;
-            // with the cookie deleted, the caller takes responsibility. Bars
-            // not affected by the min-duration change keep their previous
-            // applied positions (consistent with their unchanged broker state).
+            // Only re-apply renderers whose layoutingInfo was actually
+            // recomputed in this loop. `applyLayoutingInfo` no longer
+            // short-circuits internally, so the caller gates it.
             const wasRecomputed = mb.layoutingInfo.computedWithMinDuration > this.minDuration;
             if (wasRecomputed) {
                 mb.layoutingInfo.recomputeSpringConstants(this.minDuration);
@@ -562,10 +558,9 @@ export class StaffSystem {
             this.totalFixedOverhead -= toRemove.maxFixedOverhead;
             this.totalContentWidth -= toRemove.maxContentWidth;
 
-            // Re-run accolade spacing now that visibility has settled. The brace
-            // contribution may shrink if a previously-visible staff is no longer
-            // visible after this revert (§G.7). Tracks aren't threaded through
-            // revertLastBar's signature; pull them from the renderer (§D.8a Min3).
+            // Re-run accolade spacing now that visibility has settled. The
+            // brace contribution may shrink if a visible staff is no longer
+            // visible after this revert.
             this._calculateAccoladeSpacing(this.layout.renderer.tracks!);
 
             return toRemove;
@@ -615,24 +610,13 @@ export class StaffSystem {
     private _calculateAccoladeSpacing(tracks: Track[]): void {
         const settings = this.layout.renderer.settings;
 
-        // Two reasons to (re)compute the full accolade contribution:
-        //   (a) first call ever (`_accoladeVisibilityFingerprint === null`);
-        //   (b) visibility changed since the last recompute — either revertLastBar
-        //       flipped a staff invisible (§G.7) or an added bar flipped a
-        //       previously-invisible staff visible (B.5).
-        // For non-visibility-driven calls we preserve the OLD chicken-egg
-        // approximation: refresh each bracket's `b.width` (so paint sees the
-        // up-to-date value) but leave `accoladeWidth` / `system.width` at their
-        // already-locked value. This matches the v5 §H 1c sentinel (5 addBars on
-        // stable visibility → system.width matches single-call baseline) and
-        // closes B.5 / B.23 / §G.7 without growing the brace contribution with
-        // overflow accumulation. Deviation note: v5 §D.8a's "recompute on every
-        // call" letter would make accoladeWidth track overflow growth; v5's claim
-        // that `calculateHeightForAccolade` is idempotent overlooks that it reads
-        // `topOverflow`/`bottomOverflow` max-of accumulators that grow with each
-        // added bar. This visibility-fingerprint gate honours both the §G.7 spirit
-        // and the §H 1c sentinel while preserving the documented chicken-egg
-        // approximation.
+        // Full recompute only when visibility changes (initial call,
+        // revertLastBar flipping a staff invisible, or an added bar flipping a
+        // previously-invisible staff visible). On stable visibility we still
+        // refresh bracket `width` for paint, but leave `accoladeWidth` /
+        // `system.width` locked at their first-pass value — the brace
+        // contribution would otherwise grow with the overflow accumulators that
+        // `calculateHeightForAccolade` reads.
         const visibilityFingerprint = this._computeVisibilityFingerprint();
         if (this._accoladeVisibilityFingerprint === visibilityFingerprint) {
             for (const b of this._brackets) {
@@ -642,10 +626,8 @@ export class StaffSystem {
             return;
         }
 
-        // Idempotency contract (§D.8a). Successive recomputes must converge to a
-        // single-call baseline rather than accumulating. Unwind the previous
-        // accolade contribution from system width totals, reset accoladeWidth to
-        // 0, recompute, then re-apply.
+        // Successive recomputes must converge — unwind the previous accolade
+        // contribution from system width totals before re-deriving it.
         const prevContribution = this.accoladeWidth;
         this.width -= prevContribution;
         this.computedWidth -= prevContribution;
@@ -718,9 +700,8 @@ export class StaffSystem {
                         }
                     }
 
-                    // The padding `+=` pair below accumulates within this invocation
-                    // onto the freshly-zeroed accoladeWidth; it is not a cross-call
-                    // accumulator (§D.8a Min2).
+                    // Accumulates onto the freshly-zeroed accoladeWidth within
+                    // this invocation; not a cross-call accumulator.
                     this.accoladeWidth += settings.display.systemLabelPaddingLeft;
                     if (hasAnyTrackName) {
                         this.accoladeWidth += settings.display.systemLabelPaddingRight;
@@ -754,9 +735,9 @@ export class StaffSystem {
             currentY += staff.height;
         }
 
-        // Brace width depends on per-staff visibility (via updateCanPaint), so it
-        // must be recomputed on every call — this is what catches the revert
-        // accolade-shrink case (§G.7).
+        // Brace width depends on per-staff visibility (via updateCanPaint), so
+        // it must be recomputed when visibility changes — catches the
+        // accolade-shrink case when a revert hides a staff.
         let braceWidth = 0;
         for (const b of this._brackets) {
             b.updateCanPaint();
@@ -773,20 +754,13 @@ export class StaffSystem {
     }
 
     /**
-     * §E Step 5b — Phase-2 entry reset hook for cross-bar staff state held in
-     * `RenderStaff._sharedLayoutData`. Called by each layout's Phase-2 entry
-     * (`VerticalLayoutBase._scaleToWidth`, `HorizontalScreenLayout._alignRenderers`)
-     * before any `alignGlyphs` runs, so the max-of-idempotent
-     * `EffectInfo.onAlignGlyphs` writers (see §E Step 5a audit in
-     * `EffectBandContainer.alignGlyphs`) start from a clean slate per cycle.
-     *
-     * The per-revert reset in `RenderStaff.revertLastBar` remains a separate,
-     * semantically-distinct call site — it rolls back the staff's slice of
-     * cross-bar state when a bar is reverted (max-of accumulators are
-     * monotonically non-decreasing; without per-revert reset the max from a
-     * reverted bar would stay inflated until the next cycle). Step 11's
-     * `StaffLayoutCycle` substate atomically reassigns the whole bag on resize
-     * and obsoletes this method; Step 5b is the intermediate consolidation.
+     * Phase-2 entry reset hook for cross-bar staff state held in
+     * {@link RenderStaff._sharedLayoutData}. Called once per system before any
+     * `alignGlyphs` runs so the max-of-idempotent `EffectInfo.onAlignGlyphs`
+     * writers start from a clean slate each cycle. The separate per-revert
+     * reset in {@link RenderStaff.revertLastBar} rolls back the reverted bar's
+     * slice of cross-bar state (max-of accumulators are monotonically
+     * non-decreasing).
      */
     public resetAllStavesSharedLayoutData(): void {
         for (const s of this.allStaves) {

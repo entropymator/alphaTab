@@ -451,9 +451,8 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
         const distributable = Math.max(0, staffWidth - system.totalFixedOverhead);
         const contentShare = weightTotal > 0 ? distributable / weightTotal : 0;
 
-        // §E Step 5b — single Phase-2 entry reset of cross-bar staff state.
-        // Was a per-staff call inside the loop; moved here so the reset is one
-        // documented invocation per system Phase-2 entry (see helper doc).
+        // Single Phase-2 entry reset of cross-bar staff state. See
+        // {@link StaffSystem.resetAllStavesSharedLayoutData}.
         system.resetAllStavesSharedLayoutData();
 
         for (const s of system.allStaves) {

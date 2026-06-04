@@ -54,15 +54,12 @@ export class MultiVoiceContainerGlyph extends Glyph {
     }
 
     /**
-     * Positions every beat container under this multi-voice container at its
-     * Phase-2 width AND emits the per-beat skyline contribution (container
-     * overflow, beat-effect ranges captured during effect-glyph doLayout,
-     * subclass-specific `emitBeatSkyline` hook) into the owning renderer's
-     * `barLocalSkyline`. Positioning and emission share the same beat walk:
-     * each beat's emission happens at the moment its width settles, which is
-     * one iteration AFTER the beat's `x` is known (when the next beat's
-     * position fixes the previous beat's width). The "no new DOM walks" rule
-     * (see commit cfb80602) forbids a separate post-pass.
+     * Positions every beat container at its Phase-2 width and emits the
+     * per-beat skyline contribution (container overflow, beat-effect ranges,
+     * subclass `emitBeatSkyline` hook) into the owning renderer's
+     * `barLocalSkyline`. Each beat's emission fires when its width settles —
+     * one iteration after `x` is known, since the next beat fixes the previous
+     * beat's width.
      */
     public scaleToWidth(width: number): void {
         const force: number = this.renderer.layoutingInfo.spaceToForce(width);
@@ -71,10 +68,9 @@ export class MultiVoiceContainerGlyph extends Glyph {
 
     /**
      * Positioning-only variant used by {@link applyLayoutingInfo} mid-Phase-2.
-     * Emission is suppressed because `applyLayoutingInfo` re-positions while
-     * the surrounding renderer state isn't ready to absorb skyline writes —
-     * the proper emission happens later from {@link scaleToWidth} once the
-     * full Phase 2 settles.
+     * Emission is suppressed because the surrounding renderer state isn't
+     * ready to absorb skyline writes; final emission happens later from
+     * {@link scaleToWidth}.
      */
     private _scaleToForce(force: number, emit: boolean): void {
         this.width = this.renderer.layoutingInfo.calculateVoiceWidth(force);
@@ -190,9 +186,8 @@ export class MultiVoiceContainerGlyph extends Glyph {
             }
         }
 
-        // Flush any beat-effect ranges captured during effect-glyph doLayout —
-        // folded into the positioning walk that's already iterating beat
-        // containers (no new DOM walk).
+        // Flush beat-effect ranges captured during effect-glyph doLayout,
+        // folded into this positioning walk.
         const pending = beatContainer.pendingEffectOverflows;
         if (pending.length > 0) {
             const pendingXStart = base;
