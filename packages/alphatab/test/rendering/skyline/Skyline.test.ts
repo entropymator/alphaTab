@@ -173,6 +173,97 @@ describe('Skyline — union', () => {
     });
 });
 
+describe('Skyline — unionShifted', () => {
+    it('shifts other by dx and takes per-x max with self', () => {
+        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
+        const b: Skyline = SkylineFixtures.newSkyline(0, 50);
+        a.insert(10, 40, 5, 0);
+        b.insert(0, 20, 8, 0);
+        // dx = 30: b's [0,20)@8 lands on a as [30,50)@8.
+        a.unionShifted(b, 30);
+        expect(a.placeAbove(15, 25, 1, 0)).toBe(5);
+        expect(a.placeAbove(30, 40, 1, 0)).toBe(8); // overlap of a's [10,40)@5 and shifted b's [30,50)@8 → 8
+        expect(a.placeAbove(40, 50, 1, 0)).toBe(8);
+        expect(a.placeAbove(60, 80, 1, 0)).toBe(0);
+    });
+
+    it('clamps shifted segments to [xMin, xMax]', () => {
+        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
+        const b: Skyline = SkylineFixtures.newSkyline(0, 100);
+        b.insert(10, 30, 6, 0);
+        // dx = -20 → b's [10,30)@6 maps to a's [-10, 10)@6; clamp to [0, 10).
+        a.unionShifted(b, -20);
+        expect(a.placeAbove(0, 10, 1, 0)).toBe(6);
+        expect(a.placeAbove(10, 20, 1, 0)).toBe(0);
+    });
+
+    it('drops shifted segments that fall fully outside the target range', () => {
+        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
+        const b: Skyline = SkylineFixtures.newSkyline(0, 50);
+        b.insert(0, 50, 9, 0);
+        // dx = 200 → entire shifted other lies past xMax=100; no-op.
+        a.unionShifted(b, 200);
+        expect(a.maxHeight()).toBe(0);
+        expect(a.segmentCount).toBe(1);
+    });
+
+    it('empty other is a no-op', () => {
+        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
+        a.insert(10, 30, 5, 0);
+        const empty: Skyline = SkylineFixtures.newSkyline(0, 100);
+        a.unionShifted(empty, 7);
+        expect(a.placeAbove(15, 25, 1, 0)).toBe(5);
+        expect(a.maxHeight()).toBe(5);
+    });
+
+    it('repeated unions accumulate correctly (per-x max)', () => {
+        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
+        const b: Skyline = SkylineFixtures.newSkyline(0, 20);
+        b.insert(0, 20, 4, 0);
+        a.unionShifted(b, 0); // contributes [0,20)@4
+        a.unionShifted(b, 30); // contributes [30,50)@4
+        a.unionShifted(b, 60); // contributes [60,80)@4
+        expect(a.placeAbove(0, 20, 1, 0)).toBe(4);
+        expect(a.placeAbove(20, 30, 1, 0)).toBe(0);
+        expect(a.placeAbove(30, 50, 1, 0)).toBe(4);
+        expect(a.placeAbove(50, 60, 1, 0)).toBe(0);
+        expect(a.placeAbove(60, 80, 1, 0)).toBe(4);
+    });
+
+    it('produces canonical segments (no adjacent same-height entries)', () => {
+        const a: Skyline = SkylineFixtures.newSkyline(0, 100);
+        const b: Skyline = SkylineFixtures.newSkyline(0, 50);
+        a.insert(10, 30, 5, 0);
+        b.insert(0, 20, 5, 0);
+        // b shifted by 30 -> [30,50)@5. Adjacent to a's [10,30)@5 → must coalesce
+        // into a single [10,50)@5 segment.
+        a.unionShifted(b, 30);
+        // segmentCount counts non-sentinel pieces. A canonical layout for this
+        // result is: [{0,0},{10,5},{50,0},{100,0sentinel}] => 3 visible pieces
+        // (the [50,100)@0 tail is one segment before sentinel).
+        expect(a.segmentCount).toBe(3);
+        expect(a.placeAbove(15, 25, 1, 0)).toBe(5);
+        expect(a.placeAbove(30, 50, 1, 0)).toBe(5);
+        expect(a.placeAbove(50, 60, 1, 0)).toBe(0);
+    });
+
+    it('index-based segment accessors mirror forEachSegment', () => {
+        const sky: Skyline = SkylineFixtures.newSkyline(0, 100);
+        sky.insert(10, 30, 5, 0);
+        sky.insert(50, 70, 8, 0);
+
+        const fromCb: Array<{ s: number; e: number; h: number }> = [];
+        sky.forEachSegment((xStart: number, xEnd: number, height: number) => {
+            fromCb.push({ s: xStart, e: xEnd, h: height });
+        });
+        const fromIdx: Array<{ s: number; e: number; h: number }> = [];
+        for (let i: number = 0; i < sky.segmentCount; i = i + 1) {
+            fromIdx.push({ s: sky.segmentXStart(i), e: sky.segmentXEnd(i), h: sky.segmentHeight(i) });
+        }
+        expect(fromIdx).toEqual(fromCb);
+    });
+});
+
 describe('Skyline — reset', () => {
     it('returns segments to the pool and rebuilds the baseline', () => {
         const pool: SkylineSegmentPool = new SkylineSegmentPool();

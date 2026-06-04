@@ -239,42 +239,20 @@ export class RenderStaff {
         const sky = this.systemSkyline;
         const baseX = renderer.x;
         const bar = renderer.barLocalSkyline;
-        bar.upSky.forEachSegment((xStart, xEnd, height) => {
-            if (height > 0) {
-                sky.insertPlaced(StaffSide.Top, baseX + xStart, baseX + xEnd, height, 0);
-            }
-        });
-        bar.downSky.forEachSegment((xStart, xEnd, height) => {
-            if (height > 0) {
-                sky.insertPlaced(StaffSide.Bottom, baseX + xStart, baseX + xEnd, height, 0);
-            }
-        });
-        // Pre-beat segments are bar-local (group x = 0); union with renderer.x.
         const pre = renderer.preBeatLocalSkyline;
-        pre.upSky.forEachSegment((xStart, xEnd, height) => {
-            if (height > 0) {
-                sky.insertPlaced(StaffSide.Top, baseX + xStart, baseX + xEnd, height, 0);
-            }
-        });
-        pre.downSky.forEachSegment((xStart, xEnd, height) => {
-            if (height > 0) {
-                sky.insertPlaced(StaffSide.Bottom, baseX + xStart, baseX + xEnd, height, 0);
-            }
-        });
+        const post = renderer.postBeatLocalSkyline;
         // Post-beat segments live in post-beat-group-local coords; shift by the
         // group's final x (settled by scaleToWidth) before unioning.
         const postBaseX = baseX + renderer.postBeatGroupOffset;
-        const post = renderer.postBeatLocalSkyline;
-        post.upSky.forEachSegment((xStart, xEnd, height) => {
-            if (height > 0) {
-                sky.insertPlaced(StaffSide.Top, postBaseX + xStart, postBaseX + xEnd, height, 0);
-            }
-        });
-        post.downSky.forEachSegment((xStart, xEnd, height) => {
-            if (height > 0) {
-                sky.insertPlaced(StaffSide.Bottom, postBaseX + xStart, postBaseX + xEnd, height, 0);
-            }
-        });
+
+        // Pair-merge each bar-local skyline into the staff skyline in
+        // O(s_local + s_staff_growing) per call. Closure-free hot path.
+        sky.upSky.unionShifted(bar.upSky, baseX);
+        sky.downSky.unionShifted(bar.downSky, baseX);
+        sky.upSky.unionShifted(pre.upSky, baseX);
+        sky.downSky.unionShifted(pre.downSky, baseX);
+        sky.upSky.unionShifted(post.upSky, postBaseX);
+        sky.downSky.unionShifted(post.downSky, postBaseX);
     }
 
     /**
