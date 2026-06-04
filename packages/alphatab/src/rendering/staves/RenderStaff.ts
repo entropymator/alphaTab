@@ -323,12 +323,12 @@ export class RenderStaff {
 
         // (ii) per-renderer: tie writes (own + spanned renderers'
         // barLocalSkylines) and cross-renderer `GroupedEffectGlyph`
-        // `populateSkyline?` dispatch (Step 16). Tie writes go first so
-        // any height/overflow changes settle before the chain walk reads
+        // `populateSkyline?` dispatch. Tie writes go first so any
+        // height/overflow changes settle before the chain walk reads
         // renderer geometry.
         for (const renderer of this.barRenderers) {
             renderer.finalizeTies();
-            renderer.dispatchPopulateSkylineSystemFinalize();
+            renderer.dispatchSystemFinalizeSkyline();
         }
 
         // (iii) per-renderer: union bar-local skyline into staff skyline.

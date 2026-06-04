@@ -30,11 +30,9 @@ export class EffectBand extends Glyph {
     public placedMagnitude: number = 0;
 
     /**
-     * Cross-renderer span ranges published by {@link GroupedEffectGlyph}'s
-     * `populateSkyline?` at SystemFinalize sub-step (ii). The chain head
-     * publishes its true painted xEnd (which may exceed `this.renderer.width`)
-     * so {@link computeLocalXRange} reflects the chain's full painted span at
-     * placement time. Cleared per cycle by {@link clearPublishedSpans}.
+     * Cross-renderer span ranges published by {@link GroupedEffectGlyph}.
+     * Cleared at the start of every SystemFinalize dispatch; relies on every
+     * renderer transiting that dispatch each cycle.
      */
     private _publishedSpans: { xStart: number; xEnd: number }[] = [];
 
@@ -225,10 +223,10 @@ export class EffectBand extends Glyph {
                             newGlyph.previousGlyph = prevEffect;
                             // mark renderers as linked for consideration when layouting the renderers (line breaking, partial breaking)
                             this.isLinkedToPrevious = true;
-                            // On the 1->2 transition, register the chain head
-                            // for the SystemFinalize skyline dispatch. The head
-                            // publishes the chain's cross-renderer painted xEnd
-                            // once every renderer is finalized (sub-step (ii)).
+                            // On the 1->2 transition, register the chain head for the
+                            // SystemFinalize dispatch so it publishes the chain's
+                            // cross-renderer painted xEnd once every renderer in the
+                            // staff is finalized.
                             if (prevEffect.previousGlyph === null) {
                                 prevEffect.renderer.registerPopulateSkyline(prevEffect, 'systemFinalize');
                             }
@@ -319,12 +317,9 @@ export class EffectBand extends Glyph {
                 }
             }
         }
-        // §E Step 16 — fold cross-renderer chain spans (published by
-        // `GroupedEffectGlyph.populateSkyline?` at SystemFinalize sub-step (ii))
-        // into the band's placement xRange. The chain head's published xEnd may
-        // exceed `this.renderer.width`; placement composes the absolute window
-        // as `renderer.x + xEnd`, which is what closes B.25 — subsequent bands
-        // querying intermediate renderer columns see the chain's painted area.
+        // Fold cross-renderer chain spans into the placement xRange. The chain
+        // head's published xEnd may exceed `this.renderer.width`; placement
+        // composes the absolute window as `renderer.x + xEnd`.
         for (const span of this._publishedSpans) {
             if (span.xStart < min) {
                 min = span.xStart;

@@ -26,20 +26,18 @@ export abstract class GroupedEffectGlyph extends EffectGlyph {
     }
 
     /**
-     * §E Step 16 / §B.25 — publishes the chain's true cross-renderer painted
-     * xEnd to the owning {@link EffectBand} so its `computeLocalXRange` covers
-     * intermediate columns between the chain head's local bbox.right and the
-     * chain tail's renderer. Closes the placement-attribution gap where
-     * subsequent effect bands could overlap the chain's painted area in
-     * renderers that have no own band for the chain's effect.
+     * Publishes the chain's true cross-renderer painted xEnd to the owning
+     * {@link EffectBand} so {@link EffectBand.computeLocalXRange} covers
+     * intermediate columns between the chain head's local bbox and the chain
+     * tail's renderer. Only the chain head registers (see {@link EffectBand}).
      */
     public override populateSkyline(_ctx: SkylineCtx): void {
         if (this.isLinkedWithPrevious) {
             return;
         }
         if (!this.isLinkedWithNext) {
-            // Single-renderer paint — local `getBoundingBoxRight` already
-            // covers the painted span via the band's per-glyph bbox loop.
+            // Chain head with no `isLinkedWithNext` paints within its local
+            // renderer; the band's per-glyph bbox loop already covers it.
             return;
         }
         let last: GroupedEffectGlyph = this.nextGlyph as GroupedEffectGlyph;

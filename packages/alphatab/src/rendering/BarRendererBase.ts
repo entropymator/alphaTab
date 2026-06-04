@@ -158,10 +158,9 @@ export class BarRendererBase {
     }
 
     /**
-     * Pre-beat glyphs' skyline contribution. Emitted from {@link calculateOverflows}
-     * (stable across scaleToWidth re-runs) and unioned alongside the bar-local
-     * skyline at staff-skyline merge time. Kept separate so {@link scaleToWidth}'s
-     * reset doesn't wipe it when resize triggers multiple passes.
+     * Pre-beat glyphs' skyline contribution. Emitted from
+     * {@link calculateOverflows}; kept separate from {@link barLocalSkyline} so
+     * the latter's per-cycle reset doesn't wipe it.
      */
     public get preBeatLocalSkyline(): BarLocalSkyline {
         if (!this._preBeatLocalSkyline) {
@@ -175,9 +174,9 @@ export class BarRendererBase {
     }
 
     /**
-     * Post-beat glyphs' skyline contribution in POST-BEAT-GROUP-LOCAL x
-     * coordinates. Shifted by `_postBeatGlyphs.x` (which is final only after
-     * scaleToWidth) when unioned into the staff skyline.
+     * Post-beat glyphs' skyline contribution in post-beat-group-local x
+     * coordinates. Shifted by {@link postBeatGroupOffset} (final only after
+     * {@link scaleToWidth}) when unioned into the staff skyline.
      */
     public get postBeatLocalSkyline(): BarLocalSkyline {
         if (!this._postBeatLocalSkyline) {
@@ -195,28 +194,13 @@ export class BarRendererBase {
     }
 
     /**
-     * §E Step 11 (slim) — atomic per-cycle reset for this renderer.
-     *
-     * Every field listed here is per-cycle state that must be cleared at the
-     * start of a fresh layout cycle (doLayout entry). New per-cycle fields
-     * added in future work MUST be added to this method to preserve the
-     * atomic-reset contract — the field-by-field enumeration is what catches
-     * cross-cycle bleed (B.9 / B.31) at refactor time rather than as a latent
-     * visual bug.
-     *
-     * Fields NOT in this method survive across cycles by design:
-     *   - `voiceContainer`, `helpers`, `_postBeatGlyphs` — Phase-1 content,
-     *     rebuilt only if the bar's model changes.
-     *   - `_preBeatGlyphs` — conditionally rebuilt by `recreatePreBeatGlyphs`
-     *     when `isFirstOfStaff` flips (B.4; Step 10 future work consolidates
-     *     this into a substate-discard pattern).
-     *   - `bar`, `staff`, `scoreRenderer`, model refs — owned across cycles.
-     *
-     * The reLayout path (resize) currently does NOT call this method —
-     * skylines and ties carry across cycles on resize, which is B.9 / B.31
-     * territory. Step 10's substate-discard would close this; for now Step 11
-     * is "slim" — document the contract, consolidate the existing resets,
-     * leave the resize-path gap as a known issue.
+     * Atomic per-cycle reset of per-cycle state (skylines, dispatch lists,
+     * ties). Called from {@link doLayout} entry. New per-cycle fields must be
+     * added here so cross-cycle bleed surfaces at refactor time. Phase-1
+     * content (`voiceContainer`, `helpers`, `_postBeatGlyphs`), `_preBeatGlyphs`
+     * (only recreated when `isFirstOfStaff` flips), and model refs survive
+     * across cycles. Not called by {@link reLayout}: on resize, skylines and
+     * ties carry forward by design.
      */
     public resetCycleState(): void {
         this._barLocalSkyline?.reset();
@@ -229,20 +213,11 @@ export class BarRendererBase {
     }
 
     /**
-     * Pre/post-beat glyphs whose bbox depends on bar-layout state that's only
-     * finalized in scaleToWidth (post-beat group offset, firstVisibleStaff,
-     * etc.). Such glyphs register themselves here from their doLayout, and we
-     * re-emit their per-x skyline contribution at scaleToWidth time when their
-     * bbox returns its final value.
-     *
-     * §E Step 3 superseded this registry with the phase-typed
-     * {@link Glyph.populateSkyline} hook (see {@link _populateSkyline_finalized} /
-     * {@link _populateSkyline_systemFinalize} below). `BarTempoGlyph` migrated;
-     * `GroupedEffectGlyph` migrates in Step 16. `BarNumberGlyph` remains as the
-     * sole surviving tenant per v6 — its bbox override is a documented
-     * exception (per-staff visibility suppression) rather than a side-channel
-     * for staleness; the registry's deferred-emit covers the first-bar-of-
-     * first-system staleness window when `firstVisibleStaff === undefined`.
+     * Legacy registry for pre/post-beat glyphs whose bbox depends on bar-layout
+     * state only final after {@link scaleToWidth} (e.g. `BarNumberGlyph`'s
+     * per-staff visibility suppression). Each entry's bbox is re-read at
+     * {@link scaleToWidth} time and emitted into the appropriate skyline.
+     * Prefer the phase-typed {@link Glyph.populateSkyline} hook for new glyphs.
      */
     private readonly _dynamicSkylineGlyphs: { glyph: Glyph; group: 'pre' | 'post' }[] = [];
 
@@ -250,13 +225,10 @@ export class BarRendererBase {
         this._dynamicSkylineGlyphs.push({ glyph, group });
     }
 
-    /**
-     * §E Step 3 — phase-typed dispatch list for glyphs that opt in via
-     * {@link Glyph.populateSkyline}. Phase `'finalized'` fires at the end of
-     * `scaleToWidth` (Phase 3). Phase `'systemFinalize'` fires at SystemFinalize
-     * sub-step (ii) and is currently unused; Step 16 adds the dispatch site and
-     * the first tenant (`GroupedEffectGlyph`).
-     */
+    // Phase-typed dispatch lists for glyphs that opt in via
+    // {@link Glyph.populateSkyline}. `finalized` fires at the end of
+    // {@link scaleToWidth}; `systemFinalize` fires after every renderer in the
+    // staff has `isFinalized = true`, for cross-renderer chain walks.
     private readonly _populateSkylineFinalized: Glyph[] = [];
     private readonly _populateSkylineSystemFinalize: Glyph[] = [];
 
@@ -362,9 +334,9 @@ export class BarRendererBase {
     }
 
     /**
-     * Emit a top-skyline segment into `barLocalSkyline`. Public to allow
-     * {@link Glyph.populateSkyline} tenants to contribute from outside the
-     * renderer class (§E Step 3).
+     * Emit a top-skyline segment into {@link barLocalSkyline}. Public so
+     * {@link Glyph.populateSkyline} tenants can contribute from outside this
+     * class.
      */
     public insertSkylineTop(xStart: number, xEnd: number, topHeight: number): void {
         if (topHeight > 0 && xEnd > xStart) {
@@ -372,11 +344,7 @@ export class BarRendererBase {
         }
     }
 
-    /**
-     * Emit a bottom-skyline segment into `barLocalSkyline`. Public to allow
-     * {@link Glyph.populateSkyline} tenants to contribute from outside the
-     * renderer class (§E Step 3).
-     */
+    /** Emit a bottom-skyline segment into {@link barLocalSkyline}. See {@link insertSkylineTop}. */
     public insertSkylineBottom(xStart: number, xEnd: number, bottomHeight: number): void {
         if (bottomHeight > 0 && xEnd > xStart) {
             this.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, bottomHeight, 0);
@@ -397,20 +365,15 @@ export class BarRendererBase {
         // preBeat and postBeat glyphs do not get resized
         const containerWidth: number = width - this._preBeatGlyphs.width - this._postBeatGlyphs.width;
 
-        // barLocalSkyline holds scale-dependent emissions (voiceContainer beats,
-        // beam helpers, pending effect ranges, dynamic-bbox glyphs). Reset here
-        // as a defensive zero point so this method is idempotent under repeated
-        // invocation. After §E Step 7, `scaleToWidth` is called exactly once
-        // per renderer per cycle (HorizontalScreenLayout's second call site in
-        // `_alignRenderers` was deleted); the reset is now strictly defensive.
-        // pre/postBeatLocalSkyline stay (managed by calculateOverflows).
+        // Reset bar-local skyline before re-emitting scale-dependent segments
+        // (voiceContainer beats, beam helpers, pending effect ranges,
+        // dynamic-bbox glyphs). pre/postBeatLocalSkyline are managed by
+        // calculateOverflows and stay untouched here.
         this.barLocalSkyline.reset();
 
-        // Per-beat positioning AND skyline emission both live on
-        // `MultiVoiceContainerGlyph` — the container owns the beat walk, so
-        // the per-beat-settled skyline contribution (container overflow,
-        // pendingEffectOverflows, `emitBeatSkyline` subclass hook) is its
-        // concern. `BarRendererBase` only orchestrates the broader Phase 2.
+        // The voice container owns the beat walk and emits per-beat skyline
+        // contributions (container overflow, pendingEffectOverflows,
+        // `emitBeatSkyline` subclass hook) in the same pass.
         this.voiceContainer.scaleToWidth(containerWidth);
 
         for (const v of this.helpers.beamHelpers) {
@@ -423,23 +386,14 @@ export class BarRendererBase {
         this._postBeatGlyphs.x = this._preBeatGlyphs.x + this._preBeatGlyphs.width + containerWidth;
         this.width = width;
 
-        // §E Step 5c — single Phase-2-entry `alignGlyphs` call. Was previously
-        // invoked from doLayout, applyLayoutingInfo, and reLayout as well; per
-        // the Step 5a audit (see EffectBandContainer.alignGlyphs doc-comment
-        // table) every `EffectInfo.onAlignGlyphs` override is max-of-idempotent,
-        // so a single invocation here suffices. The `_sharedLayoutData` reset
-        // that feeds these calls is consolidated in Step 5b
-        // (`StaffSystem.resetAllStavesSharedLayoutData` invoked just before
-        // this method runs in `VerticalLayoutBase._scaleToWidth` /
-        // `HorizontalScreenLayout._alignRenderers`).
+        // alignGlyphs runs once per cycle; every `EffectInfo.onAlignGlyphs`
+        // override must be max-of-idempotent. The cross-bar `_sharedLayoutData`
+        // these writers feed is reset once per system at Phase-2 entry by
+        // {@link StaffSystem.resetAllStavesSharedLayoutData}.
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
         this._emitDynamicSkylineGlyphs(this.height);
-        // §E Step 3 — Phase 3 `populateSkyline?` dispatch. Glyphs register here
-        // from their doLayout; the hook fires once at the end of scaleToWidth
-        // when renderer-local positions are settled. Pre-Step-13 this dispatch
-        // lives here; Step 13's `finalize` extraction will move it there.
         for (const g of this._populateSkylineFinalized) {
             g.populateSkyline?.({ phase: 'finalized', renderer: this });
         }
@@ -450,12 +404,10 @@ export class BarRendererBase {
         if (this._dynamicSkylineGlyphs.length === 0) {
             return;
         }
-        // These glyphs need re-emission each scaleToWidth pass because their
-        // bbox depends on layout state (firstVisibleStaff, bar width, ...) that's
-        // only final here. Emit into barLocalSkyline (which is reset at every
-        // scaleToWidth start) so resize re-runs don't accumulate stale segments.
-        // The `group` channel is preserved only for postBeatLocalSkyline-targeted
-        // emissions when post-beat coords need group-local shifting at union.
+        // Re-emit each entry's bbox into barLocalSkyline (reset above) so
+        // resize re-runs don't accumulate stale segments. `group === 'post'`
+        // routes the emission to postBeatLocalSkyline whose group-local x is
+        // shifted at staff union time.
         for (const entry of this._dynamicSkylineGlyphs) {
             const g = entry.glyph;
             const topY = g.getBoundingBoxTop();
@@ -548,15 +500,11 @@ export class BarRendererBase {
     }
 
     /**
-     * Pull the current `BarLayoutingInfo` broker state into this renderer's
-     * positions (pre-beat width, voice-container x, post-beat x/width, total
-     * width). §E Step 8b deleted the `_appliedLayoutingInfo` version cookie
-     * that previously short-circuited this method: every call now runs the
-     * body unconditionally. Apply is value-idempotent on a stable broker (see
-     * [reconcile-min-duration.md §3](.docs/investigations/reconcile-min-duration.md)),
-     * so callers that want to skip work for not-actually-dirty bars must gate
-     * the call themselves — see `StaffSystem.reconcileMinDurationIfDirty`'s
-     * per-bar `wasRecomputed` predicate.
+     * Pull the current {@link BarLayoutingInfo} broker state into this
+     * renderer's positions (pre-beat width, voice-container x, post-beat
+     * x/width, total width). Value-idempotent on a stable broker; callers
+     * wanting to skip work for unchanged bars must gate the call themselves
+     * (see {@link StaffSystem.reconcileMinDurationIfDirty}).
      */
     public applyLayoutingInfo(): void {
         // if we need additional space in the preBeat group we simply
@@ -568,9 +516,9 @@ export class BarRendererBase {
         container.x = this._preBeatGlyphs.x + this._preBeatGlyphs.width;
         container.applyLayoutingInfo(this.layoutingInfo);
 
-        // §E Step 9 — `_postBeatGlyphs.x` is single-write at end of Phase 2
-        // (`scaleToWidth`). Compute postBeatX locally for the
-        // computedWidth/width calculation without writing to the field.
+        // `_postBeatGlyphs.x` is single-write at end of Phase 2
+        // ({@link scaleToWidth}); compute postBeatX locally here without
+        // touching the field.
         this._postBeatGlyphs.width = this.layoutingInfo.postBeatSize;
         const postBeatX = Math.floor(container.x + container.width);
         this.width = Math.ceil(postBeatX + this._postBeatGlyphs.width);
@@ -669,32 +617,19 @@ export class BarRendererBase {
     }
 
     /**
-     * §E Step 12 / §D.6 sub-step (i) — per-renderer finalize-minus-ties.
-     *
-     * Sets `isFinalized = true` so cross-renderer chain walks (Step 16's
-     * `GroupedEffectGlyph` `populateSkyline?`) can rely on every renderer
-     * in the staff being finalized before sub-step (ii) reads their state.
-     * Tie writes are split out to {@link finalizeTies} (sub-step ii) so the
-     * "set isFinalized before any cross-renderer dependency reads it"
-     * ordering holds across the whole staff.
+     * Marks this renderer as finalized so cross-renderer chain walks (e.g.
+     * {@link GroupedEffectGlyph}'s populateSkyline) can rely on every renderer
+     * in the staff being finalized before tie writes run.
      */
     public finalizeRendererMinusTies(): void {
         this.isFinalized = true;
     }
 
     /**
-     * §E Step 12 / §D.6 sub-step (ii) — per-renderer tie writes.
-     *
-     * Runs `_finalizeTies` on own ties + multi-system slurs (which may write
-     * into spanned renderers' `barLocalSkyline`s). When the writes change
-     * THIS renderer's overflows, re-register with the staff so sub-step (iii)
-     * sees the updated state.
-     *
-     * The OLD `needsSecondPass` outer loop in `RenderStaff.finalizeStaff`
-     * (which re-ran finalize+union+place when tie writes changed overflows)
-     * is unreachable in the 4-substep ordering: tie writes happen here,
-     * before sub-step (iii)'s union and sub-step (iv)'s placeAndApply, so
-     * placement already reflects the with-tie state on the first pass.
+     * Performs tie writes (own ties + multi-system slurs) into this renderer
+     * and any spanned renderers' bar-local skylines. If overflows changed,
+     * sizes are refreshed and staff overflows re-registered so the subsequent
+     * staff-skyline union and effect-band placement see the with-tie state.
      */
     public finalizeTies(): void {
         let didChangeOverflows = false;
@@ -712,15 +647,13 @@ export class BarRendererBase {
     }
 
     /**
-     * §E Step 16 / §D.6 sub-step (ii) — dispatch `populateSkyline?` for glyphs
-     * registered at the `'systemFinalize'` phase. Cross-renderer chain walks
-     * (e.g. `GroupedEffectGlyph`) rely on every renderer in the staff having
-     * `isFinalized = true`, set in sub-step (i). Clears each band's
-     * cycle-scoped published span list before dispatch so resize doesn't
-     * accumulate stale entries; the dispatch then republishes from a fully
-     * finalized chain.
+     * Dispatches `populateSkyline?` for glyphs registered at the
+     * `'systemFinalize'` phase. Cross-renderer chain walks (e.g.
+     * {@link GroupedEffectGlyph}) require every renderer in the staff to be
+     * finalized first. Clears each band's cycle-scoped published span list
+     * before dispatch so the chain republishes from a fully finalized state.
      */
-    public dispatchPopulateSkylineSystemFinalize(): void {
+    public dispatchSystemFinalizeSkyline(): void {
         for (const band of this.topEffects.bands) {
             band.clearPublishedSpans();
         }
@@ -751,7 +684,6 @@ export class BarRendererBase {
         this._postBeatGlyphs.renderer = this;
         this.topEffects.doLayout();
         this.bottomEffects.doLayout();
-        // §E Step 11 (slim) — atomic per-cycle reset; covers _ties too.
         this.resetCycleState();
 
         this.createPreBeatGlyphs();
@@ -775,12 +707,13 @@ export class BarRendererBase {
     }
 
     protected calculateOverflows(_rendererTop: number, rendererBottom: number) {
-        // Re-emit pre/post-beat skylines from scratch each pass (doLayout +
-        // reLayout both call this). barLocalSkyline is reset in scaleToWidth.
+        // Re-emit pre/post-beat skylines from scratch each pass (called from
+        // both doLayout and reLayout). barLocalSkyline is reset separately in
+        // scaleToWidth.
         this.preBeatLocalSkyline.reset();
         this.postBeatLocalSkyline.reset();
 
-        // _preBeatGlyphs.x is invariant (= 0); glyph-local x is bar-local x.
+        // `_preBeatGlyphs.x` is invariant (= 0); glyph-local x is bar-local x.
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
             const preSky = this.preBeatLocalSkyline;
@@ -806,8 +739,8 @@ export class BarRendererBase {
                 }
             }
         }
-        // _postBeatGlyphs.x is not final until scaleToWidth — emit in group-local
-        // coords; staff-skyline union shifts by the final group offset.
+        // `_postBeatGlyphs.x` is not final until scaleToWidth — emit in
+        // group-local coords; staff-skyline union shifts by the final offset.
         const postBeatGlyphs = this._postBeatGlyphs.glyphs;
         if (postBeatGlyphs) {
             const postSky = this.postBeatLocalSkyline;
@@ -1033,13 +966,6 @@ export class BarRendererBase {
         // but we only need to recreate them for the renderers that were the first of the line or are now the first of the line
         if ((this.wasFirstOfStaff && !this.isFirstOfStaff) || (!this.wasFirstOfStaff && this.isFirstOfStaff)) {
             this.recreatePreBeatGlyphs();
-            // §E Step 10 (slim) — `_postBeatGlyphs.doLayout()` deleted here
-            // (B.24): `LeftToRightLayoutingGlyphGroup.doLayout` is empty, so
-            // the call was dead code. The full Step 10 substate-discard
-            // pattern is dogma against the current implementation: the same
-            // operation `recreatePreBeatGlyphs` performs IS a substate
-            // discard in everything but name. v6 retains the explicit method
-            // name as more readable than `cycle._preBeatGlyphs = …`.
         }
 
         this._registerLayoutingInfo();
