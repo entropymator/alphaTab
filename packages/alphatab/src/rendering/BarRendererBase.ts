@@ -689,62 +689,19 @@ export class BarRendererBase {
         this.preBeatLocalSkyline.reset();
         this.postBeatLocalSkyline.reset();
 
-        // `_preBeatGlyphs.x` is invariant (= 0); glyph-local x is bar-local x.
+        // Pre- and post-beat groups both emit in group-local glyph x
+        // (`getBoundingBoxLeft/Right` return parent-relative x). `_preBeatGlyphs.x`
+        // is invariant (= 0), so pre-beat group-local x equals bar-local x;
+        // `_postBeatGlyphs.x` is not final until scaleToWidth, so the staff-skyline
+        // union shifts post-beat by the final offset. The per-glyph overflow shape
+        // is identical between the two — see `_emitGroupOverflows`.
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
-            const preSky = this.preBeatLocalSkyline;
-            for (const g of preBeatGlyphs) {
-                const topY = g.getBoundingBoxTop();
-                if (topY < 0) {
-                    this.registerOverflowTop(topY * -1);
-                    const xL = g.getBoundingBoxLeft();
-                    const xR = g.getBoundingBoxRight();
-                    if (xR > xL) {
-                        preSky.insertPlaced(StaffSide.Top, xL, xR, topY * -1, 0);
-                    }
-                }
-
-                const bottomY = g.getBoundingBoxBottom();
-                if (bottomY > rendererBottom) {
-                    this.registerOverflowBottom(bottomY - rendererBottom);
-                    const xL = g.getBoundingBoxLeft();
-                    const xR = g.getBoundingBoxRight();
-                    if (xR > xL) {
-                        preSky.insertPlaced(StaffSide.Bottom, xL, xR, bottomY - rendererBottom, 0);
-                    }
-                }
-            }
+            this._emitGroupOverflows(preBeatGlyphs, this.preBeatLocalSkyline, rendererBottom);
         }
-        // `_postBeatGlyphs.x` is not final until scaleToWidth — emit in
-        // group-local coords; staff-skyline union shifts by the final offset.
         const postBeatGlyphs = this._postBeatGlyphs.glyphs;
         if (postBeatGlyphs) {
-            const postSky = this.postBeatLocalSkyline;
-            for (const g of postBeatGlyphs) {
-                const topY = g.getBoundingBoxTop();
-                if (topY < 0) {
-                    this.registerOverflowTop(topY * -1);
-                    postSky.insertPlaced(
-                        StaffSide.Top,
-                        g.getBoundingBoxLeft(),
-                        g.getBoundingBoxRight(),
-                        topY * -1,
-                        0
-                    );
-                }
-
-                const bottomY = g.getBoundingBoxBottom();
-                if (bottomY > rendererBottom) {
-                    this.registerOverflowBottom(bottomY - rendererBottom);
-                    postSky.insertPlaced(
-                        StaffSide.Bottom,
-                        g.getBoundingBoxLeft(),
-                        g.getBoundingBoxRight(),
-                        bottomY - rendererBottom,
-                        0
-                    );
-                }
-            }
+            this._emitGroupOverflows(postBeatGlyphs, this.postBeatLocalSkyline, rendererBottom);
         }
 
         const v = this.voiceContainer;
@@ -766,6 +723,45 @@ export class BarRendererBase {
         const beatEffectsMaxY = this.beatEffectsMaxY;
         if (!Number.isNaN(beatEffectsMaxY) && beatEffectsMaxY > rendererBottom) {
             this.registerOverflowBottom(beatEffectsMaxY - rendererBottom);
+        }
+    }
+
+    /**
+     * Emit per-glyph overflow into the given group skyline. Used by
+     * {@link calculateOverflows} for both pre- and post-beat groups: the loop
+     * bodies were structurally identical, so they share one implementation
+     * here. Each glyph's xL/xR is read once per glyph (instead of up to twice
+     * each when both top and bottom branches fired), trimming redundant
+     * bounding-box recompute work on dynamic-bbox glyphs.
+     */
+    private _emitGroupOverflows(
+        glyphs: Glyph[],
+        skyline: BarLocalSkyline,
+        rendererBottom: number
+    ): void {
+        for (const g of glyphs) {
+            const topY = g.getBoundingBoxTop();
+            const bottomY = g.getBoundingBoxBottom();
+            const topOver = topY < 0;
+            const bottomOver = bottomY > rendererBottom;
+            if (!topOver && !bottomOver) {
+                continue;
+            }
+            const xL = g.getBoundingBoxLeft();
+            const xR = g.getBoundingBoxRight();
+            const hasExtent = xR > xL;
+            if (topOver) {
+                this.registerOverflowTop(topY * -1);
+                if (hasExtent) {
+                    skyline.insertPlaced(StaffSide.Top, xL, xR, topY * -1, 0);
+                }
+            }
+            if (bottomOver) {
+                this.registerOverflowBottom(bottomY - rendererBottom);
+                if (hasExtent) {
+                    skyline.insertPlaced(StaffSide.Bottom, xL, xR, bottomY - rendererBottom, 0);
+                }
+            }
         }
     }
 
