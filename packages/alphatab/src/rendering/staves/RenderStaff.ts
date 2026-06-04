@@ -369,6 +369,22 @@ export class RenderStaff {
      * that grow their own overflow during this pass flip their `tiesDirty`
      * flag so `updateSizes` / `registerStaffOverflows` runs once for each at
      * the end of sub-step (ii), not inline per tie.
+     *
+     * Post-Skyline-binary-search cost profile: each non-owner write is one
+     * `Skyline.insertPlaced` call, internally `_splitAt(xStart) [O(log s)] +
+     * _splitAt(xEnd) [O(log s)] + raise loop + bounded merge`, both bounded
+     * by the touched-segment count. Per-call total is
+     * `T ties × average_spans × O(log s)`. Pre-aggregating same-renderer
+     * writes into a sorted scratch buffer and dispatching a single batched
+     * sweep per (target, side) was investigated and shelved: ties' x-ranges
+     * derive from beat positions, so two ties only collide on the same
+     * `(target, xStart, xEnd)` triple when they attach to the exact same
+     * beats (chord ties) AND span the same renderer. In typical fixtures
+     * `T` is small, `average_spans` ≈ 1–2, and chord-tie collisions are
+     * rare — the win is bounded to a small constant on edge-case scores
+     * and zero on the common path, while the batched-write API would add
+     * a new Skyline entry point plus a per-renderer scratch buffer. Not
+     * worth the scaffolding until a profile flags this as a hot spot.
      */
     private _finalizeRendererTies(owner: BarRendererBase, ties: Iterable<ITieGlyph>): void {
         const staffRenderers = this.barRenderers;
