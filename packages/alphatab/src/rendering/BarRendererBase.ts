@@ -543,10 +543,17 @@ export class BarRendererBase {
      * subsequent bars; slice the bezier bbox into each spanned bar's
      * skyline. Tie Y is renderer-local (all renderers share `renderer.y`),
      * X is staff-absolute.
+     *
+     * Ties always belong to a beat on `this` renderer (own ties via
+     * `registerTie`, multi-system slurs via `registerMultiSystemSlurs`),
+     * so the span is bounded forward from `this.index`. The forward walk
+     * breaks as soon as a renderer starts past the tie's right edge to
+     * keep this O(spans) per tie instead of O(R).
      */
     private _finalizeTies(ties: Iterable<ITieGlyph>): boolean {
         let didChangeOverflows = false;
         const staffRenderers = this.staff ? this.staff.barRenderers : [this];
+        const startIndex = this.staff ? this.index : 0;
         for (const t of ties) {
             const tie = t as unknown as Glyph;
             tie.doLayout();
@@ -562,7 +569,11 @@ export class BarRendererBase {
             const tieLeftStaff = t.getBoundingBoxLeft();
             const tieRightStaff = t.getBoundingBoxRight();
 
-            for (const target of staffRenderers) {
+            for (let i = startIndex; i < staffRenderers.length; i++) {
+                const target = staffRenderers[i];
+                if (target.x >= tieRightStaff) {
+                    break;
+                }
                 const targetXStart = target.x;
                 const targetXEnd = target.x + target.width;
                 const xStartStaff = Math.max(targetXStart, tieLeftStaff);
