@@ -41,6 +41,11 @@ export class EffectSystemPlacement {
         contentBottom.splice(0, contentBottom.length);
 
         // container.height = post-placement max - pre-placement max.
+        // Single R-walk: measure pre-placement skyline + filter non-empty bands +
+        // settle dynamic-height effects (TabWhammy, ...) inline. `finalizeBand`
+        // has no cross-band dependency — `TabWhammyEffectInfo.finalizeBand`
+        // reads from `staff.sharedLayoutData` (populated earlier by
+        // `onAlignGlyphs`) and writes only to per-band glyph/height state.
         for (let i = 0; i < staff.barRenderers.length; i++) {
             const r = staff.barRenderers[i];
             contentTop.push(sky.upSky.maxHeightInRange(r.x, r.x + r.width));
@@ -51,23 +56,17 @@ export class EffectSystemPlacement {
                     // for bands whose `computeLocalXRange` succeeds, but the
                     // trailing band-y loop reads it for every band in `top`.
                     b.placedMagnitude = 0;
+                    b.finalizeBand();
                     top.push(b);
                 }
             }
             for (const b of r.bottomEffects.bands) {
                 if (!b.isEmpty) {
                     b.placedMagnitude = 0;
+                    b.finalizeBand();
                     bottom.push(b);
                 }
             }
-        }
-
-        // Settle dynamic-height effects (TabWhammy, ...) before placement.
-        for (const b of top) {
-            b.finalizeBand();
-        }
-        for (const b of bottom) {
-            b.finalizeBand();
         }
 
         EffectSystemPlacement._sortByPriority(top);
