@@ -8,6 +8,8 @@ import {
     EffectBandMode
 } from '@coderline/alphatab/rendering/BarRendererFactory';
 import { EffectSystemPlacement } from '@coderline/alphatab/rendering/EffectSystemPlacement';
+import type { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import type { ITieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
 import { StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
 import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
@@ -319,13 +321,26 @@ export class RenderStaff {
             renderer.finalizeRendererMinusTies();
         }
 
-        // (ii) Tie writes (which may target spanned renderers' barLocalSkylines)
-        // and cross-renderer `populateSkyline` dispatch. Tie writes go first so
-        // any height/overflow changes settle before the chain walk reads
-        // renderer geometry.
+        // (ii) Per-renderer cross-renderer work, orchestrated by the staff so
+        // individual bar renderers never write into each other's state:
+        //   - tie writes (which may target spanned renderers' barLocalSkylines)
+        //   - cross-renderer `populateSkyline` dispatch.
+        // Tie writes go first so any height/overflow changes settle before the
+        // chain walk reads renderer geometry. `updateSizes` /
+        // `registerStaffOverflows` for renderers whose ties grew overflow run
+        // once per renderer at the end, rather than inline per tie.
+        const dirtyRenderers = new Set<BarRendererBase>();
         for (const renderer of this.barRenderers) {
-            renderer.finalizeTies();
+            this._finalizeRendererTies(renderer, renderer.ties, dirtyRenderers);
+            const multiSystemSlurs = renderer.multiSystemSlurs;
+            if (multiSystemSlurs) {
+                this._finalizeRendererTies(renderer, multiSystemSlurs, dirtyRenderers);
+            }
             renderer.dispatchSystemFinalizeSkyline();
+        }
+        for (const renderer of dirtyRenderers) {
+            renderer.refreshSizes();
+            renderer.registerStaffOverflows();
         }
 
         // (iii) Union bar-local skyline into the staff skyline.
@@ -349,6 +364,80 @@ export class RenderStaff {
         this.height = Math.ceil(this.height);
 
         this._updateVisibility();
+    }
+
+    /**
+     * Cross-bar arcs live on the start beat's renderer (`owner`) but paint
+     * across subsequent bars; slice each tie's bbox into every spanned bar's
+     * skyline. Tie Y is renderer-local (every renderer in a staff shares
+     * `renderer.y`); X is staff-absolute.
+     *
+     * Ties never span renderers earlier than `owner`, so the walk starts at
+     * `owner.index` and breaks as soon as a renderer starts past the tie's
+     * right edge — bounded by `spans` per tie instead of by `R`. Renderers
+     * that grow their own overflow during this pass are added to
+     * `dirtyRenderers` so `updateSizes` / `registerStaffOverflows` runs once
+     * for each at the end of sub-step (ii), not inline per tie.
+     */
+    private _finalizeRendererTies(
+        owner: BarRendererBase,
+        ties: Iterable<ITieGlyph>,
+        dirtyRenderers: Set<BarRendererBase>
+    ): void {
+        const staffRenderers = this.barRenderers;
+        const startIndex = owner.index;
+        for (const t of ties) {
+            const tie = t as unknown as Glyph;
+            tie.doLayout();
+
+            if (!t.checkForOverflow) {
+                continue;
+            }
+
+            const tieTop = t.getBoundingBoxTop();
+            const tieBottom = t.getBoundingBoxBottom();
+            const tieTopOverflow = tieTop < 0 ? -tieTop : 0;
+
+            const tieLeftStaff = t.getBoundingBoxLeft();
+            const tieRightStaff = t.getBoundingBoxRight();
+
+            for (let i = startIndex; i < staffRenderers.length; i++) {
+                const target = staffRenderers[i];
+                if (target.x >= tieRightStaff) {
+                    break;
+                }
+                const targetXStart = target.x;
+                const targetXEnd = target.x + target.width;
+                const xStartStaff = Math.max(targetXStart, tieLeftStaff);
+                const xEndStaff = Math.min(targetXEnd, tieRightStaff);
+                if (xEndStaff <= xStartStaff) {
+                    continue;
+                }
+                const xStart = xStartStaff - targetXStart;
+                const xEnd = xEndStaff - targetXStart;
+                const tieBottomOverflow = tieBottom - target.height;
+
+                if (target === owner) {
+                    if (tieTopOverflow > 0) {
+                        if (target.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
+                            dirtyRenderers.add(target);
+                        }
+                    }
+                    if (tieBottomOverflow > 0) {
+                        if (target.registerOverflowRangeBottom(xStart, xEnd, tieBottomOverflow)) {
+                            dirtyRenderers.add(target);
+                        }
+                    }
+                } else {
+                    if (tieTopOverflow > 0) {
+                        target.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, tieTopOverflow, 0);
+                    }
+                    if (tieBottomOverflow > 0) {
+                        target.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, tieBottomOverflow, 0);
+                    }
+                }
+            }
+        }
     }
 
     public paint(cx: number, cy: number, canvas: ICanvas, startIndex: number, count: number): void {

@@ -97,6 +97,19 @@ export class BarRendererBase {
 
     private _multiSystemSlurs?: ContinuationTieGlyph[];
 
+    /** Ties whose start beat lives on this renderer. */
+    public get ties(): ITieGlyph[] {
+        return this._ties;
+    }
+
+    /**
+     * Multi-system slur continuations attached to this renderer. Only populated
+     * on the first renderer of a staff; undefined elsewhere.
+     */
+    public get multiSystemSlurs(): ContinuationTieGlyph[] | undefined {
+        return this._multiSystemSlurs;
+    }
+
     public topEffects: EffectBandContainer;
     public bottomEffects: EffectBandContainer;
 
@@ -539,110 +552,12 @@ export class BarRendererBase {
     }
 
     /**
-     * Cross-bar arcs live on the start beat's renderer but paint across
-     * subsequent bars; slice the bezier bbox into each spanned bar's
-     * skyline. Tie Y is renderer-local (all renderers share `renderer.y`),
-     * X is staff-absolute.
-     *
-     * Ties always belong to a beat on `this` renderer (own ties via
-     * `registerTie`, multi-system slurs via `registerMultiSystemSlurs`),
-     * so the span is bounded forward from `this.index`. The forward walk
-     * breaks as soon as a renderer starts past the tie's right edge to
-     * keep this O(spans) per tie instead of O(R).
-     */
-    private _finalizeTies(ties: Iterable<ITieGlyph>): boolean {
-        let didChangeOverflows = false;
-        const staffRenderers = this.staff ? this.staff.barRenderers : [this];
-        const startIndex = this.staff ? this.index : 0;
-        for (const t of ties) {
-            const tie = t as unknown as Glyph;
-            tie.doLayout();
-
-            if (!t.checkForOverflow) {
-                continue;
-            }
-
-            const tieTop = t.getBoundingBoxTop();
-            const tieBottom = t.getBoundingBoxBottom();
-            const tieTopOverflow = tieTop < 0 ? -tieTop : 0;
-
-            const tieLeftStaff = t.getBoundingBoxLeft();
-            const tieRightStaff = t.getBoundingBoxRight();
-
-            for (let i = startIndex; i < staffRenderers.length; i++) {
-                const target = staffRenderers[i];
-                if (target.x >= tieRightStaff) {
-                    break;
-                }
-                const targetXStart = target.x;
-                const targetXEnd = target.x + target.width;
-                const xStartStaff = Math.max(targetXStart, tieLeftStaff);
-                const xEndStaff = Math.min(targetXEnd, tieRightStaff);
-                if (xEndStaff <= xStartStaff) {
-                    continue;
-                }
-                const xStart = xStartStaff - targetXStart;
-                const xEnd = xEndStaff - targetXStart;
-                const tieBottomOverflow = tieBottom - target.height;
-
-                if (target === this) {
-                    if (tieTopOverflow > 0) {
-                        if (this.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
-                            didChangeOverflows = true;
-                        }
-                    }
-                    if (tieBottomOverflow > 0) {
-                        if (this.registerOverflowRangeBottom(xStart, xEnd, tieBottomOverflow)) {
-                            didChangeOverflows = true;
-                        }
-                    }
-                } else {
-                    if (tieTopOverflow > 0) {
-                        target.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, tieTopOverflow, 0);
-                    }
-                    if (tieBottomOverflow > 0) {
-                        target.barLocalSkyline.insertPlaced(
-                            StaffSide.Bottom,
-                            xStart,
-                            xEnd,
-                            tieBottomOverflow,
-                            0
-                        );
-                    }
-                }
-            }
-        }
-        return didChangeOverflows;
-    }
-
-    /**
      * Marks this renderer as finalized so cross-renderer chain walks (e.g.
      * {@link GroupedEffectGlyph}'s populateSkyline) can rely on every renderer
      * in the staff being finalized before tie writes run.
      */
     public finalizeRendererMinusTies(): void {
         this.isFinalized = true;
-    }
-
-    /**
-     * Performs tie writes (own ties + multi-system slurs) into this renderer
-     * and any spanned renderers' bar-local skylines. If overflows changed,
-     * sizes are refreshed and staff overflows re-registered so the subsequent
-     * staff-skyline union and effect-band placement see the with-tie state.
-     */
-    public finalizeTies(): void {
-        let didChangeOverflows = false;
-        if (this._finalizeTies(this._ties)) {
-            didChangeOverflows = true;
-        }
-        const multiSystemSlurs = this._multiSystemSlurs;
-        if (multiSystemSlurs && this._finalizeTies(multiSystemSlurs)) {
-            didChangeOverflows = true;
-        }
-        if (didChangeOverflows) {
-            this.updateSizes();
-            this._registerStaffOverflow();
-        }
     }
 
     /**
@@ -671,6 +586,15 @@ export class BarRendererBase {
 
     public registerStaffOverflows(): void {
         this._registerStaffOverflow();
+    }
+
+    /**
+     * Public entry point for `updateSizes`. Called by the staff after tie
+     * writes mutate a renderer's overflow, to recompute width/height before
+     * the staff-skyline union runs.
+     */
+    public refreshSizes(): void {
+        this.updateSizes();
     }
 
     public doLayout(): void {
