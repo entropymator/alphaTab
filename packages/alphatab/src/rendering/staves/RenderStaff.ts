@@ -314,9 +314,17 @@ export class RenderStaff {
         // second pass is unnecessary.
 
         // (i) Mark every renderer finalized before any cross-renderer chain
-        // walk reads it.
+        // walk reads it. Multi-system slur registration is hoisted out of the
+        // per-renderer loop: `SlurRegistry.getAllContinuations` early-returns
+        // for `renderer.index > 0`, so only renderer 0 ever yields work — and
+        // `registerMultiSystemSlurs` over an empty generator is a no-op (the
+        // field is preserved when no items are yielded).
+        if (this.barRenderers.length > 0) {
+            this.barRenderers[0].registerMultiSystemSlurs(
+                this.system.layout!.slurRegistry.getAllContinuations(this.barRenderers[0])
+            );
+        }
         for (const renderer of this.barRenderers) {
-            renderer.registerMultiSystemSlurs(this.system.layout!.slurRegistry.getAllContinuations(renderer));
             renderer.finalizeRendererMinusTies();
         }
 
@@ -325,12 +333,10 @@ export class RenderStaff {
         //   - tie writes (which may target spanned renderers' barLocalSkylines)
         //   - cross-renderer `populateSkyline` dispatch.
         // Tie writes go first so any height/overflow changes settle before the
-        // chain walk reads renderer geometry. `updateSizes` /
-        // `registerStaffOverflows` for renderers whose ties grew overflow run
-        // once per renderer at the end, rather than inline per tie. Renderers
-        // whose tie writes grew their own overflow flip `tiesDirty`; the
-        // trailing pass consumes and clears the flag — set→consume→clear stays
-        // fully inside this method, so no allocation per finalizeStaff.
+        // chain walk reads renderer geometry. Renderers whose tie writes grew
+        // their own overflow flip `tiesDirty`; the dirty pass is fused with
+        // (iii) below so `updateSizes` / `registerStaffOverflows` runs once
+        // per renderer in the same loop body that consumes the result.
         for (const renderer of this.barRenderers) {
             this._finalizeRendererTies(renderer, renderer.ties);
             const multiSystemSlurs = renderer.multiSystemSlurs;
@@ -339,16 +345,19 @@ export class RenderStaff {
             }
             renderer.dispatchSystemFinalizeSkyline();
         }
+
+        // (iii) Dirty consume + union bar-local skyline into the staff skyline.
+        // Each renderer's dirty refresh mutates only its own dimensions and
+        // the staff's top/bottom overflows; it does not touch other renderers'
+        // bar-local skylines. So fusing the dirty pass with the per-renderer
+        // union is safe — the union reads only `renderer`'s own state, which
+        // is finalized within the same iteration before the union runs.
         for (const renderer of this.barRenderers) {
             if (renderer.tiesDirty) {
                 renderer.refreshSizes();
                 renderer.registerStaffOverflows();
                 renderer.clearTiesDirty();
             }
-        }
-
-        // (iii) Union bar-local skyline into the staff skyline.
-        for (const renderer of this.barRenderers) {
             this.height = Math.max(this.height, renderer.height);
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
