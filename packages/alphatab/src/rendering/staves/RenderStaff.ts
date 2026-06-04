@@ -307,7 +307,6 @@ export class RenderStaff {
 
         // Each renderer's x/width has been settled by the Phase-2 scaleToWidth pass.
         this.systemSkyline.reset();
-        this.effectPlacement.reset();
 
         // SystemFinalize 4-substep ordering. Each sub-step completes for every
         // renderer before the next starts. Tie writes in (ii) land before

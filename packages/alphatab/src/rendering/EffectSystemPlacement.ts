@@ -28,21 +28,6 @@ export class EffectSystemPlacement {
         this._staff = staff;
     }
 
-    public reset(): void {
-        for (const r of this._staff.barRenderers) {
-            r.topEffects.height = 0;
-            r.bottomEffects.height = 0;
-            for (const b of r.topEffects.bands) {
-                b.y = 0;
-                b.placedMagnitude = 0;
-            }
-            for (const b of r.bottomEffects.bands) {
-                b.y = 0;
-                b.placedMagnitude = 0;
-            }
-        }
-    }
-
     public placeAndApply(): void {
         const staff = this._staff;
         const sky = staff.systemSkyline;
@@ -64,11 +49,16 @@ export class EffectSystemPlacement {
             contentBottom.push(sky.downSky.maxHeightInRange(r.x, r.x + r.width));
             for (const b of r.topEffects.bands) {
                 if (!b.isEmpty) {
+                    // Reset placedMagnitude up front: `_placeSide` only writes it
+                    // for bands whose `computeLocalXRange` succeeds, but the
+                    // trailing band-y loop reads it for every band in `top`.
+                    b.placedMagnitude = 0;
                     top.push(b);
                 }
             }
             for (const b of r.bottomEffects.bands) {
                 if (!b.isEmpty) {
+                    b.placedMagnitude = 0;
                     bottom.push(b);
                 }
             }
