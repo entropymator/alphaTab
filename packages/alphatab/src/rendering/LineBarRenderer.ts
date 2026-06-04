@@ -22,6 +22,18 @@ import { BeamingHelper, BeamingHelperDrawInfo } from '@coderline/alphatab/render
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 
 /**
+ * Vertical envelope of a {@link BeamingHelper}'s beam/flag/tuplet-bracket
+ * extent, shared by the scalar overflow pass and the per-x skyline pass.
+ *
+ * @record
+ * @internal
+ */
+interface BeamingBounds {
+    topY: number;
+    bottomY: number;
+}
+
+/**
  * This is a base class for any bar renderer which renders music notation on a staff
  * with lines like Standard Notation, Guitar Tablatures and Slash Notation.
  *
@@ -888,7 +900,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
      * (0 = no overflow on that side). Shared by the scalar overflow pass
      * and the per-x skyline pass.
      */
-    private _computeBeamingBounds(h: BeamingHelper, out: { topY: number; bottomY: number }): void {
+    private _computeBeamingBounds(h: BeamingHelper, out: BeamingBounds): void {
         let topY = 0;
         let bottomY = 0;
         if (!this.shouldPaintBeamingHelper(h)) {
@@ -978,7 +990,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
         out.bottomY = bottomY;
     }
 
-    private readonly _beamingBoundsScratch: { topY: number; bottomY: number } = { topY: 0, bottomY: 0 };
+    private readonly _beamingBoundsScratch: BeamingBounds = { topY: 0, bottomY: 0 };
 
     protected calculateBeamingOverflows(rendererTop: number, rendererBottom: number) {
         const out = this._beamingBoundsScratch;

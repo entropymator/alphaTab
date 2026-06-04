@@ -1,4 +1,4 @@
-import type { EffectBand } from '@coderline/alphatab/rendering/EffectBand';
+import type { EffectBand, EffectBandXRange } from '@coderline/alphatab/rendering/EffectBand';
 import type { EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
 import { EffectBandPlacementCategory, type EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { Skyline } from '@coderline/alphatab/rendering/skyline/Skyline';
@@ -22,7 +22,7 @@ export class EffectSystemPlacement {
     private readonly _groupBands: EffectBand[] = [];
     private readonly _groupXStarts: number[] = [];
     private readonly _groupXEnds: number[] = [];
-    private readonly _xRangeScratch: { xStart: number; xEnd: number } = { xStart: 0, xEnd: 0 };
+    private readonly _xRangeScratch: EffectBandXRange = { xStart: 0, xEnd: 0 };
 
     public constructor(staff: RenderStaff) {
         this._staff = staff;

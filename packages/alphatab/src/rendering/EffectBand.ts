@@ -7,8 +7,20 @@ import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarL
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import { Glyph, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
+
+/**
+ * Renderer-local x-range used by {@link EffectBand.computeLocalXRange} and
+ * {@link EffectSystemPlacement} to query and insert into the staff skyline.
+ *
+ * @record
+ * @internal
+ */
+export interface EffectBandXRange {
+    xStart: number;
+    xEnd: number;
+}
 
 /**
  * @internal
@@ -34,14 +46,15 @@ export class EffectBand extends Glyph {
      * Cleared at the start of every SystemFinalize dispatch; relies on every
      * renderer transiting that dispatch each cycle.
      */
-    private _publishedSpans: { xStart: number; xEnd: number }[] = [];
+    private _publishedSpans: EffectBandXRange[] = [];
 
     public get container(): EffectBandContainer {
         return this._container;
     }
 
     public publishSpanRange(xStart: number, xEnd: number): void {
-        this._publishedSpans.push({ xStart, xEnd });
+        const entry: EffectBandXRange = { xStart, xEnd };
+        this._publishedSpans.push(entry);
     }
 
     public clearPublishedSpans(): void {
@@ -228,7 +241,7 @@ export class EffectBand extends Glyph {
                             // cross-renderer painted xEnd once every renderer in the
                             // staff is finalized.
                             if (prevEffect.previousGlyph === null) {
-                                prevEffect.renderer.registerPopulateSkyline(prevEffect, 'systemFinalize');
+                                prevEffect.renderer.registerPopulateSkyline(prevEffect, SkylinePhase.SystemFinalize);
                             }
                         }
                         return newGlyph;
@@ -272,7 +285,7 @@ export class EffectBand extends Glyph {
      * glyphs keep `width = 0`). Returns `false` when the band has no usable
      * range (empty or every glyph reports a degenerate paint extent).
      */
-    public computeLocalXRange(out: { xStart: number; xEnd: number }): boolean {
+    public computeLocalXRange(out: EffectBandXRange): boolean {
         if (this.isEmpty) {
             return false;
         }

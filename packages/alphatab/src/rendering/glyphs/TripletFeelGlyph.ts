@@ -19,6 +19,15 @@ enum TripletFeelNoteGroup {
 }
 
 /**
+ * @record
+ * @internal
+ */
+interface TripletFeelGroupPair {
+    left: TripletFeelNoteGroup;
+    right: TripletFeelNoteGroup;
+}
+
+/**
  * @internal
  */
 export class TripletFeelGlyph extends EffectGlyph {
@@ -71,10 +80,7 @@ export class TripletFeelGlyph extends EffectGlyph {
     }
 
     /** Mirrors the `switch (this._tripletFeel)` mapping in {@link paint}. */
-    private static _resolveGroups(tripletFeel: TripletFeel): {
-        left: TripletFeelNoteGroup;
-        right: TripletFeelNoteGroup;
-    } {
+    private static _resolveGroups(tripletFeel: TripletFeel): TripletFeelGroupPair {
         switch (tripletFeel) {
             case TripletFeel.NoTripletFeel:
                 return { left: TripletFeelNoteGroup.EighthEighth, right: TripletFeelNoteGroup.EighthEighth };

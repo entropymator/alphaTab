@@ -11,7 +11,12 @@ import { NoteVibratoGlyph } from '@coderline/alphatab/rendering/glyphs/NoteVibra
 import type { ITieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
 import type { TabBarRenderer } from '@coderline/alphatab/rendering/TabBarRenderer';
 
-/** Staff-absolute coordinates. See {@link ScoreSlideLineGlyph}. */
+/**
+ * Staff-absolute coordinates. See {@link ScoreSlideLineGlyph}.
+ *
+ * @record
+ * @internal
+ */
 interface SlideSegment {
     startX: number;
     startY: number;

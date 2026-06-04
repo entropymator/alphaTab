@@ -8,10 +8,11 @@ import { CanvasHelper, type ICanvas } from '@coderline/alphatab/platform/ICanvas
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { EffectBandContainer } from '@coderline/alphatab/rendering/EffectBandContainer';
 import {
+    type BeatEffectOverflow,
     BeatContainerGlyph,
     type BeatContainerGlyphBase
 } from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
-import type { Glyph, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import { type Glyph, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import { LeftToRightLayoutingGlyphGroup } from '@coderline/alphatab/rendering/glyphs/LeftToRightLayoutingGlyphGroup';
 import { MultiVoiceContainerGlyph } from '@coderline/alphatab/rendering/glyphs/MultiVoiceContainerGlyph';
 import { ContinuationTieGlyph, type ITieGlyph, type TieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
@@ -213,16 +214,16 @@ export class BarRendererBase {
     }
 
     /**
-     * Legacy registry for pre/post-beat glyphs whose bbox depends on bar-layout
+     * Legacy registry for pre-beat glyphs whose bbox depends on bar-layout
      * state only final after {@link scaleToWidth} (e.g. `BarNumberGlyph`'s
      * per-staff visibility suppression). Each entry's bbox is re-read at
-     * {@link scaleToWidth} time and emitted into the appropriate skyline.
+     * {@link scaleToWidth} time and emitted into {@link barLocalSkyline}.
      * Prefer the phase-typed {@link Glyph.populateSkyline} hook for new glyphs.
      */
-    private readonly _dynamicSkylineGlyphs: { glyph: Glyph; group: 'pre' | 'post' }[] = [];
+    private readonly _dynamicSkylineGlyphs: Glyph[] = [];
 
-    public registerDynamicSkylineGlyph(glyph: Glyph, group: 'pre' | 'post' = 'pre'): void {
-        this._dynamicSkylineGlyphs.push({ glyph, group });
+    public registerDynamicSkylineGlyph(glyph: Glyph): void {
+        this._dynamicSkylineGlyphs.push(glyph);
     }
 
     // Phase-typed dispatch lists for glyphs that opt in via
@@ -233,7 +234,7 @@ export class BarRendererBase {
     private readonly _populateSkylineSystemFinalize: Glyph[] = [];
 
     public registerPopulateSkyline(glyph: Glyph, phase: SkylinePhase): void {
-        if (phase === 'finalized') {
+        if (phase === SkylinePhase.Finalized) {
             this._populateSkylineFinalized.push(glyph);
         } else {
             this._populateSkylineSystemFinalize.push(glyph);
@@ -295,7 +296,10 @@ export class BarRendererBase {
     public registerBeatEffectOverflowsForBeat(beat: Beat, minY: number, maxY: number): void {
         this.registerBeatEffectOverflows(minY, maxY);
         const container = this.getBeatContainer(beat);
-        container?.pendingEffectOverflows.push({ minY, maxY });
+        if (container) {
+            const entry: BeatEffectOverflow = { minY, maxY };
+            container.pendingEffectOverflows.push(entry);
+        }
     }
 
     public registerOverflowTop(topOverflow: number): boolean {
@@ -395,21 +399,15 @@ export class BarRendererBase {
 
         this._emitDynamicSkylineGlyphs(this.height);
         for (const g of this._populateSkylineFinalized) {
-            g.populateSkyline?.({ phase: 'finalized', renderer: this });
+            g.populateSkyline?.({ phase: SkylinePhase.Finalized, renderer: this });
         }
         this.emitSubclassBarLocalSkyline();
     }
 
     private _emitDynamicSkylineGlyphs(rendererBottom: number): void {
-        if (this._dynamicSkylineGlyphs.length === 0) {
-            return;
-        }
         // Re-emit each entry's bbox into barLocalSkyline (reset above) so
-        // resize re-runs don't accumulate stale segments. `group === 'post'`
-        // routes the emission to postBeatLocalSkyline whose group-local x is
-        // shifted at staff union time.
-        for (const entry of this._dynamicSkylineGlyphs) {
-            const g = entry.glyph;
+        // resize re-runs don't accumulate stale segments.
+        for (const g of this._dynamicSkylineGlyphs) {
             const topY = g.getBoundingBoxTop();
             const bottomY = g.getBoundingBoxBottom();
             const xL = g.getBoundingBoxLeft();
@@ -417,21 +415,11 @@ export class BarRendererBase {
             if (xR <= xL) {
                 continue;
             }
-            if (entry.group === 'pre') {
-                if (topY < 0) {
-                    this.insertSkylineTop(xL, xR, topY * -1);
-                }
-                if (bottomY > rendererBottom) {
-                    this.insertSkylineBottom(xL, xR, bottomY - rendererBottom);
-                }
-            } else {
-                const postSky = this.postBeatLocalSkyline;
-                if (topY < 0) {
-                    postSky.insertPlaced(StaffSide.Top, xL, xR, topY * -1, 0);
-                }
-                if (bottomY > rendererBottom) {
-                    postSky.insertPlaced(StaffSide.Bottom, xL, xR, bottomY - rendererBottom, 0);
-                }
+            if (topY < 0) {
+                this.insertSkylineTop(xL, xR, topY * -1);
+            }
+            if (bottomY > rendererBottom) {
+                this.insertSkylineBottom(xL, xR, bottomY - rendererBottom);
             }
         }
     }
@@ -648,7 +636,7 @@ export class BarRendererBase {
 
     /**
      * Dispatches `populateSkyline?` for glyphs registered at the
-     * `'systemFinalize'` phase. Cross-renderer chain walks (e.g.
+     * {@link SkylinePhase.SystemFinalize} phase. Cross-renderer chain walks (e.g.
      * {@link GroupedEffectGlyph}) require every renderer in the staff to be
      * finalized first. Clears each band's cycle-scoped published span list
      * before dispatch so the chain republishes from a fully finalized state.
@@ -661,7 +649,7 @@ export class BarRendererBase {
             band.clearPublishedSpans();
         }
         for (const g of this._populateSkylineSystemFinalize) {
-            g.populateSkyline?.({ phase: 'systemFinalize', renderer: this });
+            g.populateSkyline?.({ phase: SkylinePhase.SystemFinalize, renderer: this });
         }
     }
 
@@ -975,13 +963,9 @@ export class BarRendererBase {
     protected recreatePreBeatGlyphs() {
         this._preBeatGlyphs = new LeftToRightLayoutingGlyphGroup();
         this._preBeatGlyphs.renderer = this;
-        // Drop any pre-beat entries from the previous glyph set; the new
-        // glyphs will re-register themselves via createPreBeatGlyphs.
-        for (let i = this._dynamicSkylineGlyphs.length - 1; i >= 0; i--) {
-            if (this._dynamicSkylineGlyphs[i].group === 'pre') {
-                this._dynamicSkylineGlyphs.splice(i, 1);
-            }
-        }
+        // Drop entries from the previous glyph set; the new glyphs will
+        // re-register themselves via createPreBeatGlyphs.
+        this._dynamicSkylineGlyphs.length = 0;
         this.createPreBeatGlyphs();
     }
 

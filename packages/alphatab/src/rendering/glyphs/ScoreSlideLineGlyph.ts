@@ -13,7 +13,12 @@ import type { ITieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
 import type { ScoreBarRenderer } from '@coderline/alphatab/rendering/ScoreBarRenderer';
 import type { ScoreBeatContainerGlyph } from '@coderline/alphatab/rendering/ScoreBeatContainerGlyph';
 
-/** Staff-absolute coordinates (include the note's renderer `.x`/`.y`). */
+/**
+ * Staff-absolute coordinates (include the note's renderer `.x`/`.y`).
+ *
+ * @record
+ * @internal
+ */
 interface SlideSegment {
     startX: number;
     startY: number;

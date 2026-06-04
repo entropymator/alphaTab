@@ -4,21 +4,25 @@ import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererB
 /**
  * Phase tag for {@link Glyph.populateSkyline} dispatch.
  *
- * - `'finalized'` fires at the end of {@link BarRendererBase.scaleToWidth},
+ * - {@link Finalized} fires at the end of {@link BarRendererBase.scaleToWidth},
  *   when renderer-local positions are settled. Use when the glyph's skyline
  *   contribution depends on bar-final layout state.
- * - `'systemFinalize'` fires after every renderer in the staff has
+ * - {@link SystemFinalize} fires after every renderer in the staff has
  *   `isFinalized = true`. Use when the contribution depends on cross-renderer
  *   chain state.
  *
  * @internal
  */
-export type SkylinePhase = 'finalized' | 'systemFinalize';
+export enum SkylinePhase {
+    Finalized = 0,
+    SystemFinalize = 1
+}
 
 /**
  * Context passed to {@link Glyph.populateSkyline}. The implementer pulls its
  * write destination from `ctx.renderer`.
  *
+ * @record
  * @internal
  */
 export interface SkylineCtx {

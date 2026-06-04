@@ -3,8 +3,12 @@ import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { CanvasHelper, type ICanvas, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import type { SkylineCtx } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import { type SkylineCtx, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
 
+/**
+ * @record
+ * @internal
+ */
 interface TempoAutomationLayout {
     textWidth: number;
     valueWidth: number;
@@ -31,7 +35,7 @@ export class BarTempoGlyph extends EffectGlyph {
         super.doLayout();
         // bbox depends on `getRatioPositionX`, which reads voiceContainer.x /
         // _postBeatGlyphs.x — both only final at scaleToWidth time.
-        this.renderer.registerPopulateSkyline(this, 'finalized');
+        this.renderer.registerPopulateSkyline(this, SkylinePhase.Finalized);
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
         this._symbolWidth = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
