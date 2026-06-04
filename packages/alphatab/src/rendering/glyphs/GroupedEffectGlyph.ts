@@ -18,15 +18,6 @@ export abstract class GroupedEffectGlyph extends EffectGlyph {
         this.endPosition = endPosition;
     }
 
-    public override doLayout(): void {
-        super.doLayout();
-        // §E Step 16 — register for the SystemFinalize sub-step (ii) dispatch.
-        // The chain walk via `isLinkedWithNext` requires every renderer in the
-        // staff to have `isFinalized = true`, set in sub-step (i). On non-chain
-        // glyphs `populateSkyline` is a cheap early-return.
-        this.renderer.registerPopulateSkyline(this, 'systemFinalize');
-    }
-
     public override getBoundingBoxRight(): number {
         if (!this.beat) {
             return super.getBoundingBoxRight();

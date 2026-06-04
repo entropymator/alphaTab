@@ -225,6 +225,13 @@ export class EffectBand extends Glyph {
                             newGlyph.previousGlyph = prevEffect;
                             // mark renderers as linked for consideration when layouting the renderers (line breaking, partial breaking)
                             this.isLinkedToPrevious = true;
+                            // On the 1->2 transition, register the chain head
+                            // for the SystemFinalize skyline dispatch. The head
+                            // publishes the chain's cross-renderer painted xEnd
+                            // once every renderer is finalized (sub-step (ii)).
+                            if (prevEffect.previousGlyph === null) {
+                                prevEffect.renderer.registerPopulateSkyline(prevEffect, 'systemFinalize');
+                            }
                         }
                         return newGlyph;
                     }
