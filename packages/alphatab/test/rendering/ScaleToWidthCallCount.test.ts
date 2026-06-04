@@ -31,78 +31,92 @@ import { describe, expect, it } from 'vitest';
 import { TestUiFacade } from '../visualTests/TestUiFacade';
 import { VisualTestHelper } from '../visualTests/VisualTestHelper';
 
-async function loadScore(tex: string): Promise<Score> {
-    const settings = new Settings();
-    const importer = new AlphaTexImporter();
-    importer.init(ByteBuffer.fromString(tex), settings);
-    return importer.readScore();
+/**
+ * @record
+ * @internal
+ */
+interface ScaleToWidthCallCounts {
+    counts: Map<BarRendererBase, number>;
+    renderers: BarRendererBase[];
 }
 
-function collectRenderers(api: AlphaTabApiBase<unknown>): BarRendererBase[] {
-    const wrapper = api.renderer as unknown as ScoreRendererWrapper;
-    const inner = wrapper.instance as unknown as ScoreRenderer;
-    // VerticalLayoutBase exposes `systems: StaffSystem[]`; HorizontalScreenLayout
-    // exposes a single private `_system: StaffSystem | null`. Try both.
-    const layout = inner.layout as unknown as Record<string, unknown>;
-    const systemsArray = layout.systems as readonly StaffSystem[] | undefined;
-    const singleSystem = layout._system as StaffSystem | null | undefined;
-    const systems: StaffSystem[] = systemsArray
-        ? [...systemsArray]
-        : singleSystem
-          ? [singleSystem]
-          : [];
-    const out: BarRendererBase[] = [];
-    for (const s of systems) {
-        for (const g of s.staves) {
-            for (const staff of g.staves) {
-                for (const r of staff.barRenderers) {
-                    out.push(r);
+/**
+ * @internal
+ */
+class ScaleToWidthCallCountHelper {
+    public static async loadScore(tex: string): Promise<Score> {
+        const settings = new Settings();
+        const importer = new AlphaTexImporter();
+        importer.init(ByteBuffer.fromString(tex), settings);
+        return importer.readScore();
+    }
+
+    public static collectRenderers(api: AlphaTabApiBase<unknown>): BarRendererBase[] {
+        const wrapper = api.renderer as unknown as ScoreRendererWrapper;
+        const inner = wrapper.instance as unknown as ScoreRenderer;
+        // VerticalLayoutBase exposes `systems: StaffSystem[]`; HorizontalScreenLayout
+        // exposes a single private `_system: StaffSystem | null`. Try both.
+        const layout = inner.layout as unknown as Record<string, unknown>;
+        const systemsArray = layout.systems as readonly StaffSystem[] | undefined;
+        const singleSystem = layout._system as StaffSystem | null | undefined;
+        const systems: StaffSystem[] = systemsArray
+            ? [...systemsArray]
+            : singleSystem
+              ? [singleSystem]
+              : [];
+        const out: BarRendererBase[] = [];
+        for (const s of systems) {
+            for (const g of s.staves) {
+                for (const staff of g.staves) {
+                    for (const r of staff.barRenderers) {
+                        out.push(r);
+                    }
                 }
             }
         }
+        return out;
     }
-    return out;
-}
 
-async function renderAndCount(
-    tex: string,
-    width: number,
-    layoutMode: LayoutMode
-): Promise<{ counts: Map<BarRendererBase, number>; renderers: BarRendererBase[] }> {
-    await VisualTestHelper.prepareAlphaSkia();
-    const score = await loadScore(tex);
-    const settings = new Settings();
-    settings.display.layoutMode = layoutMode;
-    VisualTestHelper.prepareSettingsForTest(settings);
+    public static async renderAndCount(
+        tex: string,
+        width: number,
+        layoutMode: LayoutMode
+    ): Promise<ScaleToWidthCallCounts> {
+        await VisualTestHelper.prepareAlphaSkia();
+        const score = await ScaleToWidthCallCountHelper.loadScore(tex);
+        const settings = new Settings();
+        settings.display.layoutMode = layoutMode;
+        VisualTestHelper.prepareSettingsForTest(settings);
 
-    const counts = new Map<BarRendererBase, number>();
-    const originalScaleToWidth = BarRendererBase.prototype.scaleToWidth;
-    BarRendererBase.prototype.scaleToWidth = function (this: BarRendererBase, w: number): void {
-        counts.set(this, (counts.get(this) ?? 0) + 1);
-        originalScaleToWidth.call(this, w);
-    };
+        const counts = new Map<BarRendererBase, number>();
+        const originalScaleToWidth = BarRendererBase.prototype.scaleToWidth;
+        BarRendererBase.prototype.scaleToWidth = function (this: BarRendererBase, w: number): void {
+            counts.set(this, (counts.get(this) ?? 0) + 1);
+            originalScaleToWidth.call(this, w);
+        };
 
-    const uiFacade = new TestUiFacade();
-    uiFacade.rootContainer.width = width;
-    const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
+        const uiFacade = new TestUiFacade();
+        uiFacade.rootContainer.width = width;
+        const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
-    try {
-        await new Promise<void>((resolve, reject) => {
-            api.renderer.postRenderFinished.on(() => resolve());
-            api.error.on(e => {
-                reject(
-                    new AlphaTabError(AlphaTabErrorType.General, `Render failed (${e.message})`, e)
-                );
+        try {
+            await new Promise<void>((resolve, reject) => {
+                api.renderer.postRenderFinished.on(() => resolve());
+                api.error.on(e => {
+                    reject(
+                        new AlphaTabError(AlphaTabErrorType.General, `Render failed (${e.message})`, e)
+                    );
+                });
+                const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
+                api.renderScore(renderScore, [0]);
+                setTimeout(() => reject(new Error('render timed out')), 5000);
             });
-            const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
-            api.renderScore(renderScore, [0]);
-            setTimeout(() => reject(new Error('render timed out')), 5000);
-        });
-        const renderers = collectRenderers(api);
-        return { counts, renderers };
-    } finally {
-        BarRendererBase.prototype.scaleToWidth = originalScaleToWidth;
-        api.destroy();
+            const renderers = ScaleToWidthCallCountHelper.collectRenderers(api);
+            return { counts, renderers };
+        } finally {
+            BarRendererBase.prototype.scaleToWidth = originalScaleToWidth;
+            api.destroy();
+        }
     }
 }
 
@@ -113,7 +127,9 @@ describe('ScaleToWidthCallCount', () => {
             \\staff {score}
             C4.4 *4 | C4.4 *4 | C4.4 *4 | C4.4 *4
         `;
-        const { counts, renderers } = await renderAndCount(tex, 1500, LayoutMode.Page);
+        const result = await ScaleToWidthCallCountHelper.renderAndCount(tex, 1500, LayoutMode.Page);
+        const counts = result.counts;
+        const renderers = result.renderers;
 
         expect(renderers.length).toBeGreaterThan(0);
         for (const r of renderers) {
@@ -127,7 +143,9 @@ describe('ScaleToWidthCallCount', () => {
             \\staff {score}
             C4.4 *4 | C4.4 *4 | C4.4 *4
         `;
-        const { counts, renderers } = await renderAndCount(tex, 1500, LayoutMode.Horizontal);
+        const result = await ScaleToWidthCallCountHelper.renderAndCount(tex, 1500, LayoutMode.Horizontal);
+        const counts = result.counts;
+        const renderers = result.renderers;
 
         expect(renderers.length).toBeGreaterThan(0);
         for (const r of renderers) {

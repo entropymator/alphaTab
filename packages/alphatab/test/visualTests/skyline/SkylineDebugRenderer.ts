@@ -6,6 +6,14 @@ import type { Skyline } from '@coderline/alphatab/rendering/skyline/Skyline';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 
 /**
+ * @record
+ * @internal
+ */
+interface OptionalSystemsRef {
+    systems?: readonly StaffSystem[] | undefined;
+}
+
+/**
  * Test-only diagnostic that overlays the assembled up/down skylines on
  * top of a rendered score image. Used to visually verify the skyline
  * matches the bar content envelope.
@@ -28,7 +36,7 @@ export class SkylineDebugRenderer {
         // ScoreRenderer which exposes `layout`.
         const wrapper = api.renderer as unknown as ScoreRendererWrapper;
         const innerRenderer = wrapper.instance as unknown as ScoreRenderer | undefined;
-        const layoutAny = innerRenderer?.layout as unknown as { systems?: readonly StaffSystem[] } | undefined;
+        const layoutAny = innerRenderer?.layout as unknown as OptionalSystemsRef | undefined;
         if (!layoutAny || !Array.isArray(layoutAny.systems)) {
             return;
         }

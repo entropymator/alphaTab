@@ -3,6 +3,9 @@ import { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/Skylin
 import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import { describe, expect, it } from 'vitest';
 
+/**
+ * @internal
+ */
 class SysSkyHandle {
     public readonly sky: StaffSystemSkyline;
     public readonly pool: SkylineSegmentPool;
@@ -12,6 +15,9 @@ class SysSkyHandle {
     }
 }
 
+/**
+ * @internal
+ */
 class StaffSystemSkylineFixtures {
     public static newSysSky(
         staffIndex: number = 0,

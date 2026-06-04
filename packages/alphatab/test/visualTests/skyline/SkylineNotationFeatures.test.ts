@@ -9,21 +9,15 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-    findNumberedStaff,
-    findScoreStaff,
-    findSlashStaff,
-    maxUpHeightInRange,
-    renderSkylineOnce
-} from './SkylineTestHarness';
+import { SkylineTestHarness } from './SkylineTestHarness';
 
 describe('SkylineNotationFeatures — stems', () => {
     it('high-pitch up-stem on a quarter note registers above the staff', async () => {
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :4 24.1 r r r
         `);
-        const score = findScoreStaff(snap);
+        const score = SkylineTestHarness.findScoreStaff(snap);
         const bar0 = score.bars[0];
         // The high notehead with up-stem must register a non-zero above-staff
         // magnitude on the bar-local skyline.
@@ -31,11 +25,11 @@ describe('SkylineNotationFeatures — stems', () => {
     });
 
     it('low-pitch down-stem on a quarter note registers below the staff', async () => {
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :4 0.6 r r r
         `);
-        const score = findScoreStaff(snap);
+        const score = SkylineTestHarness.findScoreStaff(snap);
         const bar0 = score.bars[0];
         // Low note on string 6 / fret 0 — sits below the staff.
         expect(bar0.downMax).toBeGreaterThan(0);
@@ -45,16 +39,16 @@ describe('SkylineNotationFeatures — stems', () => {
         // Compare a high half-note (has stem) against a low half-note (no
         // significant stem extension above the staff). The high one's
         // above-staff magnitude must be strictly greater.
-        const highSnap = await renderSkylineOnce(`
+        const highSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :2 22.1 r
         `);
-        const lowSnap = await renderSkylineOnce(`
+        const lowSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :2 0.6 r
         `);
-        const highBar = findScoreStaff(highSnap).bars[0];
-        const lowBar = findScoreStaff(lowSnap).bars[0];
+        const highBar = SkylineTestHarness.findScoreStaff(highSnap).bars[0];
+        const lowBar = SkylineTestHarness.findScoreStaff(lowSnap).bars[0];
         expect(highBar.upMax).toBeGreaterThan(lowBar.upMax);
     });
 });
@@ -64,16 +58,16 @@ describe('SkylineNotationFeatures — flags', () => {
         // A standalone eighth has a flag; a quarter does not. Same notehead
         // pitch → the eighth's bar-local up-side envelope must be >= the
         // quarter's.
-        const eighthSnap = await renderSkylineOnce(`
+        const eighthSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :4 r :8 22.1 r :4 r r
         `);
-        const quarterSnap = await renderSkylineOnce(`
+        const quarterSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :4 r 22.1 r r
         `);
-        const eighthBar = findScoreStaff(eighthSnap).bars[0];
-        const quarterBar = findScoreStaff(quarterSnap).bars[0];
+        const eighthBar = SkylineTestHarness.findScoreStaff(eighthSnap).bars[0];
+        const quarterBar = SkylineTestHarness.findScoreStaff(quarterSnap).bars[0];
         expect(eighthBar.upMax).toBeGreaterThanOrEqual(quarterBar.upMax);
     });
 });
@@ -82,11 +76,11 @@ describe('SkylineNotationFeatures — beams', () => {
     it('beamed eighths register non-zero above-staff envelope inside the beam-group x-range', async () => {
         // Four beamed eighths at a high pitch followed by 4 rests. The
         // beam-group occupies roughly the first half of the bar.
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :8 22.1 22.1 22.1 22.1 r r r r
         `);
-        const bar0 = findScoreStaff(snap).bars[0];
+        const bar0 = SkylineTestHarness.findScoreStaff(snap).bars[0];
         expect(bar0.upMax).toBeGreaterThan(0);
 
         // There must be at least one up-segment in the bar with positive
@@ -100,16 +94,16 @@ describe('SkylineNotationFeatures — beams', () => {
         // Two beamed eighth-notes at a high pitch followed by 4+ rests.
         // The beam contributes height in the first quarter of the bar; the
         // trailing rests contribute less.
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :8 22.1 22.1 r r r r r r
         `);
-        const bar0 = findScoreStaff(snap).bars[0];
+        const bar0 = SkylineTestHarness.findScoreStaff(snap).bars[0];
         // Pick samples relative to the bar's full content width. The beam
         // sits in the early portion; the rests in the late portion.
         const w = bar0.rendererWidth;
-        const beamRegion = maxUpHeightInRange(bar0, 0, w * 0.3);
-        const restRegion = maxUpHeightInRange(bar0, w * 0.6, w);
+        const beamRegion = SkylineTestHarness.maxUpHeightInRange(bar0, 0, w * 0.3);
+        const restRegion = SkylineTestHarness.maxUpHeightInRange(bar0, w * 0.6, w);
         expect(beamRegion).toBeGreaterThan(restRegion);
     });
 });
@@ -120,16 +114,16 @@ describe('SkylineNotationFeatures — tuplets', () => {
         // tuplet number/bracket sits above the beam, adding magnitude to
         // the bar-local up-side. Compare against the same eighths without
         // tuplet → the tuplet score must be at least as tall.
-        const tupletSnap = await renderSkylineOnce(`
+        const tupletSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :8 22.1{tu 3} 22.1{tu 3} 22.1{tu 3} :4 r r r
         `);
-        const plainSnap = await renderSkylineOnce(`
+        const plainSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :8 22.1 22.1 22.1 :4 r r r
         `);
-        const tupletBar = findScoreStaff(tupletSnap).bars[0];
-        const plainBar = findScoreStaff(plainSnap).bars[0];
+        const tupletBar = SkylineTestHarness.findScoreStaff(tupletSnap).bars[0];
+        const plainBar = SkylineTestHarness.findScoreStaff(plainSnap).bars[0];
         // Both have a beam group above the staff. The triplet adds a
         // number/bracket above the beam — magnitudes should differ.
         expect(tupletBar.upMax).toBeGreaterThan(0);
@@ -140,14 +134,14 @@ describe('SkylineNotationFeatures — tuplets', () => {
     it('triplet beat-span has greater above-staff height than the trailing rests', async () => {
         // Triplet beam followed by rests. The triplet's x-range should
         // report a taller above-staff magnitude than the rest region.
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :8 22.1{tu 3} 22.1{tu 3} 22.1{tu 3} :4 r r r
         `);
-        const bar0 = findScoreStaff(snap).bars[0];
+        const bar0 = SkylineTestHarness.findScoreStaff(snap).bars[0];
         const w = bar0.rendererWidth;
-        const tupletRegion = maxUpHeightInRange(bar0, 0, w * 0.4);
-        const restRegion = maxUpHeightInRange(bar0, w * 0.7, w);
+        const tupletRegion = SkylineTestHarness.maxUpHeightInRange(bar0, 0, w * 0.4);
+        const restRegion = SkylineTestHarness.maxUpHeightInRange(bar0, w * 0.7, w);
         expect(tupletRegion).toBeGreaterThan(restRegion);
     });
 });
@@ -157,16 +151,16 @@ describe('SkylineNotationFeatures — slash staff', () => {
         // Four beamed eighth slashes followed by quarter rests. Slash
         // notation places noteheads at a fixed Y on the staff; only stems,
         // flags, and beams contribute to the above-staff envelope.
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Slash"
             \\staff {slash}
             :8 1.1 1.1 1.1 1.1 :4 r r
         `);
-        const bar0 = findSlashStaff(snap).bars[0];
+        const bar0 = SkylineTestHarness.findSlashStaff(snap).bars[0];
         expect(bar0.upMax).toBeGreaterThan(0);
         const w = bar0.rendererWidth;
-        const beamRegion = maxUpHeightInRange(bar0, 0, w * 0.4);
-        const restRegion = maxUpHeightInRange(bar0, w * 0.6, w);
+        const beamRegion = SkylineTestHarness.maxUpHeightInRange(bar0, 0, w * 0.4);
+        const restRegion = SkylineTestHarness.maxUpHeightInRange(bar0, w * 0.6, w);
         expect(beamRegion).toBeGreaterThan(restRegion);
     });
 
@@ -174,18 +168,18 @@ describe('SkylineNotationFeatures — slash staff', () => {
         // SlashBarRenderer.doLayout registers a per-tuplet-group bracket
         // height on the top side. The tuplet score must therefore have at
         // least as much above-staff envelope as the plain equivalent.
-        const tupletSnap = await renderSkylineOnce(`
+        const tupletSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Slash"
             \\staff {slash}
             :8 1.1 {tu 3} 1.1 {tu 3} 1.1 {tu 3} :4 r r r
         `);
-        const plainSnap = await renderSkylineOnce(`
+        const plainSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Slash"
             \\staff {slash}
             :8 1.1 1.1 1.1 :4 r r r
         `);
-        const tupletBar = findSlashStaff(tupletSnap).bars[0];
-        const plainBar = findSlashStaff(plainSnap).bars[0];
+        const tupletBar = SkylineTestHarness.findSlashStaff(tupletSnap).bars[0];
+        const plainBar = SkylineTestHarness.findSlashStaff(plainSnap).bars[0];
         expect(tupletBar.upMax).toBeGreaterThanOrEqual(plainBar.upMax);
     });
 });
@@ -195,18 +189,18 @@ describe('SkylineNotationFeatures — numbered staff', () => {
         // Numbered notation marks octaves with dots above/below the digit.
         // A high-octave note's dot extends above the staff; a low-octave
         // note's dot extends below. Compare bar-local up/down envelopes.
-        const highSnap = await renderSkylineOnce(`
+        const highSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Numbered"
             \\staff {numbered}
             C6.4 r r r
         `);
-        const lowSnap = await renderSkylineOnce(`
+        const lowSnap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Numbered"
             \\staff {numbered}
             C4.4 r r r
         `);
-        const highBar = findNumberedStaff(highSnap).bars[0];
-        const lowBar = findNumberedStaff(lowSnap).bars[0];
+        const highBar = SkylineTestHarness.findNumberedStaff(highSnap).bars[0];
+        const lowBar = SkylineTestHarness.findNumberedStaff(lowSnap).bars[0];
         // Either the high octave's up-side is greater than the low octave's,
         // or both renderers contribute zero (numbered staff implementations
         // vary). The strict invariant we assert is "high octave is at least
@@ -218,12 +212,12 @@ describe('SkylineNotationFeatures — numbered staff', () => {
         // A few high-octave numbered notes plus a few low-octave ones. The
         // staff-system skyline aggregates them; at least one side must
         // exceed zero.
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Numbered"
             \\staff {numbered}
             C6.4 D6.4 C2.4 D2.4
         `);
-        const staff = findNumberedStaff(snap);
+        const staff = SkylineTestHarness.findNumberedStaff(snap);
         expect(staff.upMax + staff.downMax).toBeGreaterThan(0);
     });
 });
@@ -233,7 +227,7 @@ describe('SkylineNotationFeatures — staff-skyline assembly', () => {
         // Multi-bar mix where the tallest content varies by bar. The
         // staff-system skyline aggregates everything, so its maxHeight on
         // each side must match the peak across all per-bar maxes.
-        const snap = await renderSkylineOnce(`
+        const snap = await SkylineTestHarness.renderSkylineOnce(`
             \\track "Guitar"
             :4 24.1 r r r |
             :4 0.6 r r r |

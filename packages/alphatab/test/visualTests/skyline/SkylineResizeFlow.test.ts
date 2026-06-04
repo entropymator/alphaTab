@@ -33,6 +33,10 @@ import { describe, expect, it } from 'vitest';
 import { TestUiFacade } from '../TestUiFacade';
 import { VisualTestHelper } from '../VisualTestHelper';
 
+/**
+ * @record
+ * @internal
+ */
 interface StaffSkylineSnapshot {
     systemIndex: number;
     staffIndex: number;
@@ -51,163 +55,194 @@ interface StaffSkylineSnapshot {
     barLineLocalX: number[];
 }
 
-async function loadScore(tex: string): Promise<Score> {
-    const settings = new Settings();
-    const importer = new AlphaTexImporter();
-    importer.init(ByteBuffer.fromString(tex), settings);
-    return importer.readScore();
+/**
+ * @record
+ * @internal
+ */
+interface ScoreLayoutInternals {
+    systems: readonly StaffSystem[];
 }
 
-function captureSnapshot(api: AlphaTabApiBase<unknown>): StaffSkylineSnapshot[] {
-    const wrapper = api.renderer as unknown as ScoreRendererWrapper;
-    const inner = wrapper.instance as unknown as ScoreRenderer;
-    const systems = (inner.layout as unknown as { systems: readonly StaffSystem[] }).systems;
+/**
+ * @record
+ * @internal
+ */
+interface SkylineResizeSnapshots {
+    initial: StaffSkylineSnapshot[];
+    resized: StaffSkylineSnapshot[];
+}
 
-    const out: StaffSkylineSnapshot[] = [];
-    for (const system of systems) {
-        for (const group of system.staves) {
-            for (const staff of group.staves) {
-                if (!staff.isVisible) {
-                    continue;
+/**
+ * @record
+ * @internal
+ */
+interface UpDownArrays {
+    up: number[];
+    down: number[];
+}
+
+/**
+ * @internal
+ */
+class SkylineResizeFlowHelper {
+    public static async loadScore(tex: string): Promise<Score> {
+        const settings = new Settings();
+        const importer = new AlphaTexImporter();
+        importer.init(ByteBuffer.fromString(tex), settings);
+        return importer.readScore();
+    }
+
+    public static captureSnapshot(api: AlphaTabApiBase<unknown>): StaffSkylineSnapshot[] {
+        const wrapper = api.renderer as unknown as ScoreRendererWrapper;
+        const inner = wrapper.instance as unknown as ScoreRenderer;
+        const systems = (inner.layout as unknown as ScoreLayoutInternals).systems;
+
+        const out: StaffSkylineSnapshot[] = [];
+        for (const system of systems) {
+            for (const group of system.staves) {
+                for (const staff of group.staves) {
+                    if (!staff.isVisible) {
+                        continue;
+                    }
+                    out.push({
+                        systemIndex: system.index,
+                        staffIndex: staff.staffIndex,
+                        staffKey: `${staff.staffTrackGroup.track.index}/${staff.staffId}`,
+                        upMax: staff.systemSkyline.upSky.maxHeight(),
+                        downMax: staff.systemSkyline.downSky.maxHeight(),
+                        barUpMaxes: staff.barRenderers.map(r => r.barLocalSkyline.upSky.maxHeight()),
+                        barDownMaxes: staff.barRenderers.map(r => r.barLocalSkyline.downSky.maxHeight()),
+                        barWidths: staff.barRenderers.map(r => r.width),
+                        barLineLocalX: staff.barRenderers.map(r => r.x)
+                    });
                 }
-                out.push({
-                    systemIndex: system.index,
-                    staffIndex: staff.staffIndex,
-                    staffKey: `${staff.staffTrackGroup.track.index}/${staff.staffId}`,
-                    upMax: staff.systemSkyline.upSky.maxHeight(),
-                    downMax: staff.systemSkyline.downSky.maxHeight(),
-                    barUpMaxes: staff.barRenderers.map(r => r.barLocalSkyline.upSky.maxHeight()),
-                    barDownMaxes: staff.barRenderers.map(r => r.barLocalSkyline.downSky.maxHeight()),
-                    barWidths: staff.barRenderers.map(r => r.width),
-                    barLineLocalX: staff.barRenderers.map(r => r.x)
-                });
             }
         }
+        return out;
     }
-    return out;
-}
 
-/** Single render at one width via a fresh API. */
-async function renderOnce(tex: string, width: number): Promise<StaffSkylineSnapshot[]> {
-    await VisualTestHelper.prepareAlphaSkia();
-    const score = await loadScore(tex);
-    const settings = new Settings();
-    VisualTestHelper.prepareSettingsForTest(settings);
+    /** Single render at one width via a fresh API. */
+    public static async renderOnce(tex: string, width: number): Promise<StaffSkylineSnapshot[]> {
+        await VisualTestHelper.prepareAlphaSkia();
+        const score = await SkylineResizeFlowHelper.loadScore(tex);
+        const settings = new Settings();
+        VisualTestHelper.prepareSettingsForTest(settings);
 
-    const uiFacade = new TestUiFacade();
-    uiFacade.rootContainer.width = width;
-    const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
+        const uiFacade = new TestUiFacade();
+        uiFacade.rootContainer.width = width;
+        const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
 
-    try {
-        return await new Promise<StaffSkylineSnapshot[]>((resolve, reject) => {
-            api.renderer.postRenderFinished.on(() => {
-                resolve(captureSnapshot(api));
+        try {
+            return await new Promise<StaffSkylineSnapshot[]>((resolve, reject) => {
+                api.renderer.postRenderFinished.on(() => {
+                    resolve(SkylineResizeFlowHelper.captureSnapshot(api));
+                });
+                api.error.on(e => {
+                    reject(
+                        new AlphaTabError(
+                            AlphaTabErrorType.General,
+                            `Failed to render skyline harness score (${e.message} ${e.stack})`,
+                            e
+                        )
+                    );
+                });
+                const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
+                api.renderScore(renderScore, [0]);
+                setTimeout(() => reject(new Error('skyline render harness timed out')), 5000);
             });
-            api.error.on(e => {
-                reject(
-                    new AlphaTabError(
-                        AlphaTabErrorType.General,
-                        `Failed to render skyline harness score (${e.message} ${e.stack})`,
-                        e
-                    )
-                );
+        } finally {
+            api.destroy();
+        }
+    }
+
+    /**
+     * Single resize on a shared API: render at `initialWidth`, then once
+     * complete, resize to `targetWidth` and capture the resulting snapshot.
+     */
+    public static async renderWithResize(
+        tex: string,
+        initialWidth: number,
+        targetWidth: number
+    ): Promise<SkylineResizeSnapshots> {
+        await VisualTestHelper.prepareAlphaSkia();
+        const score = await SkylineResizeFlowHelper.loadScore(tex);
+        const settings = new Settings();
+        VisualTestHelper.prepareSettingsForTest(settings);
+
+        const uiFacade = new TestUiFacade();
+        uiFacade.rootContainer.width = initialWidth;
+        const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
+
+        let initialSnap: StaffSkylineSnapshot[] = [];
+        let resizedSnap: StaffSkylineSnapshot[] = [];
+        let isInitialPhase = true;
+
+        try {
+            await new Promise<void>((resolve, reject) => {
+                api.renderer.postRenderFinished.on(() => {
+                    if (isInitialPhase) {
+                        initialSnap = SkylineResizeFlowHelper.captureSnapshot(api);
+                        isInitialPhase = false;
+                        setTimeout(() => {
+                            uiFacade.rootContainer.width = targetWidth;
+                            api.triggerResize();
+                        }, 0);
+                    } else {
+                        resizedSnap = SkylineResizeFlowHelper.captureSnapshot(api);
+                        resolve();
+                    }
+                });
+                api.error.on(e => {
+                    reject(
+                        new AlphaTabError(
+                            AlphaTabErrorType.General,
+                            `Failed to render skyline harness score (${e.message} ${e.stack})`,
+                            e
+                        )
+                    );
+                });
+                const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
+                api.renderScore(renderScore, [0]);
+                setTimeout(() => reject(new Error('skyline resize harness timed out')), 10000);
             });
-            const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
-            api.renderScore(renderScore, [0]);
-            setTimeout(() => reject(new Error('skyline render harness timed out')), 5000);
+        } finally {
+            api.destroy();
+        }
+
+        return { initial: initialSnap, resized: resizedSnap };
+    }
+
+    /**
+     * Concatenate per-bar up/down maxes per logical staff in left-to-right
+     * (system, then renderer-index) order. Keyed by `staffKey` so the score-
+     * staff and tab-staff of the same track are correctly separated.
+     */
+    public static envelopesByStaff(snapshot: StaffSkylineSnapshot[]): Map<string, UpDownArrays> {
+        const byStaff = new Map<string, UpDownArrays>();
+        const ordered = [...snapshot].sort((a, b) => {
+            if (a.staffKey !== b.staffKey) {
+                return a.staffKey < b.staffKey ? -1 : 1;
+            }
+            return a.systemIndex - b.systemIndex;
         });
-    } finally {
-        api.destroy();
-    }
-}
-
-/**
- * Single resize on a shared API: render at `initialWidth`, then once
- * complete, resize to `targetWidth` and capture the resulting snapshot.
- */
-async function renderWithResize(
-    tex: string,
-    initialWidth: number,
-    targetWidth: number
-): Promise<{ initial: StaffSkylineSnapshot[]; resized: StaffSkylineSnapshot[] }> {
-    await VisualTestHelper.prepareAlphaSkia();
-    const score = await loadScore(tex);
-    const settings = new Settings();
-    VisualTestHelper.prepareSettingsForTest(settings);
-
-    const uiFacade = new TestUiFacade();
-    uiFacade.rootContainer.width = initialWidth;
-    const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
-
-    let initialSnap: StaffSkylineSnapshot[] = [];
-    let resizedSnap: StaffSkylineSnapshot[] = [];
-    let phase: 'initial' | 'resized' = 'initial';
-
-    try {
-        await new Promise<void>((resolve, reject) => {
-            api.renderer.postRenderFinished.on(() => {
-                if (phase === 'initial') {
-                    initialSnap = captureSnapshot(api);
-                    phase = 'resized';
-                    setTimeout(() => {
-                        uiFacade.rootContainer.width = targetWidth;
-                        api.triggerResize();
-                    }, 0);
-                } else {
-                    resizedSnap = captureSnapshot(api);
-                    resolve();
-                }
-            });
-            api.error.on(e => {
-                reject(
-                    new AlphaTabError(
-                        AlphaTabErrorType.General,
-                        `Failed to render skyline harness score (${e.message} ${e.stack})`,
-                        e
-                    )
-                );
-            });
-            const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
-            api.renderScore(renderScore, [0]);
-            setTimeout(() => reject(new Error('skyline resize harness timed out')), 10000);
-        });
-    } finally {
-        api.destroy();
+        for (const s of ordered) {
+            if (!byStaff.has(s.staffKey)) {
+                byStaff.set(s.staffKey, { up: [], down: [] });
+            }
+            const e = byStaff.get(s.staffKey)!;
+            for (const v of s.barUpMaxes) {
+                e.up.push(v);
+            }
+            for (const v of s.barDownMaxes) {
+                e.down.push(v);
+            }
+        }
+        return byStaff;
     }
 
-    return { initial: initialSnap, resized: resizedSnap };
-}
-
-/**
- * Concatenate per-bar up/down maxes per logical staff in left-to-right
- * (system, then renderer-index) order. Keyed by `staffKey` so the score-
- * staff and tab-staff of the same track are correctly separated.
- */
-function envelopesByStaff(snapshot: StaffSkylineSnapshot[]): Map<string, { up: number[]; down: number[] }> {
-    const byStaff = new Map<string, { up: number[]; down: number[] }>();
-    const ordered = [...snapshot].sort((a, b) => {
-        if (a.staffKey !== b.staffKey) {
-            return a.staffKey < b.staffKey ? -1 : 1;
-        }
-        return a.systemIndex - b.systemIndex;
-    });
-    for (const s of ordered) {
-        if (!byStaff.has(s.staffKey)) {
-            byStaff.set(s.staffKey, { up: [], down: [] });
-        }
-        const e = byStaff.get(s.staffKey)!;
-        for (const v of s.barUpMaxes) {
-            e.up.push(v);
-        }
-        for (const v of s.barDownMaxes) {
-            e.down.push(v);
-        }
+    public static totalBarsInSnapshot(snapshot: StaffSkylineSnapshot[]): number {
+        return snapshot.reduce((sum, s) => sum + s.barWidths.length, 0);
     }
-    return byStaff;
-}
-
-function totalBarsInSnapshot(snapshot: StaffSkylineSnapshot[]): number {
-    return snapshot.reduce((sum, s) => sum + s.barWidths.length, 0);
 }
 
 describe('SkylineResizeFlow', () => {
@@ -222,7 +257,7 @@ describe('SkylineResizeFlow', () => {
     `;
 
     it('initial render at a wide width populates the staff skyline', async () => {
-        const snap = await renderOnce(resizeTex, 1300);
+        const snap = await SkylineResizeFlowHelper.renderOnce(resizeTex, 1300);
         expect(snap.length).toBeGreaterThan(0);
         const anyContent = snap.some(s => s.upMax > 0 || s.downMax > 0);
         expect(anyContent).toBe(true);
@@ -236,7 +271,7 @@ describe('SkylineResizeFlow', () => {
     });
 
     it('initial render at a narrow width populates skylines across multiple systems', async () => {
-        const snap = await renderOnce(resizeTex, 600);
+        const snap = await SkylineResizeFlowHelper.renderOnce(resizeTex, 600);
         expect(snap.length).toBeGreaterThan(0);
         const systems = new Set(snap.map(s => s.systemIndex));
         // At narrow width the score should distribute across more than one system.
@@ -251,8 +286,13 @@ describe('SkylineResizeFlow', () => {
     });
 
     it('same bar count is produced regardless of width (fresh API per render)', async () => {
-        const [wide, narrow] = await Promise.all([renderOnce(resizeTex, 1300), renderOnce(resizeTex, 600)]);
-        expect(totalBarsInSnapshot(wide)).toBe(totalBarsInSnapshot(narrow));
+        const [wide, narrow] = await Promise.all([
+            SkylineResizeFlowHelper.renderOnce(resizeTex, 1300),
+            SkylineResizeFlowHelper.renderOnce(resizeTex, 600)
+        ]);
+        expect(SkylineResizeFlowHelper.totalBarsInSnapshot(wide)).toBe(
+            SkylineResizeFlowHelper.totalBarsInSnapshot(narrow)
+        );
     });
 
     it('per-staff envelope totals are stable across widths (fresh APIs)', async () => {
@@ -262,9 +302,12 @@ describe('SkylineResizeFlow', () => {
         // layout choices can legitimately re-allocate effect-band content
         // between adjacent bars (e.g. a multi-bar effect that anchors to
         // a different bar when the system breaks differently).
-        const [wide, narrow] = await Promise.all([renderOnce(resizeTex, 1300), renderOnce(resizeTex, 600)]);
-        const a = envelopesByStaff(wide);
-        const b = envelopesByStaff(narrow);
+        const [wide, narrow] = await Promise.all([
+            SkylineResizeFlowHelper.renderOnce(resizeTex, 1300),
+            SkylineResizeFlowHelper.renderOnce(resizeTex, 600)
+        ]);
+        const a = SkylineResizeFlowHelper.envelopesByStaff(wide);
+        const b = SkylineResizeFlowHelper.envelopesByStaff(narrow);
         expect(a.size).toBe(b.size);
         for (const [staffKey, ea] of a) {
             const eb = b.get(staffKey)!;
@@ -276,7 +319,9 @@ describe('SkylineResizeFlow', () => {
     });
 
     it('single resize wide→narrow re-distributes bars across systems', async () => {
-        const { initial, resized } = await renderWithResize(resizeTex, 1300, 600);
+        const snapshots = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 1300, 600);
+        const initial = snapshots.initial;
+        const resized = snapshots.resized;
 
         // Both renders must produce visible staves.
         expect(initial.length).toBeGreaterThan(0);
@@ -303,7 +348,9 @@ describe('SkylineResizeFlow', () => {
         // After resize, every renderer's bar-local skyline must still
         // reflect its glyph content. This catches the regression where
         // a resize path discarded bar-local state.
-        const { initial, resized } = await renderWithResize(resizeTex, 600, 900);
+        const snapshots = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 600, 900);
+        const initial = snapshots.initial;
+        const resized = snapshots.resized;
 
         const sumInitial = initial.reduce(
             (s, st) => s + st.barUpMaxes.reduce((a, b) => a + b, 0) + st.barDownMaxes.reduce((a, b) => a + b, 0),
@@ -319,7 +366,8 @@ describe('SkylineResizeFlow', () => {
     });
 
     it('bars in each staff are contiguous (no gaps or overlaps) after resize', async () => {
-        const { resized } = await renderWithResize(resizeTex, 1300, 800);
+        const snapshots = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 1300, 800);
+        const resized = snapshots.resized;
         const tolerance = 1.5;
         for (const staff of resized) {
             if (staff.barLineLocalX.length === 0) {
@@ -340,7 +388,7 @@ describe('SkylineResizeFlow', () => {
         // skyline, so the staff skyline's maxHeight is at least the max
         // bar-local skyline maxHeight — bigger when effect bands push it
         // further out.
-        const snap = await renderOnce(resizeTex, 600);
+        const snap = await SkylineResizeFlowHelper.renderOnce(resizeTex, 600);
         for (const staff of snap) {
             const localUpMax = staff.barUpMaxes.reduce((a, b) => Math.max(a, b), 0);
             const localDownMax = staff.barDownMaxes.reduce((a, b) => Math.max(a, b), 0);
@@ -355,15 +403,15 @@ describe('SkylineResizeFlow', () => {
         // layout's _systems must include the single trailing system that
         // holds every bar, so the skyline visible-staff iteration returns
         // non-empty.
-        const { initial, resized } = await renderWithResize(resizeTex, 1300, 600);
-        expect(initial.length).toBeGreaterThan(0);
-        expect(resized.length).toBeGreaterThan(0);
+        const snapshots = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 1300, 600);
+        expect(snapshots.initial.length).toBeGreaterThan(0);
+        expect(snapshots.resized.length).toBeGreaterThan(0);
 
         // Drive a second resize back to the wide width on a separate
         // harness instance (renderWithResize only does one resize). Use
         // the wider value that fits the score in a single system so we
         // hit the previously-broken path: trailing-system fallthrough.
-        const backToWide = await renderWithResize(resizeTex, 600, 1300);
+        const backToWide = await SkylineResizeFlowHelper.renderWithResize(resizeTex, 600, 1300);
         expect(backToWide.resized.length).toBeGreaterThan(0);
         const singleSystem = new Set(backToWide.resized.map(s => s.systemIndex));
         expect(singleSystem.size).toBe(1);

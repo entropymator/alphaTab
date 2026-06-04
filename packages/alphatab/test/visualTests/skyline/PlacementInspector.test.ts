@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { inspectPlacement } from './PlacementInspector';
+import { PlacementInspector } from './PlacementInspector';
 
 describe('PlacementInspector', () => {
     it('renders a report for the slur+trill repro case', async () => {
@@ -20,13 +20,13 @@ describe('PlacementInspector', () => {
  C4 {tempo 120}
 \\voice
 r`;
-        const report = await inspectPlacement(tex);
+        const report = await PlacementInspector.inspectPlacement(tex);
         console.log(`\n${report}\n`);
         expect(report).toContain('inspectPlacement  tex=');
     });
 
     it('emits the structural fields the bugfix workflow depends on', async () => {
-        const report = await inspectPlacement('\\tempo 120 . C4 {txt "A"} C4');
+        const report = await PlacementInspector.inspectPlacement('\\tempo 120 . C4 {txt "A"} C4');
         // Each of these tokens is a contract with the inspector format —
         // bugfix rounds grep through the output for them.
         for (const token of [

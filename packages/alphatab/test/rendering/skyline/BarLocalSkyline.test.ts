@@ -2,6 +2,9 @@ import { BarLocalSkyline, StaffSide } from '@coderline/alphatab/rendering/skylin
 import { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/SkylineSegmentPool';
 import { describe, expect, it } from 'vitest';
 
+/**
+ * @internal
+ */
 class Wrapper {
     public readonly bar: BarLocalSkyline;
     public readonly pool: SkylineSegmentPool;
@@ -11,6 +14,9 @@ class Wrapper {
     }
 }
 
+/**
+ * @internal
+ */
 class BarLocalSkylineFixtures {
     public static newWrapper(xMin: number = 0, xMax: number = 100): Wrapper {
         return new Wrapper(xMin, xMax);

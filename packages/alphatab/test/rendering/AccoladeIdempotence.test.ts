@@ -26,6 +26,10 @@ import { describe, expect, it } from 'vitest';
 import { TestUiFacade } from '../visualTests/TestUiFacade';
 import { VisualTestHelper } from '../visualTests/VisualTestHelper';
 
+/**
+ * @record
+ * @internal
+ */
 interface SystemMetrics {
     accoladeWidth: number;
     width: number;
@@ -33,58 +37,71 @@ interface SystemMetrics {
     barWidths: number[];
 }
 
-async function loadScore(tex: string): Promise<Score> {
-    const settings = new Settings();
-    const importer = new AlphaTexImporter();
-    importer.init(ByteBuffer.fromString(tex), settings);
-    return importer.readScore();
+/**
+ * @record
+ * @internal
+ */
+interface ScoreLayoutInternals {
+    systems: readonly StaffSystem[];
 }
 
-async function renderAndCaptureSystem0(tex: string, width: number): Promise<SystemMetrics> {
-    await VisualTestHelper.prepareAlphaSkia();
-    const score = await loadScore(tex);
-    const settings = new Settings();
-    VisualTestHelper.prepareSettingsForTest(settings);
+/**
+ * @internal
+ */
+class AccoladeIdempotenceHelper {
+    public static async loadScore(tex: string): Promise<Score> {
+        const settings = new Settings();
+        const importer = new AlphaTexImporter();
+        importer.init(ByteBuffer.fromString(tex), settings);
+        return importer.readScore();
+    }
 
-    const uiFacade = new TestUiFacade();
-    uiFacade.rootContainer.width = width;
-    const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
+    public static async renderAndCaptureSystem0(tex: string, width: number): Promise<SystemMetrics> {
+        await VisualTestHelper.prepareAlphaSkia();
+        const score = await AccoladeIdempotenceHelper.loadScore(tex);
+        const settings = new Settings();
+        VisualTestHelper.prepareSettingsForTest(settings);
 
-    try {
-        return await new Promise<SystemMetrics>((resolve, reject) => {
-            api.renderer.postRenderFinished.on(() => {
-                const wrapper = api.renderer as unknown as ScoreRendererWrapper;
-                const inner = wrapper.instance as unknown as ScoreRenderer;
-                const systems = (inner.layout as unknown as { systems: readonly StaffSystem[] }).systems;
-                if (systems.length === 0) {
-                    reject(new Error('expected at least one system'));
-                    return;
-                }
-                const s = systems[0];
-                const firstStaffGroup = s.staves[0];
-                const firstStaff = firstStaffGroup.staves[0];
-                resolve({
-                    accoladeWidth: s.accoladeWidth,
-                    width: s.width,
-                    computedWidth: s.computedWidth,
-                    barWidths: firstStaff.barRenderers.map(r => r.width)
+        const uiFacade = new TestUiFacade();
+        uiFacade.rootContainer.width = width;
+        const api = new AlphaTabApiBase<unknown>(uiFacade, settings);
+
+        try {
+            return await new Promise<SystemMetrics>((resolve, reject) => {
+                api.renderer.postRenderFinished.on(() => {
+                    const wrapper = api.renderer as unknown as ScoreRendererWrapper;
+                    const inner = wrapper.instance as unknown as ScoreRenderer;
+                    const systems = (inner.layout as unknown as ScoreLayoutInternals).systems;
+                    if (systems.length === 0) {
+                        reject(new Error('expected at least one system'));
+                        return;
+                    }
+                    const s = systems[0];
+                    const firstStaffGroup = s.staves[0];
+                    const firstStaff = firstStaffGroup.staves[0];
+                    resolve({
+                        accoladeWidth: s.accoladeWidth,
+                        width: s.width,
+                        computedWidth: s.computedWidth,
+                        barWidths: firstStaff.barRenderers.map(r => r.width)
+                    });
                 });
+                api.error.on(e => {
+                    reject(
+                        new AlphaTabError(
+                            AlphaTabErrorType.General,
+                            `Failed to render score (${e.message} ${e.stack})`,
+                            e
+                        )
+                    );
+                });
+                const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
+                api.renderScore(renderScore, [0]);
+                setTimeout(() => reject(new Error('render timed out')), 5000);
             });
-            api.error.on(e => {
-                reject(
-                    new AlphaTabError(
-                        AlphaTabErrorType.General,
-                        `Failed to render score (${e.message} ${e.stack})`,
-                        e
-                    )
-                );
-            });
-            const renderScore = JsonConverter.jsObjectToScore(JsonConverter.scoreToJsObject(score), settings);
-            api.renderScore(renderScore, [0]);
-            setTimeout(() => reject(new Error('render timed out')), 5000);
-        });
-    } finally {
-        api.destroy();
+        } finally {
+            api.destroy();
+        }
     }
 }
 
@@ -100,7 +117,7 @@ describe('AccoladeIdempotence', () => {
             C4.4 *4 | C4.4 *4 | C4.4 *4 | C4.4 *4 | C4.4 *4
         `;
 
-        const metrics = await renderAndCaptureSystem0(tex, 3000);
+        const metrics = await AccoladeIdempotenceHelper.renderAndCaptureSystem0(tex, 3000);
 
         expect(metrics.barWidths.length).toBe(5);
         expect(metrics.accoladeWidth).toBeGreaterThanOrEqual(0);
@@ -127,8 +144,8 @@ describe('AccoladeIdempotence', () => {
             C4.4 *4 | C4.4 *4 | C4.4 *4
         `;
 
-        const first = await renderAndCaptureSystem0(tex, 3000);
-        const second = await renderAndCaptureSystem0(tex, 3000);
+        const first = await AccoladeIdempotenceHelper.renderAndCaptureSystem0(tex, 3000);
+        const second = await AccoladeIdempotenceHelper.renderAndCaptureSystem0(tex, 3000);
 
         expect(second.accoladeWidth).toBe(first.accoladeWidth);
         expect(second.width).toBe(first.width);

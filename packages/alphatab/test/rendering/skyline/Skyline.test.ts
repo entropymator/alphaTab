@@ -2,6 +2,9 @@ import { Skyline } from '@coderline/alphatab/rendering/skyline/Skyline';
 import { SkylineSegmentPool } from '@coderline/alphatab/rendering/skyline/SkylineSegmentPool';
 import { describe, expect, it } from 'vitest';
 
+/**
+ * @internal
+ */
 class SkylineFixtures {
     public static newSkyline(xMin: number, xMax: number): Skyline {
         const pool: SkylineSegmentPool = new SkylineSegmentPool();
