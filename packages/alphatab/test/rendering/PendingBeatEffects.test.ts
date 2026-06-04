@@ -26,4 +26,35 @@ describe('PendingBeatEffects', () => {
         expect(c.pendingEffectOverflows[1].minY).toBe(-3);
         expect(c.pendingEffectOverflows[1].maxY).toBe(12);
     });
+
+    it('prepareForOverflowPass drains across producer cycles so the list does not grow', () => {
+        const c = new MultiBarRestBeatContainerGlyph();
+        const cycle1: BeatEffectOverflow[] = [
+            { minY: -10, maxY: 5 },
+            { minY: -3, maxY: 12 }
+        ];
+
+        // Cycle 1 producer pass: drain (no-op on first entry), then push.
+        c.prepareForOverflowPass();
+        for (const e of cycle1) {
+            c.pendingEffectOverflows.push(e);
+        }
+        expect(c.pendingEffectOverflows.length).toBe(2);
+
+        // Cycle 2 producer pass: drain must clear before re-push.
+        const cycle2: BeatEffectOverflow[] = [
+            { minY: -10, maxY: 5 },
+            { minY: -3, maxY: 12 }
+        ];
+        c.prepareForOverflowPass();
+        expect(c.pendingEffectOverflows.length).toBe(0);
+        for (const e of cycle2) {
+            c.pendingEffectOverflows.push(e);
+        }
+
+        // Without the drain, the array would grow to length 4 across cycles.
+        expect(c.pendingEffectOverflows.length).toBe(2);
+        expect(c.pendingEffectOverflows[0].minY).toBe(-10);
+        expect(c.pendingEffectOverflows[1].maxY).toBe(12);
+    });
 });

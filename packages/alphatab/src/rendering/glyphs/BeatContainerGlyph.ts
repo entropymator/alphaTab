@@ -36,6 +36,21 @@ export interface BeatEffectOverflow {
 export abstract class BeatContainerGlyphBase extends Glyph {
     public pendingEffectOverflows: BeatEffectOverflow[] = [];
 
+    /**
+     * Drains {@link pendingEffectOverflows} in-place so the upcoming producer
+     * pass (effect-glyph `doLayout` cascade that calls
+     * {@link BarRendererBase.registerBeatEffectOverflowsForBeat}) starts from
+     * an empty list. Must be invoked before the producer pass — never at the
+     * consumer site ({@link MultiVoiceContainerGlyph._emitBeatContainerSkyline})
+     * because emission may be suppressed (e.g. `_scaleToForce(emit=false)`).
+     */
+    public prepareForOverflowPass(): void {
+        const pending = this.pendingEffectOverflows;
+        if (pending.length > 0) {
+            pending.splice(0, pending.length);
+        }
+    }
+
     public abstract get beatId(): number;
     public abstract get absoluteDisplayStart(): number;
     public abstract get displayDuration(): number;

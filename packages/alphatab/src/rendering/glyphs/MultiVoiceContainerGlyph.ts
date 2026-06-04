@@ -332,6 +332,12 @@ export class MultiVoiceContainerGlyph extends Glyph {
         for (const v of this.beatGlyphs.values()) {
             let x = 0;
             for (const b of v) {
+                // Drain the per-beat pending effect-overflow list before the
+                // producer pass (effect-glyph `doLayout` cascade) repopulates
+                // it. Owning the drain at the producer-pass driver keeps the
+                // lifecycle decoupled from the consumer in `_scaleToForce`,
+                // which may run with `emit=false` (mid-Phase-2 positioning).
+                b.prepareForOverflowPass();
                 b.x = x;
                 b.doLayout();
                 x += b.width;
