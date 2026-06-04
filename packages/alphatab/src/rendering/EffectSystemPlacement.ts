@@ -1,6 +1,5 @@
 import type { EffectBand, EffectBandXRange } from '@coderline/alphatab/rendering/EffectBand';
-import type { EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
-import { EffectBandPlacementCategory, type EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import { EffectBandPlacementCategory } from '@coderline/alphatab/rendering/EffectInfo';
 import type { Skyline } from '@coderline/alphatab/rendering/skyline/Skyline';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 
@@ -18,7 +17,6 @@ export class EffectSystemPlacement {
     private readonly _bottom: EffectBand[] = [];
     private readonly _contentTop: number[] = [];
     private readonly _contentBottom: number[] = [];
-    private readonly _orderMap: Map<EffectInfo, number> = new Map();
     private readonly _groupBands: EffectBand[] = [];
     private readonly _groupXStarts: number[] = [];
     private readonly _groupXEnds: number[] = [];
@@ -72,9 +70,8 @@ export class EffectSystemPlacement {
             b.finalizeBand();
         }
 
-        this._buildOrderMap();
-        this._sortByPriority(top);
-        this._sortByPriority(bottom);
+        EffectSystemPlacement._sortByPriority(top);
+        EffectSystemPlacement._sortByPriority(bottom);
 
         this._placeSide(top, sky.upSky, pad, /* isTop */ true);
         this._placeSide(bottom, sky.downSky, pad, /* isTop */ false);
@@ -100,45 +97,16 @@ export class EffectSystemPlacement {
         }
     }
 
-    private _buildOrderMap(): void {
-        this._orderMap.clear();
-        EffectSystemPlacement._populateOrder(this._orderMap, this._staff.topEffectInfos);
-        EffectSystemPlacement._populateOrder(this._orderMap, this._staff.bottomEffectInfos);
-    }
-
-    private static _populateOrder(map: Map<EffectInfo, number>, infos: EffectBandInfo[]): void {
-        for (let i = 0; i < infos.length; i++) {
-            const info = infos[i];
-            if (!map.has(info.effect)) {
-                map.set(info.effect, info.order ?? i);
-            }
-        }
-    }
-
     /**
-     * Sort key: (placementCategory asc, order desc, voice asc, renderer asc).
-     * Higher `order` placed first → closest to staff (e.g. voltas at `order: 1000`).
+     * Sort by precomputed {@link EffectBand.sortKey}. The key is packed at
+     * band construction (in {@link EffectBandContainer.createVoiceGlyphs})
+     * and is lexicographically equivalent to the legacy 4-key comparator:
+     * (placementCategory asc, order desc, voice.index asc, renderer.index asc).
+     * Higher `order` placed first → closest to staff (e.g. voltas at
+     * `order: 1000`). See {@link EffectBand.sortKey} for the bit layout.
      */
-    private _sortByPriority(bands: EffectBand[]): void {
-        const orderMap = this._orderMap;
-        bands.sort((a, b) => {
-            const ca = a.info.placementCategory;
-            const cb = b.info.placementCategory;
-            if (ca !== cb) {
-                return ca - cb;
-            }
-            const oa = orderMap.get(a.info) ?? 0;
-            const ob = orderMap.get(b.info) ?? 0;
-            if (oa !== ob) {
-                return ob - oa;
-            }
-            const va = a.voice.index;
-            const vb = b.voice.index;
-            if (va !== vb) {
-                return va - vb;
-            }
-            return a.renderer.index - b.renderer.index;
-        });
+    private static _sortByPriority(bands: EffectBand[]): void {
+        bands.sort((a, b) => a.sortKey - b.sortKey);
     }
 
     private _placeSide(bands: EffectBand[], sky: Skyline, pad: number, isTop: boolean): void {

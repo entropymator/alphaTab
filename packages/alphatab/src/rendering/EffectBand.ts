@@ -42,6 +42,35 @@ export class EffectBand extends Glyph {
     public placedMagnitude: number = 0;
 
     /**
+     * Stable prefix of the {@link EffectSystemPlacement} sort key — the three
+     * fields that never change after band construction. The final 4-key sort
+     * is reproduced exactly by `_stableSortKey + renderer.index` because the
+     * low 20 bits of the key are reserved for renderer.index.
+     *
+     * Computed once in the constructor:
+     *   placementCategory * 2^40   (3 bits used; 0..15 reserved)
+     * + (0xFFFF - order)   * 2^24  (16 bits; higher `order` → smaller term → first)
+     * + voice.index        * 2^20  (4 bits; 0..15)
+     *
+     * renderer.index is NOT baked in: a renderer can be moved between staves
+     * during system formation (see `RenderStaff.addBarRenderer`) and have its
+     * `index` reassigned long after the band was created. It is added back at
+     * sort time (see {@link sortKey}).
+     *
+     * Max final key ≈ 3*2^40 + 0xFFFF*2^24 + 15*2^20 + ~maxBars ≈ 3.6e12,
+     * well within JS safe integer range (2^53).
+     */
+    private _stableSortKey: number = 0;
+
+    /**
+     * Full lexicographic sort key matching the legacy 4-key comparator
+     * (placementCategory asc, order desc, voice.index asc, renderer.index asc).
+     */
+    public get sortKey(): number {
+        return this._stableSortKey + this.renderer.index;
+    }
+
+    /**
      * Cached renderer-local x-range used by {@link computeLocalXRange}.
      *
      * The base snapshot (`_xRangeBase*`) is computed lazily on the first
@@ -136,11 +165,27 @@ export class EffectBand extends Glyph {
         this._xRangeBaseDirty = false;
     }
 
-    public constructor(voice: Voice, info: EffectInfo, container: EffectBandContainer) {
+    public constructor(
+        voice: Voice,
+        info: EffectInfo,
+        container: EffectBandContainer,
+        renderer: BarRendererBase,
+        order: number
+    ) {
         super(0, 0);
         this.voice = voice;
         this.info = info;
         this._container = container;
+        this.renderer = renderer;
+        // See `_stableSortKey` field doc for the bit layout. Order is inverted
+        // via (0xFFFF - order) so higher `order` sorts first (closer to staff,
+        // e.g. voltas at order=1000). `renderer.index` is added back at sort
+        // time because it can change after construction.
+        const clampedOrder = order < 0 ? 0 : order > 0xffff ? 0xffff : order;
+        this._stableSortKey =
+            info.placementCategory * 1099511627776 + // 2^40
+            (0xffff - clampedOrder) * 16777216 + // 2^24
+            voice.index * 1048576; // 2^20
     }
 
     public *iterateAllGlyphs() {

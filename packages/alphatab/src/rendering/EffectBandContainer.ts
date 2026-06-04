@@ -66,10 +66,16 @@ export class EffectBandContainer {
     public createVoiceGlyphs(voice: Voice) {
         const renderer = this._renderer;
         const notationSettings = renderer.settings.notation;
-        for (const info of this.infos) {
+        for (let i = 0; i < this.infos.length; i++) {
+            const info = this.infos[i];
             if (!notationSettings.isNotationElementVisible(info.effect.notationElement)) {
                 continue;
             }
+
+            // Sort-key `order` matches the legacy `_buildOrderMap` semantics:
+            // `EffectBandInfo.order ?? i`, where `i` is the effect's declaration
+            // index in the staff's top/bottom infos list (same list used here).
+            const order = info.order ?? i;
 
             let band: EffectBand | undefined = undefined;
 
@@ -77,8 +83,7 @@ export class EffectBandContainer {
                 // lazy create band to avoid creating and managing bands for all events
                 // even if only a few exist
                 if (!band && EffectBand.shouldCreateGlyph(b, info.effect, renderer)) {
-                    band = new EffectBand(voice, info.effect, this);
-                    band.renderer = this._renderer;
+                    band = new EffectBand(voice, info.effect, this, this._renderer, order);
                     band.doLayout();
                     this._bands.push(band);
                     let perVoice = this._bandLookup.get(voice.index);
