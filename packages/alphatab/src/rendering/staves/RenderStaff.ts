@@ -287,12 +287,6 @@ export class RenderStaff {
             );
         }
 
-        // `isFinalized` was set at the tail of each renderer's `scaleToWidth`,
-        // so cross-renderer chain walks below see a consistent staff state.
-        //
-        // Ties span FORWARD only (renderer i's tie writes target indices ≥ i),
-        // so by iteration j every tie write targeting j has already landed and
-        // the dirty refresh + skyline union can run inline.
         for (const renderer of this.barRenderers) {
             renderer.finalizeOwnedTies();
             renderer.finalizeEffectBandSpans();
@@ -310,8 +304,6 @@ export class RenderStaff {
 
         this.effectPlacement.placeAndApply();
 
-        // Renderer y is now a getter on BarRendererBase derived from
-        // `staff.topPadding + staff.topOverflow`, so no per-renderer write loop.
         if (this.height > 0) {
             this.height += this.topPadding + this.topOverflow + this.bottomOverflow + this.bottomPadding;
         }

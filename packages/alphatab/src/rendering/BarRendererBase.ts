@@ -525,14 +525,6 @@ export class BarRendererBase {
         this.bottomEffects.finalizeChainSpans();
     }
 
-    /**
-     * Lay out every tie owned by this renderer (own ties + any multi-system
-     * slurs registered on it) and slice each tie's bbox into every renderer
-     * it spans. Tie X is staff-absolute; Y is renderer-local (staff renderers
-     * share `y`). Ties span forward only, so the walk starts at this
-     * renderer's index and breaks once a renderer starts past the tie's
-     * right edge.
-     */
     public finalizeOwnedTies(): void {
         this._emitTies(this._ties);
         if (this._multiSystemSlurs) {
