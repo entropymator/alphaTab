@@ -2,35 +2,6 @@ import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 
 /**
- * Phase tag for {@link Glyph.populateSkyline} dispatch.
- *
- * - {@link Finalized} fires at the end of {@link BarRendererBase.scaleToWidth},
- *   when renderer-local positions are settled. Use when the glyph's skyline
- *   contribution depends on bar-final layout state.
- * - {@link SystemFinalize} fires after every renderer in the staff has
- *   `isFinalized = true`. Use when the contribution depends on cross-renderer
- *   chain state.
- *
- * @internal
- */
-export enum SkylinePhase {
-    Finalized = 0,
-    SystemFinalize = 1
-}
-
-/**
- * Context passed to {@link Glyph.populateSkyline}. The implementer pulls its
- * write destination from `ctx.renderer`.
- *
- * @record
- * @internal
- */
-export interface SkylineCtx {
-    phase: SkylinePhase;
-    renderer: BarRendererBase;
-}
-
-/**
  * A glyph is a single symbol which can be added to a GlyphBarRenderer for automated
  * layouting and drawing of stacked symbols.
  * @internal
@@ -72,20 +43,11 @@ export class Glyph {
     }
 
     /**
-     * Skyline contribution for glyphs whose bbox is only final after the bar
-     * (or staff) is laid out. Opt in by calling
-     * `renderer.registerPopulateSkyline(this, phase)` from `doLayout` and
-     * overriding this method. Fires once per cycle in the registered
-     * {@link SkylinePhase}. Default no-op.
-     *
-     * Kept as an empty-body virtual (not abstract) so subclasses that
-     * never register themselves don't have to implement it, and so the
-     * C# transpiler can synthesise a single virtual slot on the base
-     * class. The dispatch list (`_populateSkylineFinalized` /
-     * `_populateSkylineSystemFinalize`) only holds glyphs that opt in, so
-     * the no-op body is never actually invoked in production.
+     * Hook for glyphs whose bbox is only final after `scaleToWidth`. Opt in by
+     * calling `renderer.registerDeferredSkyline(this)` from `doLayout` and
+     * overriding this method. Default no-op.
      */
-    public populateSkyline(_ctx: SkylineCtx): void {
+    public populateSkyline(): void {
         // to be implemented in subclass
     }
 

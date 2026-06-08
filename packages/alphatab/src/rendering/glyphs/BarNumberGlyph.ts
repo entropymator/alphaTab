@@ -1,9 +1,9 @@
-import { TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
+import { NotationElement } from '@coderline/alphatab/NotationSettings';
+import { type ICanvas, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import type { LineBarRenderer } from '@coderline/alphatab/rendering/LineBarRenderer';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
-import { NotationElement } from '@coderline/alphatab/NotationSettings';
 
 /**
  * @internal
@@ -22,13 +22,15 @@ export class BarNumberGlyph extends Glyph {
         this.width = size.width;
         this.height = size.height;
         this.y -= this.height;
-        // bbox depends on `staff.system.firstVisibleStaff` which is assigned
-        // by `StaffSystem.addBars` only after every `RenderStaff.addBar` (and
-        // hence every renderer's `doLayout`) has returned. The dynamic-skyline
-        // emit is therefore deferred to `BarRendererBase.scaleToWidth`, the
-        // first cycle seam at which that field is stable; do not hoist it
-        // earlier.
-        this.renderer.registerDynamicSkylineGlyph(this);
+    }
+
+    /**
+     * Emitted at the tail of {@link BarRendererBase.scaleToWidth}, when
+     * `staff.isFirstInSystem` is finally valid (it is assigned by
+     * `StaffSystem.addBars` only after every renderer's `doLayout` returned).
+     */
+    public override populateSkyline(): void {
+        this.renderer.insertSkylineFromBbox(this);
     }
 
     /**

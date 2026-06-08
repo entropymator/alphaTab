@@ -321,7 +321,7 @@ export class RenderStaff {
             if (multiSystemSlurs) {
                 this._finalizeRendererTies(renderer, multiSystemSlurs);
             }
-            renderer.dispatchSystemFinalizeSkyline();
+            renderer.finalizeEffectBandSpans();
         }
 
         // (iii) Dirty consume + union bar-local skyline into the staff skyline.

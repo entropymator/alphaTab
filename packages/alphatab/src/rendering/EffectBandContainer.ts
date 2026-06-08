@@ -46,6 +46,19 @@ export class EffectBandContainer {
         }
     }
 
+    public finalizeChainSpans(): void {
+        for (const band of this._bands) {
+            band.finalizeChainSpans();
+        }
+    }
+
+    /** Dispatches {@link EffectBand.populateSkyline} on every band. */
+    public populateSkyline(): void {
+        for (const band of this._bands) {
+            band.populateSkyline();
+        }
+    }
+
     public get previousContainer(): EffectBandContainer | undefined {
         return this._renderer.index === 0
             ? undefined

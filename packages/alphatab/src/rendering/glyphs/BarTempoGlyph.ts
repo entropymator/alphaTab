@@ -3,7 +3,6 @@ import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { CanvasHelper, type ICanvas, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import { type SkylineCtx, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
 
 /**
  * @record
@@ -28,15 +27,9 @@ export class BarTempoGlyph extends EffectGlyph {
     private _symbolWidth: number = 0;
     private _noteShift: number = 0;
 
-    // Per-cycle bbox cache. Both bbox extents are determined by
-    // `getRatioPositionX` (driven by voiceContainer.x / postBeatGlyphsStart) +
-    // the immutable per-automation layout cache. The renderer's X frame is only
-    // final after `scaleToWidth`, so the cache is invalidated at the top of
-    // `populateSkyline` (the registered post-`scaleToWidth` callback) and at
-    // `doLayout` entry for first-cycle freshness. Within one cycle, the bbox
-    // readers fire multiple times (populateSkyline directly + inherited
-    // top/bottom via calculateOverflows + EffectBand.computeLocalXRange) and
-    // reuse the memoized value.
+    // Per-cycle bbox cache. Extents come from `getRatioPositionX`, only
+    // final after `scaleToWidth`; the cache is invalidated at `doLayout`
+    // entry and at `populateSkyline` entry (the post-`scaleToWidth` hook).
     private _cachedBoundingBoxLeft: number = 0;
     private _cachedBoundingBoxRight: number = 0;
     private _cachedBoundingBoxLeftValid: boolean = false;
@@ -51,9 +44,6 @@ export class BarTempoGlyph extends EffectGlyph {
         this._cachedBoundingBoxLeftValid = false;
         this._cachedBoundingBoxRightValid = false;
         super.doLayout();
-        // bbox depends on `getRatioPositionX`, which reads voiceContainer.x /
-        // _postBeatGlyphs.x — both only final at scaleToWidth time.
-        this.renderer.registerPopulateSkyline(this, SkylinePhase.Finalized);
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
         this._symbolWidth = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
@@ -129,28 +119,12 @@ export class BarTempoGlyph extends EffectGlyph {
         return result;
     }
 
-    public override populateSkyline(ctx: SkylineCtx): void {
-        // Invalidate the bbox cache: this callback fires post-`scaleToWidth`,
-        // when `voiceContainer.x` / `postBeatGlyphsStart` are now final for the
-        // cycle. Subsequent bbox readers (inherited top/bottom +
-        // EffectBand.computeLocalXRange) reuse the values computed here.
+    public override populateSkyline(): void {
+        // Fires post-`scaleToWidth`; invalidate the bbox cache so subsequent
+        // readers reuse the now-final values computed below.
         this._cachedBoundingBoxLeftValid = false;
         this._cachedBoundingBoxRightValid = false;
-        // Emit the now-final bbox extent into the renderer's bar-local skyline.
-        const rendererBottom = ctx.renderer.height;
-        const topY = this.getBoundingBoxTop();
-        const bottomY = this.getBoundingBoxBottom();
-        const xL = this.getBoundingBoxLeft();
-        const xR = this.getBoundingBoxRight();
-        if (xR <= xL) {
-            return;
-        }
-        if (topY < 0) {
-            ctx.renderer.insertSkylineTop(xL, xR, topY * -1);
-        }
-        if (bottomY > rendererBottom) {
-            ctx.renderer.insertSkylineBottom(xL, xR, bottomY - rendererBottom);
-        }
+        this.renderer.insertSkylineFromBbox(this);
     }
 
     public override paint(cx: number, cy: number, canvas: ICanvas): void {

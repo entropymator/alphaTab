@@ -3,7 +3,6 @@ import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import type { SkylineCtx } from '@coderline/alphatab/rendering/glyphs/Glyph';
 
 /**
  * @internal
@@ -26,33 +25,23 @@ export abstract class GroupedEffectGlyph extends EffectGlyph {
     }
 
     /**
-     * Publishes the chain's true cross-renderer painted xEnd to the owning
-     * {@link EffectBand} so {@link EffectBand.computeLocalXRange} covers
-     * intermediate columns between the chain head's local bbox and the chain
-     * tail's renderer. Only the chain head registers (see {@link EffectBand}).
+     * Publishes the chain's true cross-renderer painted xEnd back to the
+     * owning {@link EffectBand} so its xRange covers intermediate columns
+     * between the chain head's local bbox and the chain tail's renderer.
+     * Called by {@link EffectBand.finalizeChainSpans} on chain heads only.
+     *
+     * A cached `chainTail` would be unsafe — `revertLastBar` can split a
+     * chain across systems without unlinking the glyphs, and
+     * `isLinkedWithNext` is the only safe boundary check.
      */
-    public override populateSkyline(_ctx: SkylineCtx): void {
-        if (this.isLinkedWithPrevious) {
-            return;
-        }
+    public publishChainSpan(): void {
         if (!this.isLinkedWithNext) {
-            // Chain head with no `isLinkedWithNext` paints within its local
-            // renderer; the band's per-glyph bbox loop already covers it.
             return;
         }
-        // Walk to the chain tail. NOTE: a head-side `chainTail` cache (set
-        // at link-establishment time in `EffectBand._createOrResizeGlyph`)
-        // would be unsafe — `revertLastBar` can split a chain across systems
-        // without unlinking the glyphs, and `isLinkedWithNext` is the only
-        // safe boundary check (it gates on the next renderer's system).
-        // This walk runs once per chain head per cycle (SystemFinalize
-        // phase), so the cost is O(chainLength) once per cycle.
         let last: GroupedEffectGlyph = this.nextGlyph as GroupedEffectGlyph;
         while (last.isLinkedWithNext) {
             last = last.nextGlyph as GroupedEffectGlyph;
         }
-        // Mirror `paint`'s endX calculation: tail-renderer's beatX of the tail
-        // beat at the chain's `endPosition`.
         const trueEndXStaff = last.renderer.x + last.renderer.getBeatX(last.beat!, this.endPosition);
         const trueEndXLocal = trueEndXStaff - this.renderer.x;
         const xStart = this.getBoundingBoxLeft();

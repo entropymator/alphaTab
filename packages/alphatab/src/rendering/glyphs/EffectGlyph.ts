@@ -27,8 +27,7 @@ export class EffectGlyph extends Glyph {
 
     /**
      * Back-reference to the owning {@link EffectBand}, set when the band
-     * creates the glyph. Used by {@link GroupedEffectGlyph.populateSkyline} to
-     * publish the chain's cross-renderer span range back to its band.
+     * creates the glyph.
      */
     public band: EffectBand | null = null;
 

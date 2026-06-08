@@ -3,11 +3,12 @@ import type { Voice } from '@coderline/alphatab/model/Voice';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { EffectBandContainer } from '@coderline/alphatab/rendering/EffectBandContainer';
-import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import type { EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import { Glyph, SkylinePhase } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
+import { GroupedEffectGlyph } from '@coderline/alphatab/rendering/glyphs/GroupedEffectGlyph';
+import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 
 /**
@@ -92,6 +93,34 @@ export class EffectBand extends Glyph {
 
     public get container(): EffectBandContainer {
         return this._container;
+    }
+
+    /** Chain heads in this band, walked by {@link finalizeChainSpans}. */
+    private _chainHeads: GroupedEffectGlyph[] = [];
+
+    public registerChainHead(head: GroupedEffectGlyph): void {
+        this._chainHeads.push(head);
+    }
+
+    /**
+     * Republishes each chain head's cross-renderer xEnd. Called once per band
+     * by the staff orchestrator after every renderer in the staff is finalized.
+     */
+    public finalizeChainSpans(): void {
+        this.clearPublishedSpans();
+        for (let i = 0, n = this._chainHeads.length; i < n; i++) {
+            this._chainHeads[i].publishChainSpan();
+        }
+    }
+
+    /** Dispatches {@link Glyph.populateSkyline} on every glyph the band owns. */
+    public override populateSkyline(): void {
+        for (let v = 0; v < this._uniqueEffectGlyphs.length; v++) {
+            const voiceGlyphs = this._uniqueEffectGlyphs[v];
+            for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
+                voiceGlyphs[i].populateSkyline();
+            }
+        }
     }
 
     public publishSpanRange(xStart: number, xEnd: number): void {
@@ -374,12 +403,17 @@ export class EffectBand extends Glyph {
                             newGlyph.previousGlyph = prevEffect;
                             // mark renderers as linked for consideration when layouting the renderers (line breaking, partial breaking)
                             this.isLinkedToPrevious = true;
-                            // On the 1->2 transition, register the chain head for the
-                            // SystemFinalize dispatch so it publishes the chain's
-                            // cross-renderer painted xEnd once every renderer in the
-                            // staff is finalized.
-                            if (prevEffect.previousGlyph === null) {
-                                prevEffect.renderer.registerPopulateSkyline(prevEffect, SkylinePhase.SystemFinalize);
+                            // On the 1->2 transition the previous-effect just became
+                            // a chain head; track it on its owning band so the chain
+                            // span is republished once the staff is finalized. Plain
+                            // EffectGlyph chain heads have no cross-renderer span
+                            // semantics, so the instanceof filter is enough.
+                            if (
+                                prevEffect.previousGlyph === null &&
+                                prevEffect.band &&
+                                prevEffect instanceof GroupedEffectGlyph
+                            ) {
+                                prevEffect.band.registerChainHead(prevEffect);
                             }
                         }
                         return newGlyph;
