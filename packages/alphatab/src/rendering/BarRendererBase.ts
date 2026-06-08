@@ -153,7 +153,11 @@ export class BarRendererBase {
     }
 
     public x: number = 0;
-    public y: number = 0;
+    /** Renderer y is staff-relative and shared by every renderer in the staff: `staff.topPadding + staff.topOverflow`. */
+    public get y(): number {
+        const s = this.staff;
+        return s ? s.topPadding + s.topOverflow : 0;
+    }
     public width: number = 0;
     public computedWidth: number = 0;
     public height: number = 0;

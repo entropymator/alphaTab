@@ -221,7 +221,6 @@ export class HorizontalScreenLayout extends ScoreLayout {
             let w = 0;
             for (const renderer of s.barRenderers) {
                 renderer.x = w;
-                renderer.y = s.topPadding + s.topOverflow;
                 w += renderer.width;
             }
 

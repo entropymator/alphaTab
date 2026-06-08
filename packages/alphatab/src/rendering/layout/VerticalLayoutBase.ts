@@ -458,7 +458,6 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
                 const renderer = s.barRenderers[i];
                 const mb = system.masterBarsRenderers[i];
                 renderer.x = w;
-                renderer.y = s.topPadding + s.topOverflow;
 
                 const weight = shouldApplyBarScale ? system.getBarDisplayScale(renderer) : mb.maxContentWidth;
                 const actualBarWidth = mb.maxFixedOverhead + weight * contentShare;

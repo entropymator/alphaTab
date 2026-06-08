@@ -310,13 +310,10 @@ export class RenderStaff {
 
         this.effectPlacement.placeAndApply();
 
-        const topOverflow: number = this.topOverflow;
-        for (const renderer of this.barRenderers) {
-            renderer.y = this.topPadding + topOverflow;
-        }
-
+        // Renderer y is now a getter on BarRendererBase derived from
+        // `staff.topPadding + staff.topOverflow`, so no per-renderer write loop.
         if (this.height > 0) {
-            this.height += this.topPadding + topOverflow + this.bottomOverflow + this.bottomPadding;
+            this.height += this.topPadding + this.topOverflow + this.bottomOverflow + this.bottomPadding;
         }
 
         this.height = Math.ceil(this.height);
