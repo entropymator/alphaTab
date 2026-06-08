@@ -521,6 +521,78 @@ export class BarRendererBase {
         this.bottomEffects.finalizeChainSpans();
     }
 
+    /**
+     * Lay out every tie owned by this renderer (own ties + any multi-system
+     * slurs registered on it) and slice each tie's bbox into every renderer
+     * it spans. Tie X is staff-absolute; Y is renderer-local (staff renderers
+     * share `y`). Ties span forward only, so the walk starts at this
+     * renderer's index and breaks once a renderer starts past the tie's
+     * right edge.
+     */
+    public finalizeOwnedTies(): void {
+        this._emitTies(this._ties);
+        if (this._multiSystemSlurs) {
+            this._emitTies(this._multiSystemSlurs);
+        }
+    }
+
+    private _emitTies(ties: Iterable<ITieGlyph>): void {
+        const staffRenderers = this.staff!.barRenderers;
+        const startIndex = this.index;
+        for (const t of ties) {
+            const tie = t as unknown as Glyph;
+            tie.doLayout();
+
+            if (!t.checkForOverflow) {
+                continue;
+            }
+
+            const tieTop = t.getBoundingBoxTop();
+            const tieBottom = t.getBoundingBoxBottom();
+            const tieTopOverflow = tieTop < 0 ? -tieTop : 0;
+
+            const tieLeftStaff = t.getBoundingBoxLeft();
+            const tieRightStaff = t.getBoundingBoxRight();
+
+            for (let i = startIndex; i < staffRenderers.length; i++) {
+                const target = staffRenderers[i];
+                if (target.x >= tieRightStaff) {
+                    break;
+                }
+                const targetXStart = target.x;
+                const targetXEnd = target.x + target.width;
+                const xStartStaff = Math.max(targetXStart, tieLeftStaff);
+                const xEndStaff = Math.min(targetXEnd, tieRightStaff);
+                if (xEndStaff <= xStartStaff) {
+                    continue;
+                }
+                const xStart = xStartStaff - targetXStart;
+                const xEnd = xEndStaff - targetXStart;
+                const tieBottomOverflow = tieBottom - target.height;
+
+                if (target === this) {
+                    if (tieTopOverflow > 0) {
+                        if (target.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
+                            target.markTiesDirty();
+                        }
+                    }
+                    if (tieBottomOverflow > 0) {
+                        if (target.registerOverflowRangeBottom(xStart, xEnd, tieBottomOverflow)) {
+                            target.markTiesDirty();
+                        }
+                    }
+                } else {
+                    if (tieTopOverflow > 0) {
+                        target.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, tieTopOverflow, 0);
+                    }
+                    if (tieBottomOverflow > 0) {
+                        target.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, tieBottomOverflow, 0);
+                    }
+                }
+            }
+        }
+    }
+
     private _registerStaffOverflow() {
         this.staff!.registerOverflowTop(this.topOverflow);
         this.staff!.registerOverflowBottom(this.bottomOverflow);

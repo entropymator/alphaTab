@@ -8,9 +8,6 @@ import {
     EffectBandMode
 } from '@coderline/alphatab/rendering/BarRendererFactory';
 import { EffectSystemPlacement } from '@coderline/alphatab/rendering/EffectSystemPlacement';
-import type { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
-import type { ITieGlyph } from '@coderline/alphatab/rendering/glyphs/TieGlyph';
-import { StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
 import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
@@ -297,11 +294,7 @@ export class RenderStaff {
         // so by iteration j every tie write targeting j has already landed and
         // the dirty refresh + skyline union can run inline.
         for (const renderer of this.barRenderers) {
-            this._finalizeRendererTies(renderer, renderer.ties);
-            const multiSystemSlurs = renderer.multiSystemSlurs;
-            if (multiSystemSlurs) {
-                this._finalizeRendererTies(renderer, multiSystemSlurs);
-            }
+            renderer.finalizeOwnedTies();
             renderer.finalizeEffectBandSpans();
 
             if (renderer.tiesDirty) {
@@ -329,70 +322,6 @@ export class RenderStaff {
         this.height = Math.ceil(this.height);
 
         this._updateVisibility();
-    }
-
-    /**
-     * Slice each tie's bbox into every renderer it spans. Tie X is
-     * staff-absolute; Y is renderer-local (staff renderers share `y`).
-     * Ties never span renderers earlier than `owner`, so the walk starts at
-     * `owner.index` and breaks once a renderer starts past the tie's right
-     * edge.
-     */
-    private _finalizeRendererTies(owner: BarRendererBase, ties: Iterable<ITieGlyph>): void {
-        const staffRenderers = this.barRenderers;
-        const startIndex = owner.index;
-        for (const t of ties) {
-            const tie = t as unknown as Glyph;
-            tie.doLayout();
-
-            if (!t.checkForOverflow) {
-                continue;
-            }
-
-            const tieTop = t.getBoundingBoxTop();
-            const tieBottom = t.getBoundingBoxBottom();
-            const tieTopOverflow = tieTop < 0 ? -tieTop : 0;
-
-            const tieLeftStaff = t.getBoundingBoxLeft();
-            const tieRightStaff = t.getBoundingBoxRight();
-
-            for (let i = startIndex; i < staffRenderers.length; i++) {
-                const target = staffRenderers[i];
-                if (target.x >= tieRightStaff) {
-                    break;
-                }
-                const targetXStart = target.x;
-                const targetXEnd = target.x + target.width;
-                const xStartStaff = Math.max(targetXStart, tieLeftStaff);
-                const xEndStaff = Math.min(targetXEnd, tieRightStaff);
-                if (xEndStaff <= xStartStaff) {
-                    continue;
-                }
-                const xStart = xStartStaff - targetXStart;
-                const xEnd = xEndStaff - targetXStart;
-                const tieBottomOverflow = tieBottom - target.height;
-
-                if (target === owner) {
-                    if (tieTopOverflow > 0) {
-                        if (target.registerOverflowRangeTop(xStart, xEnd, tieTopOverflow)) {
-                            target.markTiesDirty();
-                        }
-                    }
-                    if (tieBottomOverflow > 0) {
-                        if (target.registerOverflowRangeBottom(xStart, xEnd, tieBottomOverflow)) {
-                            target.markTiesDirty();
-                        }
-                    }
-                } else {
-                    if (tieTopOverflow > 0) {
-                        target.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, tieTopOverflow, 0);
-                    }
-                    if (tieBottomOverflow > 0) {
-                        target.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, tieBottomOverflow, 0);
-                    }
-                }
-            }
-        }
     }
 
     public paint(cx: number, cy: number, canvas: ICanvas, startIndex: number, count: number): void {
