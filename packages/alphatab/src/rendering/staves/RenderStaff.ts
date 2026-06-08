@@ -292,8 +292,10 @@ export class RenderStaff {
 
         // `isFinalized` was set at the tail of each renderer's `scaleToWidth`,
         // so cross-renderer chain walks below see a consistent staff state.
-        // Tie writes go first: they may grow a spanned renderer's overflow,
-        // and the dirty refresh is fused into the union loop below.
+        //
+        // Ties span FORWARD only (renderer i's tie writes target indices ≥ i),
+        // so by iteration j every tie write targeting j has already landed and
+        // the dirty refresh + skyline union can run inline.
         for (const renderer of this.barRenderers) {
             this._finalizeRendererTies(renderer, renderer.ties);
             const multiSystemSlurs = renderer.multiSystemSlurs;
@@ -301,15 +303,15 @@ export class RenderStaff {
                 this._finalizeRendererTies(renderer, multiSystemSlurs);
             }
             renderer.finalizeEffectBandSpans();
-        }
 
-        for (const renderer of this.barRenderers) {
             if (renderer.tiesDirty) {
                 renderer.refreshSizes();
                 renderer.registerStaffOverflows();
                 renderer.clearTiesDirty();
             }
-            this.height = Math.max(this.height, renderer.height);
+            if (renderer.height > this.height) {
+                this.height = renderer.height;
+            }
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
