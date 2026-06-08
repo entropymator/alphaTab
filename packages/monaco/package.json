@@ -35,7 +35,7 @@
         "@coderline/alphatab": "^1.9.0",
         "@coderline/alphatab-language-server": "^1.9.0",
         "monaco-editor": "^0.55.1",
-        "vscode-languageserver-types": "^3.17.5",
+        "vscode-languageserver-types": "^3.18.0",
         "vscode-oniguruma": "^2.0.1",
         "vscode-textmate": "^9.3.2"
     },
