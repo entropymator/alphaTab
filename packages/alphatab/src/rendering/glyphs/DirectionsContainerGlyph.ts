@@ -1,9 +1,9 @@
 import { Direction } from '@coderline/alphatab/model/Direction';
+import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
+import { NotationElement } from '@coderline/alphatab/NotationSettings';
+import { type ICanvas, TextAlign, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
-import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
-import { type ICanvas, TextBaseline, TextAlign } from '@coderline/alphatab/platform/ICanvas';
-import { NotationElement } from '@coderline/alphatab/NotationSettings';
 
 /**
  * @internal
@@ -30,7 +30,6 @@ class TargetDirectionGlyph extends Glyph {
             }
             totalWidth += this.renderer.smuflMetrics.glyphWidths.get(s)! * scale;
         }
-        // Captured for parent bbox so narrow-bar overflows participate in the skyline.
         this.width = totalWidth;
     }
 
@@ -55,7 +54,6 @@ class JumpDirectionGlyph extends Glyph {
         c.font = this.renderer.resources.elementFonts.get(NotationElement.EffectDirections)!;
         const m = c.measureText(this._text);
         this.height = m.height;
-        // Captured for parent bbox so right-aligned-past-bar-edge text reaches the skyline.
         this.width = m.width;
     }
 

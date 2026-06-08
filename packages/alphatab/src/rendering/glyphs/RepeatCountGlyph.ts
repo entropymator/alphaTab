@@ -1,9 +1,9 @@
+import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { type ICanvas, TextAlign } from '@coderline/alphatab/platform/ICanvas';
-import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
+import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import type { LineBarRenderer } from '@coderline/alphatab/rendering/LineBarRenderer';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
-import { NotationElement } from '@coderline/alphatab/NotationSettings';
 
 /**
  * @internal

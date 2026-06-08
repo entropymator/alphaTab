@@ -46,5 +46,4 @@ export class SimpleDipWhammyBarEffectInfo extends EffectInfo {
     public override get placementCategory(): EffectBandPlacementCategory {
         return EffectBandPlacementCategory.Span;
     }
-
 }

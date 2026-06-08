@@ -5,14 +5,13 @@ import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderSta
 
 /**
  * Priority-ordered skyline oracle that positions every {@link EffectBand} on
- * a staff line (issue CoderLine/alphaTab#2010). Fires from
- * {@link RenderStaff.finalizeStaff}.
+ * a staff line. Fires from {@link RenderStaff.finalizeStaff}.
  * @internal
  */
 export class EffectSystemPlacement {
     private readonly _staff: RenderStaff;
 
-    // Reusable scratch buffers — same instance is rebuilt on every finalize cycle.
+    // Reusable scratch buffers; rebuilt every finalize cycle.
     private readonly _top: EffectBand[] = [];
     private readonly _bottom: EffectBand[] = [];
     private readonly _contentTop: number[] = [];
@@ -35,31 +34,24 @@ export class EffectSystemPlacement {
         const bottom = this._bottom;
         const contentTop = this._contentTop;
         const contentBottom = this._contentBottom;
-        // `splice(0, length)` is the transpile-safe array clear; `length = 0`
-        // emits a read-only `Count = 0` assignment in C#. The splice does
-        // allocate a removed-array return value per call (4 here, plus 3 in
-        // the per-group loop below), which there is no zero-alloc workaround
-        // for at the IList<T> level — documented and accepted.
+        // splice() instead of `.length = 0`: transpile-safe array clear.
         top.splice(0, top.length);
         bottom.splice(0, bottom.length);
         contentTop.splice(0, contentTop.length);
         contentBottom.splice(0, contentBottom.length);
 
         // container.height = post-placement max - pre-placement max.
-        // Single R-walk: measure pre-placement skyline + filter non-empty bands +
-        // settle dynamic-height effects (TabWhammy, ...) inline. `finalizeBand`
-        // has no cross-band dependency — `TabWhammyEffectInfo.finalizeBand`
-        // reads from `staff.sharedLayoutData` (populated earlier by
-        // `onAlignGlyphs`) and writes only to per-band glyph/height state.
+        // Snapshot pre-placement skyline, filter non-empty bands, and run
+        // `finalizeBand` (settles dynamic-height effects like TabWhammy) in
+        // one walk.
         for (let i = 0; i < staff.barRenderers.length; i++) {
             const r = staff.barRenderers[i];
             contentTop.push(sky.upSky.maxHeightInRange(r.x, r.x + r.width));
             contentBottom.push(sky.downSky.maxHeightInRange(r.x, r.x + r.width));
             for (const b of r.topEffects.bands) {
                 if (!b.isEmpty) {
-                    // Reset placedMagnitude up front: `_placeSide` only writes it
-                    // for bands whose `computeLocalXRange` succeeds, but the
-                    // trailing band-y loop reads it for every band in `top`.
+                    // Reset; `_placeSide` only writes it when computeLocalXRange succeeds,
+                    // but the band-y loop reads it for every band.
                     b.placedMagnitude = 0;
                     b.finalizeBand();
                     top.push(b);
@@ -101,14 +93,7 @@ export class EffectSystemPlacement {
         }
     }
 
-    /**
-     * Sort by precomputed {@link EffectBand.sortKey}. The key is packed at
-     * band construction (in {@link EffectBandContainer.createVoiceGlyphs})
-     * and is lexicographically equivalent to the legacy 4-key comparator:
-     * (placementCategory asc, order desc, voice.index asc, renderer.index asc).
-     * Higher `order` placed first → closest to staff (e.g. voltas at
-     * `order: 1000`). See {@link EffectBand.sortKey} for the bit layout.
-     */
+    /** Sort by precomputed {@link EffectBand.sortKey} (placementCategory, order desc, voice, renderer). */
     private static _sortByPriority(bands: EffectBand[]): void {
         bands.sort((a, b) => a.sortKey - b.sortKey);
     }
@@ -122,6 +107,8 @@ export class EffectSystemPlacement {
             const band = bands[i];
 
             // Group same-magnitude bands: HorizontalRow row mates or linked-chain continuations.
+            // Two-phase: query all members without inserting (so chain members don't see each other),
+            // then commit every member at the group's max magnitude.
             let groupEnd = i + 1;
             const groupEffectId = band.info.effectId;
             const groupVoiceIndex = band.voice.index;
@@ -145,8 +132,6 @@ export class EffectSystemPlacement {
                 }
             }
 
-            // Two-phase: query without inserting so chain members don't see each other,
-            // then commit every member at the group's max magnitude.
             groupBands.splice(0, groupBands.length);
             groupXStarts.splice(0, groupXStarts.length);
             groupXEnds.splice(0, groupXEnds.length);

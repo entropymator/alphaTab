@@ -1,8 +1,8 @@
-import { TripletFeel } from '@coderline/alphatab/model/TripletFeel';
-import { CanvasHelper, TextAlign, TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
-import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
+import { TripletFeel } from '@coderline/alphatab/model/TripletFeel';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
+import { CanvasHelper, type ICanvas, TextAlign, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
+import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 
 /**
  * @internal

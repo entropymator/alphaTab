@@ -19,8 +19,8 @@ import { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
 import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 
 /**
- * Per-beat effect-glyph overflow captured during Phase 1 and consumed by the
- * per-beat skyline emission walk in {@link BarRendererBase.scaleToWidth}.
+ * Per-beat effect-glyph overflow; consumed by the per-beat skyline emission
+ * walk in {@link BarRendererBase.scaleToWidth}.
  *
  * @record
  * @internal
@@ -36,14 +36,7 @@ export interface BeatEffectOverflow {
 export abstract class BeatContainerGlyphBase extends Glyph {
     public pendingEffectOverflows: BeatEffectOverflow[] = [];
 
-    /**
-     * Drains {@link pendingEffectOverflows} in-place so the upcoming producer
-     * pass (effect-glyph `doLayout` cascade that calls
-     * {@link BarRendererBase.registerBeatEffectOverflowsForBeat}) starts from
-     * an empty list. Must be invoked before the producer pass — never at the
-     * consumer site ({@link MultiVoiceContainerGlyph._emitBeatContainerSkyline})
-     * because emission may be suppressed (e.g. `_scaleToForce(emit=false)`).
-     */
+    /** Drain pending overflows before the next producer pass; consumer may not run. */
     public prepareForOverflowPass(): void {
         const pending = this.pendingEffectOverflows;
         if (pending.length > 0) {

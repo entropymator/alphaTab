@@ -1,8 +1,8 @@
+import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 import { Ottavia } from '@coderline/alphatab/model/Ottavia';
 import { CanvasHelper, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { GroupedEffectGlyph } from '@coderline/alphatab/rendering/glyphs/GroupedEffectGlyph';
-import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 
 /**
  * @internal
@@ -56,7 +56,8 @@ export class OttavaGlyph extends GroupedEffectGlyph {
         switch (this._ottava) {
             case Ottavia._15ma:
                 size = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.QuindicesimaAlta)!;
-                CanvasHelper.fillMusicFontSymbolSafe(canvas,
+                CanvasHelper.fillMusicFontSymbolSafe(
+                    canvas,
                     cx + this.x - size / 2,
                     cy + this.y + this.height,
                     1,
@@ -66,7 +67,8 @@ export class OttavaGlyph extends GroupedEffectGlyph {
                 break;
             case Ottavia._8va:
                 size = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.OttavaAlta)!;
-                CanvasHelper.fillMusicFontSymbolSafe(canvas,
+                CanvasHelper.fillMusicFontSymbolSafe(
+                    canvas,
                     cx + this.x - size / 2,
                     cy + this.y + this.height,
                     1,
@@ -76,7 +78,8 @@ export class OttavaGlyph extends GroupedEffectGlyph {
                 break;
             case Ottavia._8vb:
                 size = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.OttavaBassaVb)!;
-                CanvasHelper.fillMusicFontSymbolSafe(canvas,
+                CanvasHelper.fillMusicFontSymbolSafe(
+                    canvas,
                     cx + this.x - size / 2,
                     cy + this.y + this.height,
                     1,
@@ -92,7 +95,8 @@ export class OttavaGlyph extends GroupedEffectGlyph {
                     1;
 
                 // NOTE: SMUFL does not have a glyph for 15mb so we build it
-                CanvasHelper.fillMusicFontSymbolsSafe(canvas,
+                CanvasHelper.fillMusicFontSymbolsSafe(
+                    canvas,
                     cx + this.x - size / 2,
                     cy + this.y + this.height,
                     1,

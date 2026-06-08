@@ -106,9 +106,9 @@ export class BeamingHelper {
     }
 
     /**
-     * Invalidates cached drawing infos at Phase-2 entry. The Phase-2
-     * emit path (`emitHelperSkyline` → `_computeBeamingBounds` →
-     * `ensureBeamDrawingInfo`) repopulates them with post-spring X.
+     * Invalidates cached drawing infos. The emit path (`emitHelperSkyline` →
+     * `_computeBeamingBounds` → `ensureBeamDrawingInfo`) repopulates them
+     * with post-spring X.
      */
     public invalidateDrawingInfos() {
         this._drawingInfoUpValid = false;

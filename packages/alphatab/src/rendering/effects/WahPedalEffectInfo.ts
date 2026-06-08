@@ -38,5 +38,4 @@ export class WahPedalEffectInfo extends EffectInfo {
     public override get placementCategory(): EffectBandPlacementCategory {
         return EffectBandPlacementCategory.Span;
     }
-
 }

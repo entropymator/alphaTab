@@ -54,25 +54,13 @@ export class MultiVoiceContainerGlyph extends Glyph {
         return y;
     }
 
-    /**
-     * Positions every beat container at its Phase-2 width and emits the
-     * per-beat skyline contribution (container overflow, beat-effect ranges,
-     * subclass `emitBeatSkyline` hook) into the owning renderer's
-     * `barLocalSkyline`. Each beat's emission fires when its width settles —
-     * one iteration after `x` is known, since the next beat fixes the previous
-     * beat's width.
-     */
+    /** Positions every beat container and emits its per-beat skyline contribution. */
     public scaleToWidth(width: number): void {
         const force: number = this.renderer.layoutingInfo.spaceToForce(width);
         this._scaleToForce(force, true);
     }
 
-    /**
-     * Positioning-only variant used by {@link applyLayoutingInfo} mid-Phase-2.
-     * Emission is suppressed because the surrounding renderer state isn't
-     * ready to absorb skyline writes; final emission happens later from
-     * {@link scaleToWidth}.
-     */
+    /** `emit=false`: positioning-only path; final skyline emission runs later via {@link scaleToWidth}. */
     private _scaleToForce(force: number, emit: boolean): void {
         this.width = this.renderer.layoutingInfo.calculateVoiceWidth(force);
         const positions = this.renderer.layoutingInfo.buildOnTimePositions(force);
@@ -173,11 +161,7 @@ export class MultiVoiceContainerGlyph extends Glyph {
         const topOver = !Number.isNaN(containerTop) && containerTop < 0;
         const botOver = !Number.isNaN(containerBottom) && containerBottom > rendererBottom;
 
-        // Hoist the `barLocalSkyline` lazy getter once for this beat —
-        // every emit below resolves to `barLocalSkyline.insertPlaced` after
-        // the `topHeight > 0 && xEnd > xStart` guard that the
-        // `insertSkylineTop/Bottom` wrappers apply. We replicate the guard
-        // inline and skip the wrapper/getter per emit.
+        // Lazy getter hoisted once per beat; per-emit guards inlined to skip the wrapper.
         const sky = renderer.barLocalSkyline;
 
         // Notehead extent (PreNotes..PostNotes), not slot width (which includes spring spacing).
@@ -186,19 +170,14 @@ export class MultiVoiceContainerGlyph extends Glyph {
             const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
             if (xEnd > xStart) {
                 if (topOver) {
-                    // containerTop < 0 ⇒ outer-edge height > 0; wrapper guard
-                    // covered.
                     sky.insertPlaced(StaffSide.Top, xStart, xEnd, containerTop * -1, 0);
                 }
                 if (botOver) {
-                    // containerBottom > rendererBottom ⇒ height > 0.
                     sky.insertPlaced(StaffSide.Bottom, xStart, xEnd, containerBottom - rendererBottom, 0);
                 }
             }
         }
 
-        // Flush beat-effect ranges captured during effect-glyph doLayout,
-        // folded into this positioning walk.
         const pending = beatContainer.pendingEffectOverflows;
         if (pending.length > 0) {
             const pendingXStart = base;
@@ -345,11 +324,6 @@ export class MultiVoiceContainerGlyph extends Glyph {
         for (const v of this.beatGlyphs.values()) {
             let x = 0;
             for (const b of v) {
-                // Drain the per-beat pending effect-overflow list before the
-                // producer pass (effect-glyph `doLayout` cascade) repopulates
-                // it. Owning the drain at the producer-pass driver keeps the
-                // lifecycle decoupled from the consumer in `_scaleToForce`,
-                // which may run with `emit=false` (mid-Phase-2 positioning).
                 b.prepareForOverflowPass();
                 b.x = x;
                 b.doLayout();

@@ -13,26 +13,14 @@ export class StaffSystemSkyline {
     public readonly upSky: Skyline;
     public readonly downSky: Skyline;
 
-    public constructor(
-        staffIndex: number,
-        systemIndex: number,
-        xMin: number,
-        xMax: number,
-        pool: SkylineSegmentPool
-    ) {
+    public constructor(staffIndex: number, systemIndex: number, xMin: number, xMax: number, pool: SkylineSegmentPool) {
         this.staffIndex = staffIndex;
         this.systemIndex = systemIndex;
         this.upSky = new Skyline(xMin, xMax, pool);
         this.downSky = new Skyline(xMin, xMax, pool);
     }
 
-    public insertPlaced(
-        side: StaffSide,
-        xStart: number,
-        xEnd: number,
-        outerEdgeHeight: number,
-        pad: number
-    ): void {
+    public insertPlaced(side: StaffSide, xStart: number, xEnd: number, outerEdgeHeight: number, pad: number): void {
         if (side === StaffSide.Top) {
             this.upSky.insert(xStart, xEnd, outerEdgeHeight, pad);
         } else {

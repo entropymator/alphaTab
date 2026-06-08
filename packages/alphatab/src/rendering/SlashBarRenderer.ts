@@ -77,7 +77,6 @@ export class SlashBarRenderer extends LineBarRenderer {
 
     public override doLayout(): void {
         super.doLayout();
-        // Scalar overflow only; per-x emits later in populateBarLocalSkyline.
         if (this.voiceContainer.tupletGroups.size > 0) {
             this.registerOverflowTop(this.tupletSize);
         }
@@ -86,14 +85,7 @@ export class SlashBarRenderer extends LineBarRenderer {
     protected override emitHelperSkyline(h: BeamingHelper): void {
         super.emitHelperSkyline(h);
         if (h.hasTuplet) {
-            // Tuplets can span multiple helpers — emit the full group range
-            // exactly once, when the helper holds the group's first beat.
-            // An "iterate `voiceContainer.tupletGroups` once after the
-            // helper loop" structural alternative was considered to share
-            // logic with `TabBarRenderer.emitHelperSkyline`, but the
-            // per-helper first-beat guard is a single equality compare and
-            // the alternative requires a second renderer-wide hook —
-            // larger surface change for marginal gain. Kept as-is.
+            // Tuplets can span multiple helpers — emit once per group, from its first beat.
             const group = h.beats[0].tupletGroup!;
             if (group.beats.length > 0 && group.beats[0] === h.beats[0]) {
                 const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);

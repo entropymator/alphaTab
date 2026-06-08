@@ -7,7 +7,7 @@ import type { Font } from '@coderline/alphatab/model/Font';
 import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 import type { Note } from '@coderline/alphatab/model/Note';
 import { VibratoType } from '@coderline/alphatab/model/VibratoType';
-import { TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
+import { type ICanvas, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { type BarRendererBase, NoteXPosition, NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';

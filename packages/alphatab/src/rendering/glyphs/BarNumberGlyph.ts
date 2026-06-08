@@ -24,20 +24,11 @@ export class BarNumberGlyph extends Glyph {
         this.y -= this.height;
     }
 
-    /**
-     * Emitted at the tail of {@link BarRendererBase.scaleToWidth}, when
-     * `staff.isFirstInSystem` is finally valid (it is assigned by
-     * `StaffSystem.addBars` only after every renderer's `doLayout` returned).
-     */
     public override populateSkyline(): void {
         this.renderer.insertSkylineFromBbox(this);
     }
 
-    /**
-     * Non-first staves don't paint the bar number, but still reserve its
-     * vertical space via the scalar overflow. Collapse the horizontal
-     * bbox so the per-x skyline doesn't see a phantom obstacle.
-     */
+    /** Collapse bbox on non-first staves so the per-x skyline doesn't see a phantom obstacle. */
     public override getBoundingBoxLeft(): number {
         if (!this.renderer.staff!.isFirstInSystem) {
             return this.x;

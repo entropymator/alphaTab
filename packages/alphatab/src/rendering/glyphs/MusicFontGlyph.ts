@@ -1,7 +1,7 @@
+import type { Color } from '@coderline/alphatab/model/Color';
+import type { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import type { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
-import type { Color } from '@coderline/alphatab/model/Color';
 
 /**
  * @internal

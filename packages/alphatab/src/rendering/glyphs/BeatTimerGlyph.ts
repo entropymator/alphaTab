@@ -1,5 +1,5 @@
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
-import { type ICanvas, TextBaseline, TextAlign } from '@coderline/alphatab/platform/ICanvas';
+import { type ICanvas, TextAlign, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 
 /**

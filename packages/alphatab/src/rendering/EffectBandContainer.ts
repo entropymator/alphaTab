@@ -13,8 +13,7 @@ import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarL
  */
 export class EffectBandContainer {
     private _bands: EffectBand[] = [];
-    // Per-voice (effectId → band) lookup; avoids string-key allocation in the hot
-    // `_createOrResizeGlyph` path called once per beat per Grouped/FullBar effect.
+    /** Per-voice (effectId → band) lookup; nested to avoid string-key allocation in `_createOrResizeGlyph`. */
     private _bandLookup: Map<number, Map<string, EffectBand>> = new Map();
     public height: number = 0;
 
@@ -30,9 +29,6 @@ export class EffectBandContainer {
         return this._isTopContainer;
     }
 
-    // alignGlyphs runs once per cycle at Phase-2 entry. Every
-    // `EffectInfo.onAlignGlyphs` implementation must be max-of-idempotent so
-    // the single invocation produces a stable result.
     public alignGlyphs() {
         for (const effectBand of this._bands) {
             effectBand.resetHeight();
@@ -52,7 +48,6 @@ export class EffectBandContainer {
         }
     }
 
-    /** Dispatches {@link EffectBand.populateSkyline} on every band. */
     public populateSkyline(): void {
         for (const band of this._bands) {
             band.populateSkyline();
@@ -68,8 +63,6 @@ export class EffectBandContainer {
     }
 
     public get isLinkedToPreviousRenderer() {
-        // Plain loop avoids the per-call closure allocation that
-        // `Array.some(b => ...)` pays.
         for (let i = 0, n = this._bands.length; i < n; i++) {
             if (this._bands[i].isLinkedToPrevious) {
                 return true;
@@ -92,9 +85,7 @@ export class EffectBandContainer {
                 continue;
             }
 
-            // Sort-key `order` matches the legacy `_buildOrderMap` semantics:
-            // `EffectBandInfo.order ?? i`, where `i` is the effect's declaration
-            // index in the staff's top/bottom infos list (same list used here).
+            // Fallback: declaration index in the staff's infos list.
             const order = info.order ?? i;
 
             let band: EffectBand | undefined = undefined;
@@ -122,11 +113,7 @@ export class EffectBandContainer {
     }
 
     public doLayout() {
-        // Reuse the existing collections instead of allocating fresh ones
-        // each layout pass. `splice(0, length)` is the transpile-safe array
-        // clear (per SYNTAX.md, `length = 0` emits a read-only assignment in
-        // C#). The outer Map's `.clear()` drops every per-voice nested Map
-        // with it, so no separate inner clear is needed.
+        // splice() instead of `.length = 0`: transpile-safe array clear.
         this._bands.splice(0, this._bands.length);
         this._bandLookup.clear();
         this.height = 0;

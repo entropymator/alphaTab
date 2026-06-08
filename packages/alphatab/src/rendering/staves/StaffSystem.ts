@@ -161,20 +161,11 @@ export class StaffSystem {
     // track-name font, padding) that are stable across a system's lifetime.
     private _trackNamesAccoladeContribution: number = -1;
 
-    // Visibility fingerprint at the time accoladeWidth was last fully recomputed.
-    // _calculateAccoladeSpacing reruns the full recompute only when this changes
-    // (initial call, revertLastBar flips a staff invisible, an added bar flips a
-    // previously-invisible staff visible). When visibility is unchanged, the
-    // chicken-egg approximation documented in the body is preserved: bracket
-    // b.width is refreshed for paint, but accoladeWidth stays at its previously
-    // computed value so system.width does not grow with overflow accumulation.
     /**
-     * Visibility fingerprint of {@link allStaves}: a numeric bitset packing
-     * each staff's `isVisible` flag (MSB-first) into a JS number. `-1` is the
-     * sentinel for "not yet computed". Limit: 53 staves (JS safe-integer
-     * range) — well above any realistic score (typical: 1-16). Replaces a
-     * per-call string concat that allocated a fresh string each accolade
-     * pass.
+     * Visibility bitset of {@link allStaves} (one bit per staff, MSB first) at
+     * the time `accoladeWidth` was last fully recomputed. `-1` = uncomputed.
+     * Used by `_calculateAccoladeSpacing` to skip the full recompute when
+     * visibility is unchanged. Limit: 53 staves (JS safe-integer range).
      */
     private _accoladeVisibilityFingerprint: number = -1;
 
@@ -762,13 +753,10 @@ export class StaffSystem {
     }
 
     /**
-     * Phase-2 entry reset hook for cross-bar staff state held in
-     * {@link RenderStaff._sharedLayoutData}. Called once per system before any
-     * `alignGlyphs` runs so the max-of-idempotent `EffectInfo.onAlignGlyphs`
-     * writers start from a clean slate each cycle. The separate per-revert
-     * reset in {@link RenderStaff.revertLastBar} rolls back the reverted bar's
-     * slice of cross-bar state (max-of accumulators are monotonically
-     * non-decreasing).
+     * Resets cross-bar staff state in {@link RenderStaff._sharedLayoutData}
+     * before `alignGlyphs` runs, so the max-of-idempotent
+     * `EffectInfo.onAlignGlyphs` writers start from a clean slate each cycle.
+     * Per-revert resets are handled separately by {@link RenderStaff.revertLastBar}.
      */
     public resetAllStavesSharedLayoutData(): void {
         for (const s of this.allStaves) {

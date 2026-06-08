@@ -1,8 +1,8 @@
 import type { NotationElement } from '@coderline/alphatab/NotationSettings';
-import { TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
+import { type ICanvas, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
+import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { GroupedEffectGlyph } from '@coderline/alphatab/rendering/glyphs/GroupedEffectGlyph';
-import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 
 /**
  * @internal

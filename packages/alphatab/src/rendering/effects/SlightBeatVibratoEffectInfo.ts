@@ -1,12 +1,12 @@
 import type { Beat } from '@coderline/alphatab/model/Beat';
 import { VibratoType } from '@coderline/alphatab/model/VibratoType';
+import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
+import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import { BeatVibratoGlyph } from '@coderline/alphatab/rendering/glyphs/BeatVibratoGlyph';
 import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
-import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
 import type { Settings } from '@coderline/alphatab/Settings';
-import { NotationElement } from '@coderline/alphatab/NotationSettings';
 
 /**
  * @internal
@@ -38,5 +38,4 @@ export class SlightBeatVibratoEffectInfo extends EffectInfo {
     public override get placementCategory(): EffectBandPlacementCategory {
         return EffectBandPlacementCategory.Span;
     }
-
 }

@@ -3,7 +3,7 @@ import { SlideInType } from '@coderline/alphatab/model/SlideInType';
 import { SlideOutType } from '@coderline/alphatab/model/SlideOutType';
 import { VibratoType } from '@coderline/alphatab/model/VibratoType';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
-import { type BarRendererBase, NoteYPosition, NoteXPosition } from '@coderline/alphatab/rendering/BarRendererBase';
+import { type BarRendererBase, NoteXPosition, NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import type { BeatContainerGlyph } from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
@@ -34,14 +34,9 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
     private _startNote: Note;
     private _parent: BeatContainerGlyph;
 
-    // Per-cycle slide-segment cache. See `ScoreSlideLineGlyph` for the
-    // rationale: bbox-left + bbox-right + paint each invoke both compute
-    // helpers, and the OUT path crosses renderers via `getRendererForBar` +
-    // `getBeatX` / `getNoteY`. Paired `*CacheValid: boolean` flags rather
-    // than nullable-as-sentinel for clean C# transpile (see `BarTempoGlyph`,
-    // commit dcf6cd20). Invalidation seam: `doLayout` entry, which
-    // `RenderStaff._finalizeRendererTies` calls once per cycle before any
-    // bbox/paint read.
+    // Per-cycle cache; invalidated in doLayout. Paired *CacheValid flags
+    // rather than nullable-as-sentinel — C# transpile doesn't unwrap
+    // `T | null` with `!` cleanly. See {@link ScoreSlideLineGlyph}.
     private _slideInCache: SlideSegment | null = null;
     private _slideInCacheValid: boolean = false;
     private _slideOutCache: SlideSegment | null = null;
@@ -150,34 +145,18 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
         const offsetX = this.renderer.smuflMetrics.preNoteEffectPadding;
         switch (this._inType) {
             case SlideInType.IntoFromBelow:
-                endX =
-                    startNoteRenderer.x +
-                    startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Left) -
-                    offsetX;
-                endY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) -
-                    sizeY;
+                endX = startNoteRenderer.x + startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Left) - offsetX;
+                endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) - sizeY;
                 startX = endX - sizeX;
                 startY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) +
-                    sizeY;
+                    startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) + sizeY;
                 break;
             case SlideInType.IntoFromAbove:
-                endX =
-                    startNoteRenderer.x +
-                    startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Left) -
-                    offsetX;
-                endY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) +
-                    sizeY;
+                endX = startNoteRenderer.x + startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Left) - offsetX;
+                endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) + sizeY;
                 startX = endX - sizeX;
                 startY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) -
-                    sizeY;
+                    startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) - sizeY;
                 break;
             default:
                 return null;
@@ -248,33 +227,19 @@ export class TabSlideLineGlyph extends Glyph implements ITieGlyph {
                 break;
             case SlideOutType.OutUp:
                 startX =
-                    startNoteRenderer.x +
-                    startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) +
-                    offsetX;
+                    startNoteRenderer.x + startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) + offsetX;
                 startY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) +
-                    sizeY;
+                    startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) + sizeY;
                 endX = startX + sizeX;
-                endY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) -
-                    sizeY;
+                endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) - sizeY;
                 break;
             case SlideOutType.OutDown:
                 startX =
-                    startNoteRenderer.x +
-                    startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) +
-                    offsetX;
+                    startNoteRenderer.x + startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) + offsetX;
                 startY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) -
-                    sizeY;
+                    startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) - sizeY;
                 endX = startX + sizeX;
-                endY =
-                    startNoteRenderer.y +
-                    startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) +
-                    sizeY;
+                endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center) + sizeY;
                 break;
             case SlideOutType.PickSlideDown:
                 startX =

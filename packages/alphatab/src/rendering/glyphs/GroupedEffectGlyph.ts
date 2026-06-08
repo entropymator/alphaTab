@@ -25,14 +25,9 @@ export abstract class GroupedEffectGlyph extends EffectGlyph {
     }
 
     /**
-     * Publishes the chain's true cross-renderer painted xEnd back to the
-     * owning {@link EffectBand} so its xRange covers intermediate columns
-     * between the chain head's local bbox and the chain tail's renderer.
-     * Called by {@link EffectBand.finalizeChainSpans} on chain heads only.
-     *
-     * A cached `chainTail` would be unsafe — `revertLastBar` can split a
-     * chain across systems without unlinking the glyphs, and
-     * `isLinkedWithNext` is the only safe boundary check.
+     * Publishes the chain's true cross-renderer painted xEnd to the owning
+     * {@link EffectBand} so its xRange covers intermediate columns. Called by
+     * {@link EffectBand.finalizeChainSpans} on chain heads only.
      */
     public publishChainSpan(): void {
         if (!this.isLinkedWithNext) {

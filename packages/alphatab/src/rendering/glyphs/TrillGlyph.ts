@@ -1,5 +1,5 @@
-import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { MusicFontSymbol } from '@coderline/alphatab/model/MusicFontSymbol';
+import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
 import { GroupedEffectGlyph } from '@coderline/alphatab/rendering/glyphs/GroupedEffectGlyph';
 

@@ -1,11 +1,11 @@
-import { NotationElement } from '@coderline/alphatab/NotationSettings';
-import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
-import type { Settings } from '@coderline/alphatab/Settings';
 import type { Beat } from '@coderline/alphatab/model/Beat';
+import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
-import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
+import { EffectBarGlyphSizing } from '@coderline/alphatab/rendering/EffectBarGlyphSizing';
 import { EffectBandPlacementCategory, EffectInfo } from '@coderline/alphatab/rendering/EffectInfo';
+import type { EffectGlyph } from '@coderline/alphatab/rendering/glyphs/EffectGlyph';
 import { SustainPedalGlyph } from '@coderline/alphatab/rendering/glyphs/SustainPedalGlyph';
+import type { Settings } from '@coderline/alphatab/Settings';
 
 /**
  * @internal
@@ -37,5 +37,4 @@ export class SustainPedalEffectInfo extends EffectInfo {
     public override get placementCategory(): EffectBandPlacementCategory {
         return EffectBandPlacementCategory.Span;
     }
-
 }

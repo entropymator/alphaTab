@@ -7,7 +7,10 @@ import { TabRhythmMode } from '@coderline/alphatab/NotationSettings';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
 import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
-import { BeatContainerGlyph, type BeatContainerGlyphBase } from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
+import {
+    BeatContainerGlyph,
+    type BeatContainerGlyphBase
+} from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
 import { SpacingGlyph } from '@coderline/alphatab/rendering/glyphs/SpacingGlyph';
 import { TabBeatContainerGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatContainerGlyph';
 import type { TabBeatGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatGlyph';
@@ -123,7 +126,6 @@ export class TabBarRenderer extends LineBarRenderer {
 
         super.doLayout();
 
-        // Scalar overflow only; per-x emits later in populateBarLocalSkyline.
         const hasNoteOnTopString = this.minString === 0;
         if (hasNoteOnTopString) {
             this.registerOverflowTop(this.lineSpacing / 2);
@@ -145,11 +147,7 @@ export class TabBarRenderer extends LineBarRenderer {
         if (!(beatContainer instanceof BeatContainerGlyph)) {
             return;
         }
-        // Tab digits paint per-beat at the notehead extent — register the half-line
-        // overflow per beat, not bar-wide. Top string = `tuning.length` (largest 1-indexed
-        // value); bottom string = 1. Use model-finish caches on Beat (Beat.minStringNote
-        // tracks the lowest-numbered string used, Beat.maxStringNote the highest) to avoid
-        // re-walking beat.notes on every layout cycle.
+        // Per-beat half-line overflow, not bar-wide. Strings are 1-indexed: top = tuning.length, bottom = 1.
         const beat = beatContainer.beat;
         const stringCount = this.bar.staff.tuning.length;
         const hasTop = beat.maxStringNote !== null && beat.maxStringNote.string === stringCount;
@@ -362,8 +360,7 @@ export class TabBarRenderer extends LineBarRenderer {
         }
         super.emitHelperSkyline(h);
         if (h.hasTuplet) {
-            // Tuplets can span multiple helpers — emit the full group range
-            // exactly once, when the helper holds the group's first beat.
+            // Tuplets can span multiple helpers — emit once per group, from its first beat.
             const group = h.beats[0].tupletGroup!;
             if (group.beats.length > 0 && group.beats[0] === h.beats[0]) {
                 const tupletHeight = this.settings.notation.rhythmHeight + this.tupletSize;

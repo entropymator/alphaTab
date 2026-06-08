@@ -128,27 +128,19 @@ export class ScoreLegatoGlyph extends TieGlyph {
                 switch (this.tieDirection) {
                     case BeamDirection.Up:
                         // stem upper end
-                        return (
-                            endBeatRenderer.getNoteY(this.endBeat!.maxNote!, NoteYPosition.TopWithStem)
-                        );
+                        return endBeatRenderer.getNoteY(this.endBeat!.maxNote!, NoteYPosition.TopWithStem);
                     default:
                         // stem lower end
-                        return (
-                            endBeatRenderer.getNoteY(this.endBeat!.minNote!, NoteYPosition.BottomWithStem)
-                        );
+                        return endBeatRenderer.getNoteY(this.endBeat!.minNote!, NoteYPosition.BottomWithStem);
                 }
             }
             switch (this.tieDirection) {
                 case BeamDirection.Up:
                     // stem upper end
-                    return (
-                        endBeatRenderer.getNoteY(this.endBeat!.maxNote!, NoteYPosition.BottomWithStem)
-                    );
+                    return endBeatRenderer.getNoteY(this.endBeat!.maxNote!, NoteYPosition.BottomWithStem);
                 default:
                     // stem lower end
-                    return (
-                        endBeatRenderer.getNoteY(this.endBeat!.minNote!, NoteYPosition.TopWithStem)
-                    );
+                    return endBeatRenderer.getNoteY(this.endBeat!.minNote!, NoteYPosition.TopWithStem);
             }
         }
 

@@ -97,12 +97,7 @@ export class BarRendererBase {
 
     private _multiSystemSlurs?: ContinuationTieGlyph[];
 
-    /**
-     * Set during {@link RenderStaff.finalizeStaff} sub-step (ii) when a tie
-     * write grew this renderer's `_contentTopOverflow` / `_contentBottomOverflow`.
-     * The staff orchestrator consumes and clears it within the same
-     * `finalizeStaff` invocation, so the flag never crosses cycles.
-     */
+    /** Set by {@link RenderStaff._finalizeRendererTies} when a tie write grew this renderer's overflow. */
     private _tiesDirty: boolean = false;
 
     /** Ties whose start beat lives on this renderer. */
@@ -110,11 +105,6 @@ export class BarRendererBase {
         return this._ties;
     }
 
-    /**
-     * Marker flipped by {@link RenderStaff._finalizeRendererTies} when a tie
-     * write grew this renderer's overflow. Replaces a per-finalizeStaff
-     * `Set<BarRendererBase>` allocation.
-     */
     public markTiesDirty(): void {
         this._tiesDirty = true;
     }
@@ -127,10 +117,7 @@ export class BarRendererBase {
         this._tiesDirty = false;
     }
 
-    /**
-     * Multi-system slur continuations attached to this renderer. Only populated
-     * on the first renderer of a staff; undefined elsewhere.
-     */
+    /** Multi-system slur continuations attached to this renderer. Only populated on renderer 0 of a staff. */
     public get multiSystemSlurs(): ContinuationTieGlyph[] | undefined {
         return this._multiSystemSlurs;
     }
@@ -181,10 +168,7 @@ export class BarRendererBase {
     private _preBeatLocalSkyline: BarLocalSkyline | null = null;
     private _postBeatLocalSkyline: BarLocalSkyline | null = null;
 
-    /**
-     * Per-bar local skyline of every non-effect-band glyph's above/below-staff
-     * envelope (renderer-local x).
-     */
+    /** Per-bar local skyline of non-effect-band glyphs (renderer-local x). */
     public get barLocalSkyline(): BarLocalSkyline {
         if (!this._barLocalSkyline) {
             this._barLocalSkyline = new BarLocalSkyline(
@@ -196,11 +180,7 @@ export class BarRendererBase {
         return this._barLocalSkyline;
     }
 
-    /**
-     * Pre-beat glyphs' skyline contribution. Emitted from
-     * {@link calculateOverflows}; kept separate from {@link barLocalSkyline} so
-     * the latter's per-cycle reset doesn't wipe it.
-     */
+    /** Pre-beat glyphs' skyline contribution. Separate from {@link barLocalSkyline} so the latter's per-cycle reset doesn't wipe it. */
     public get preBeatLocalSkyline(): BarLocalSkyline {
         if (!this._preBeatLocalSkyline) {
             this._preBeatLocalSkyline = new BarLocalSkyline(
@@ -212,11 +192,7 @@ export class BarRendererBase {
         return this._preBeatLocalSkyline;
     }
 
-    /**
-     * Post-beat glyphs' skyline contribution in post-beat-group-local x
-     * coordinates. Shifted by {@link postBeatGroupOffset} (final only after
-     * {@link scaleToWidth}) when unioned into the staff skyline.
-     */
+    /** Post-beat glyphs' skyline in post-beat-group-local x; shifted by {@link postBeatGroupOffset} when unioned. */
     public get postBeatLocalSkyline(): BarLocalSkyline {
         if (!this._postBeatLocalSkyline) {
             this._postBeatLocalSkyline = new BarLocalSkyline(
@@ -232,7 +208,7 @@ export class BarRendererBase {
         return this._postBeatGlyphs.x;
     }
 
-    /** Atomic per-cycle reset of skylines and ties. Called from {@link doLayout} entry; not from {@link reLayout}. */
+    /** Per-cycle reset of skylines and ties. Called from {@link doLayout}; not from {@link reLayout}. */
     public resetCycleState(): void {
         this._barLocalSkyline?.reset();
         this._preBeatLocalSkyline?.reset();
@@ -242,11 +218,7 @@ export class BarRendererBase {
         this.beatEffectsMaxY = Number.NaN;
     }
 
-    /**
-     * Emits a glyph's current bbox into {@link barLocalSkyline}. Used as the
-     * body of {@link Glyph.populateSkyline} for glyphs that just want their
-     * final bbox in the skyline (BarNumberGlyph, BarTempoGlyph).
-     */
+    /** Emit a glyph's current bbox into {@link barLocalSkyline}. */
     public insertSkylineFromBbox(glyph: Glyph): void {
         const xL = glyph.getBoundingBoxLeft();
         const xR = glyph.getBoundingBoxRight();
@@ -359,18 +331,14 @@ export class BarRendererBase {
         return changed;
     }
 
-    /**
-     * Emit a top-skyline segment into {@link barLocalSkyline}. Public so
-     * {@link Glyph.populateSkyline} tenants can contribute from outside this
-     * class.
-     */
+    /** Emit a top-skyline segment into {@link barLocalSkyline}. */
     public insertSkylineTop(xStart: number, xEnd: number, topHeight: number): void {
         if (topHeight > 0 && xEnd > xStart) {
             this.barLocalSkyline.insertPlaced(StaffSide.Top, xStart, xEnd, topHeight, 0);
         }
     }
 
-    /** Emit a bottom-skyline segment into {@link barLocalSkyline}. See {@link insertSkylineTop}. */
+    /** Emit a bottom-skyline segment into {@link barLocalSkyline}. */
     public insertSkylineBottom(xStart: number, xEnd: number, bottomHeight: number): void {
         if (bottomHeight > 0 && xEnd > xStart) {
             this.barLocalSkyline.insertPlaced(StaffSide.Bottom, xStart, xEnd, bottomHeight, 0);
@@ -391,28 +359,17 @@ export class BarRendererBase {
         // preBeat and postBeat glyphs do not get resized
         const containerWidth: number = width - this._preBeatGlyphs.width - this._postBeatGlyphs.width;
 
-        // Reset bar-local skyline before re-emitting scale-dependent segments
-        // (voiceContainer beats, beam helpers, pending effect ranges,
-        // dynamic-bbox glyphs). pre/postBeatLocalSkyline are managed by
-        // calculateOverflows and stay untouched here.
+        // Re-emit scale-dependent segments. pre/postBeatLocalSkyline are
+        // owned by calculateOverflows and untouched here.
         this.barLocalSkyline.reset();
 
-        // Canonical per-cycle invalidator for beam drawing-info caches: the
-        // spring-X is about to be re-laid-out by the voice container below,
-        // making every cached `BeamingHelperDrawInfo` stale. Invalidating
-        // once here (rather than per-helper in the emit loop) lets
-        // `ensureBeamDrawingInfo`'s cache-existence check serve the later
-        // `calculateBeamingOverflows` pass (Phase 2.5) as cache hits against
-        // the entries `emitHelperSkyline` (Phase 2) populated.
+        // Spring-X about to be re-laid-out, so cached BeamingHelperDrawInfo is stale.
         for (const v of this.helpers.beamHelpers) {
             for (const h of v) {
                 h.invalidateDrawingInfos();
             }
         }
 
-        // The voice container owns the beat walk and emits per-beat skyline
-        // contributions (container overflow, pendingEffectOverflows,
-        // `emitBeatSkyline` subclass hook) in the same pass.
         this.voiceContainer.scaleToWidth(containerWidth);
 
         for (const v of this.helpers.beamHelpers) {
@@ -424,15 +381,12 @@ export class BarRendererBase {
         this._postBeatGlyphs.x = this._preBeatGlyphs.x + this._preBeatGlyphs.width + containerWidth;
         this.width = width;
 
-        // Every `EffectInfo.onAlignGlyphs` override must be max-of-idempotent;
-        // the cross-bar `_sharedLayoutData` they feed is reset once per system
-        // by `StaffSystem.resetAllStavesSharedLayoutData`.
+        // `EffectInfo.onAlignGlyphs` overrides must be max-of-idempotent;
+        // shared `_sharedLayoutData` is reset per system in
+        // `StaffSystem.resetAllStavesSharedLayoutData`.
         this.topEffects.alignGlyphs();
         this.bottomEffects.alignGlyphs();
 
-        // Per-glyph deferred-skyline pass — default `Glyph.populateSkyline` is
-        // a no-op; subclasses (BarNumberGlyph, BarTempoGlyph) emit their final
-        // bbox into the bar-local skyline.
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
             for (const g of preBeatGlyphs) {
@@ -502,16 +456,8 @@ export class BarRendererBase {
     }
 
     public afterStaffBarReverted() {
-        // Bar-local skylines stay — remaining bars' content is unchanged.
-        // Per-band internals (`placedMagnitude`, `y`, `publishedSpans`)
-        // are NOT reset here. Invariant: after `revertLastBar`, the layout
-        // proceeds to add bars to the next system and ultimately calls
-        // `StaffSystem.finalizeSystem` → `RenderStaff.finalizeStaff`,
-        // which transits through both `dispatchSystemFinalizeSkyline`
-        // (clears each band's publishedSpans) and
-        // `effectPlacement.placeAndApply` (recomputes placedMagnitude/y).
-        // So any stale per-band state from the reverted cycle is
-        // overwritten before the next paint reads it.
+        // Band internals (placedMagnitude/y/publishedSpans) are recomputed
+        // by the next finalizeStaff cycle before paint reads them.
         this.topEffects.height = 0;
         this.bottomEffects.height = 0;
         this._registerStaffOverflow();
@@ -519,10 +465,8 @@ export class BarRendererBase {
 
     /**
      * Pull the current {@link BarLayoutingInfo} broker state into this
-     * renderer's positions (pre-beat width, voice-container x, post-beat
-     * x/width, total width). Value-idempotent on a stable broker; callers
-     * wanting to skip work for unchanged bars must gate the call themselves
-     * (see {@link StaffSystem.reconcileMinDurationIfDirty}).
+     * renderer's positions. Value-idempotent on a stable broker; callers
+     * must gate themselves to skip unchanged bars.
      */
     public applyLayoutingInfo(): void {
         // if we need additional space in the preBeat group we simply
@@ -534,9 +478,8 @@ export class BarRendererBase {
         container.x = this._preBeatGlyphs.x + this._preBeatGlyphs.width;
         container.applyLayoutingInfo(this.layoutingInfo);
 
-        // `_postBeatGlyphs.x` is single-write at end of Phase 2
-        // ({@link scaleToWidth}); compute postBeatX locally here without
-        // touching the field.
+        // `_postBeatGlyphs.x` is written once at end of {@link scaleToWidth};
+        // compute locally here without touching the field.
         this._postBeatGlyphs.width = this.layoutingInfo.postBeatSize;
         const postBeatX = Math.floor(container.x + container.width);
         this.width = Math.ceil(postBeatX + this._postBeatGlyphs.width);
@@ -568,18 +511,12 @@ export class BarRendererBase {
         this._multiSystemSlurs = ties;
     }
 
-    /**
-     * Marks this renderer as finalized so cross-renderer chain walks can rely
-     * on every renderer in the staff being finalized before tie writes run.
-     */
+    /** Marks finalized so cross-renderer chain walks see every renderer in the staff as ready. */
     public finalizeRendererMinusTies(): void {
         this.isFinalized = true;
     }
 
-    /**
-     * Drives each effect band to republish its cross-renderer chain spans now
-     * that every renderer in the staff is finalized.
-     */
+    /** Republish each effect band's cross-renderer chain spans. */
     public finalizeEffectBandSpans(): void {
         this.topEffects.finalizeChainSpans();
         this.bottomEffects.finalizeChainSpans();
@@ -590,28 +527,15 @@ export class BarRendererBase {
         this.staff!.registerOverflowBottom(this.bottomOverflow);
     }
 
-    /**
-     * Public wrapper for `_registerStaffOverflow`. Kept as a one-line
-     * passthrough (instead of making the underlying method public) so the
-     * naming-by-visibility convention (`_`-prefixed = `private`/`protected`)
-     * stays consistent with the rest of the file and any subclass that
-     * later needs to wrap the call has a public seam to override.
-     */
+    /** Public wrapper for `_registerStaffOverflow`. */
     public registerStaffOverflows(): void {
         this._registerStaffOverflow();
     }
 
     /**
-     * Public entry point for `updateSizes`. Called by the staff after tie
-     * writes mutate a renderer's overflow, to recompute width/height before
-     * the staff-skyline union runs.
-     *
-     * Kept as a wrapper (not folded into `updateSizes` made public)
-     * because `LineBarRenderer.updateSizes` is a `protected override` —
-     * widening the base to `public` would require widening every override
-     * in the subclass chain, and the transpiler's visibility rewrites
-     * don't track that consistently across class hierarchies. The wrapper
-     * is one indirection per renderer per finalizeStaff dirty cycle.
+     * Public wrapper for `updateSizes`. Cannot widen `updateSizes` directly
+     * because `LineBarRenderer.updateSizes` is `protected override` and the
+     * transpiler does not consistently widen visibility across overrides.
      */
     public refreshSizes(): void {
         this.updateSizes();
@@ -650,18 +574,13 @@ export class BarRendererBase {
     }
 
     protected calculateOverflows(_rendererTop: number, rendererBottom: number) {
-        // Re-emit pre/post-beat skylines from scratch each pass (called from
-        // both doLayout and reLayout). barLocalSkyline is reset separately in
-        // scaleToWidth.
+        // Re-emit pre/post-beat skylines from scratch each pass. Pre-beat
+        // group x = 0 so its local x equals bar-local x; post-beat x is
+        // not final until scaleToWidth, so the staff-skyline union shifts
+        // it later.
         this.preBeatLocalSkyline.reset();
         this.postBeatLocalSkyline.reset();
 
-        // Pre- and post-beat groups both emit in group-local glyph x
-        // (`getBoundingBoxLeft/Right` return parent-relative x). `_preBeatGlyphs.x`
-        // is invariant (= 0), so pre-beat group-local x equals bar-local x;
-        // `_postBeatGlyphs.x` is not final until scaleToWidth, so the staff-skyline
-        // union shifts post-beat by the final offset. The per-glyph overflow shape
-        // is identical between the two — see `_emitGroupOverflows`.
         const preBeatGlyphs = this._preBeatGlyphs.glyphs;
         if (preBeatGlyphs) {
             this._emitGroupOverflows(preBeatGlyphs, this.preBeatLocalSkyline, rendererBottom);
@@ -693,14 +612,7 @@ export class BarRendererBase {
         }
     }
 
-    /**
-     * Emit per-glyph overflow into the given group skyline. Used by
-     * {@link calculateOverflows} for both pre- and post-beat groups: the loop
-     * bodies were structurally identical, so they share one implementation
-     * here. Each glyph's xL/xR is read once per glyph (instead of up to twice
-     * each when both top and bottom branches fired), trimming redundant
-     * bounding-box recompute work on dynamic-bbox glyphs.
-     */
+    /** Emit per-glyph overflow into the given group skyline. Shared by pre- and post-beat groups. */
     private _emitGroupOverflows(glyphs: Glyph[], skyline: BarLocalSkyline, rendererBottom: number): void {
         for (const g of glyphs) {
             const topY = g.getBoundingBoxTop();
@@ -910,10 +822,6 @@ export class BarRendererBase {
     protected recreatePreBeatGlyphs() {
         this._preBeatGlyphs = new LeftToRightLayoutingGlyphGroup();
         this._preBeatGlyphs.renderer = this;
-        // Previously-registered pre-beat glyphs in `_deferredSkylineGlyphs`
-        // remain referenced, but their bbox collapses to width 0 when the
-        // staff is no longer first-in-system, so a stale emit is a no-op.
-        // New pre-beat glyphs re-register through createPreBeatGlyphs.
         this.createPreBeatGlyphs();
     }
 

@@ -1,5 +1,5 @@
 import type { Note } from '@coderline/alphatab/model/Note';
-import { TextAlign, TextBaseline, type ICanvas } from '@coderline/alphatab/platform/ICanvas';
+import { type ICanvas, TextAlign, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
 import { type BarRendererBase, NoteXPosition, NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import type { ResolvedTieGlyphLabel, TieGlyphLabel } from '@coderline/alphatab/rendering/glyphs/TieGlyphLabel';
@@ -54,11 +54,7 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
         return this._shouldPaint && this._boundingBox !== undefined;
     }
 
-    /**
-     * Renderer-local Y (not canvas Y). Tie geometry is stored relative to
-     * `renderer.y` because the staff finalize loop may shift the renderer
-     * (effect placement growing `topOverflow`) AFTER tie layout.
-     */
+    /** Renderer-local Y. Staff finalize may shift `renderer.y` after tie layout, so geometry stays renderer-relative. */
     public override getBoundingBoxTop(): number {
         if (this._boundingBox) {
             return this._boundingBox!.y;
@@ -203,9 +199,10 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
             // Single Y line for all labels — the outer arc apex.
             // Painted offset adds `padding` on the outward side, so
             // every label sits the same fixed distance from its arc.
-            const labelLineY = cps.length > 0
-                ? 0.125 * cps[7] + 0.375 * cps[9] + 0.375 * cps[11] + 0.125 * cps[13]
-                : (this._startY + this._endY) / 2;
+            const labelLineY =
+                cps.length > 0
+                    ? 0.125 * cps[7] + 0.375 * cps[9] + 0.375 * cps[11] + 0.125 * cps[13]
+                    : (this._startY + this._endY) / 2;
 
             for (const label of labels) {
                 const fromX = this.resolveLabelAnchorX(label.fromNote);
@@ -278,8 +275,7 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
             return;
         }
 
-        // Tie Y is renderer-local; resolve `renderer.y` at paint time because
-        // staff finalize may shift it after layout (see getBoundingBoxTop).
+        // Tie Y is renderer-local; resolve `renderer.y` at paint time.
         const rendererY = this.renderer.y;
 
         const isDown = this.tieDirection === BeamDirection.Down;
@@ -555,7 +551,6 @@ export abstract class TieGlyph extends Glyph implements ITieGlyph {
         const ry = dx * Math.sin(angle) + dy * Math.cos(angle);
         return [rotateX + rx, rotateY + ry];
     }
-
 
     public static paintTie(
         canvas: ICanvas,

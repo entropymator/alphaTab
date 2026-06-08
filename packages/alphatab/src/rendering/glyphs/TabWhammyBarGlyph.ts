@@ -30,11 +30,7 @@ export class TabWhammyBarGlyph extends EffectGlyph {
         this._renderPoints = this._createRenderingPoints(beat);
     }
 
-    /**
-     * Renderer-local. Right edge may reach into the next renderer's x
-     * (cross-bar curve into the next beat's whammy); the system skyline
-     * is shared so the overshoot lands on the right bar.
-     */
+    /** Right edge may reach into the next renderer's x for cross-bar curves. */
     public override getBoundingBoxLeft(): number {
         if (this._isSimpleDip) {
             return this.renderer.getBeatX(this._beat, BeatXPosition.OnNotes, true);
@@ -61,17 +57,12 @@ export class TabWhammyBarGlyph extends EffectGlyph {
                             nextBeat.whammyBarType !== WhammyType.Dip)
                             ? BeatXPosition.MiddleNotes
                             : BeatXPosition.PreNotes;
-                    return (
-                        nextRenderer.x -
-                        this.renderer.x +
-                        nextRenderer.getBeatX(nextBeat, endXPositionType, true)
-                    );
+                    return nextRenderer.x - this.renderer.x + nextRenderer.getBeatX(nextBeat, endXPositionType, true);
                 }
             }
         }
         return (
-            this.renderer.getBeatX(this._beat, BeatXPosition.EndBeat) -
-            this.renderer.smuflMetrics.postNoteEffectPadding
+            this.renderer.getBeatX(this._beat, BeatXPosition.EndBeat) - this.renderer.smuflMetrics.postNoteEffectPadding
         );
     }
 

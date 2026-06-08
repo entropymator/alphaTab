@@ -27,9 +27,7 @@ export class BarTempoGlyph extends EffectGlyph {
     private _symbolWidth: number = 0;
     private _noteShift: number = 0;
 
-    // Per-cycle bbox cache. Extents come from `getRatioPositionX`, only
-    // final after `scaleToWidth`; the cache is invalidated at `doLayout`
-    // entry and at `populateSkyline` entry (the post-`scaleToWidth` hook).
+    // Bbox cache; invalidated in doLayout and in populateSkyline (post-scaleToWidth).
     private _cachedBoundingBoxLeft: number = 0;
     private _cachedBoundingBoxRight: number = 0;
     private _cachedBoundingBoxLeftValid: boolean = false;
@@ -47,7 +45,7 @@ export class BarTempoGlyph extends EffectGlyph {
         const res = this.renderer.resources;
         const scale = res.engravingSettings.tempoNoteScale;
         this._symbolWidth = this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
-        // Mirrors the text-less branch in `paint`: engraving-settings width, not smufl metric.
+        // Engraving-settings width (matches the text-less branch in paint), not smufl metric.
         this._noteShift = res.engravingSettings.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! / 2;
         this.height = this.renderer.smuflMetrics.glyphHeights.get(MusicFontSymbol.MetNoteQuarterUp)! * scale;
 
@@ -55,9 +53,7 @@ export class BarTempoGlyph extends EffectGlyph {
         canvas.font = res.elementFonts.get(NotationElement.EffectMarker)!;
         this._automationLayouts = [];
         for (const automation of this._tempoAutomations) {
-            // Pre-format the paint-time strings once; `automation.text` /
-            // `automation.value` are model-immutable per render so paint can
-            // read these verbatim instead of allocating + measuring per call.
+            // Pre-format paint-time strings once; model is immutable per render.
             const textPrefix = automation.text ? `${automation.text} ` : '';
             const valuePostfix = ` = ${automation.value.toString()}`;
             const textWidth = automation.text ? canvas.measureText(textPrefix).width : 0;
@@ -120,8 +116,7 @@ export class BarTempoGlyph extends EffectGlyph {
     }
 
     public override populateSkyline(): void {
-        // Fires post-`scaleToWidth`; invalidate the bbox cache so subsequent
-        // readers reuse the now-final values computed below.
+        // Post-scaleToWidth: invalidate cache so insert reads final extents.
         this._cachedBoundingBoxLeftValid = false;
         this._cachedBoundingBoxRightValid = false;
         this.renderer.insertSkylineFromBbox(this);
@@ -146,9 +141,6 @@ export class BarTempoGlyph extends EffectGlyph {
             const b = canvas.textBaseline;
             canvas.textBaseline = TextBaseline.Alphabetic;
             if (automation.text) {
-                // Reuse the pre-formatted prefix + measured width from doLayout
-                // (model-immutable per render); avoids the per-paint
-                // string-allocation + measureText round-trip.
                 canvas.fillText(layout.textPrefix, x, notePosY);
                 x += layout.textWidth;
             } else {
@@ -166,7 +158,6 @@ export class BarTempoGlyph extends EffectGlyph {
                 this.renderer.smuflMetrics.glyphWidths.get(MusicFontSymbol.MetNoteQuarterUp)! *
                 res.engravingSettings.tempoNoteScale;
 
-            // Pre-formatted value postfix + measured width cached at doLayout.
             canvas.fillText(layout.valuePostfix, x, notePosY);
             canvas.textBaseline = b;
 

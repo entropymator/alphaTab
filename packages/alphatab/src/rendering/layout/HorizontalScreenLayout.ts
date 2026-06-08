@@ -44,14 +44,13 @@ export class HorizontalScreenLayout extends ScoreLayout {
     public doResize(): void {
         // not supported
     }
-    
+
     public override doUpdateForBars(_renderHints: RenderHints): boolean {
         // not supported yet, modifications likely cause anyhow full updates
-        // as we do not optimize effect bands yet. with effect bands being more 
+        // as we do not optimize effect bands yet. with effect bands being more
         // isolated in bars we could try updating dynamically
         return false;
     }
-
 
     protected doLayoutAndRender(renderHints: RenderHints | undefined): void {
         const score: Score = this.renderer.score!;
@@ -176,10 +175,7 @@ export class HorizontalScreenLayout extends ScoreLayout {
         for (const r of result.renderers) {
             const barDisplayWidth =
                 r.staff!.system.staves.length > 1 ? r.bar.masterBar.displayWidth : r.bar.displayWidth;
-            // scaleToWidth runs exactly once per renderer per cycle. Use the
-            // bar's explicit displayWidth when set; otherwise fall back to the
-            // renderer's natural (post-doLayout) width so beam helpers and
-            // Phase-2 alignGlyphs settle.
+            // Fall back to natural width so `scaleToWidth` still runs.
             r.scaleToWidth(barDisplayWidth > 0 ? barDisplayWidth : r.width);
             const w = r.x + r.width;
             if (w > result.width) {
@@ -219,12 +215,8 @@ export class HorizontalScreenLayout extends ScoreLayout {
     private _alignRenderers(): void {
         this.width = 0;
         const system = this._system!;
-        // Phase 2 (scaleToWidth, which also runs alignGlyphs) has already
-        // executed once per renderer in `_scaleBars` after each `addBars`. No
-        // `_sharedLayoutData` reset is needed here: this layout creates a
-        // fresh StaffSystem per render (`supportsResize === false`), so the
-        // shared bag starts empty and accumulates correctly across the per-bar
-        // alignGlyphs invocations. This loop does final x/y positioning only.
+        // `_scaleBars` already ran. supportsResize=false ⇒ fresh
+        // StaffSystem per render, so no shared-layout-data reset is needed.
         for (const s of system.allStaves) {
             let w = 0;
             for (const renderer of s.barRenderers) {

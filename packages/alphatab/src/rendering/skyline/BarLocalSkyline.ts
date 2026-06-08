@@ -20,13 +20,7 @@ export class BarLocalSkyline {
         this.downSky = new Skyline(xMin, xMax, pool);
     }
 
-    public insertPlaced(
-        side: StaffSide,
-        xStart: number,
-        xEnd: number,
-        outerEdgeHeight: number,
-        pad: number
-    ): void {
+    public insertPlaced(side: StaffSide, xStart: number, xEnd: number, outerEdgeHeight: number, pad: number): void {
         if (side === StaffSide.Top) {
             this.upSky.insert(xStart, xEnd, outerEdgeHeight, pad);
         } else {

@@ -36,16 +36,9 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
     private _startNote: Note;
     private _parent: BeatContainerGlyph;
 
-    // Per-cycle slide-segment cache. `_computeSlideIn` / `_computeSlideOut`
-    // are invoked up to 6× per cycle (bbox-left + bbox-right + paint, each
-    // computing IN and OUT). The OUT path in particular hits a
-    // `getRendererForBar` Map lookup plus cross-renderer `getBeatX` / `getNoteY`
-    // calls — all settled by Phase-3 `isFinalized`, which fires before any of
-    // these reads. Use paired `*CacheValid: boolean` flags rather than
-    // nullable-as-sentinel because the C# transpile doesn't unwrap `T | null`
-    // with `!` cleanly (see `BarTempoGlyph`, commit dcf6cd20). The cache is
-    // invalidated at `doLayout` entry — `RenderStaff._finalizeRendererTies`
-    // calls `tie.doLayout()` once per cycle before any bbox/paint read.
+    // Per-cycle cache; invalidated in doLayout. Paired *CacheValid flags
+    // rather than nullable-as-sentinel — C# transpile doesn't unwrap `T | null`
+    // with `!` cleanly.
     private _slideInCache: ScoreSlideSegment | null = null;
     private _slideInCacheValid: boolean = false;
     private _slideOutCache: ScoreSlideSegment | null = null;
@@ -70,7 +63,7 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
         this.width = 0;
     }
 
-    /** Computed lazily — geometry depends on `renderer.x`, only final post-system-layout. */
+    /** Lazy — geometry depends on `renderer.x`, final only post-system-layout. */
     public override getBoundingBoxLeft(): number {
         let min = 0;
         let found = false;
@@ -213,13 +206,10 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
                     if (!endNoteRenderer || endNoteRenderer.staff !== startNoteRenderer.staff) {
                         endX = startNoteRenderer.x + startNoteRenderer.width;
                         if (this._startNote.slideTarget.realValue > this._startNote.realValue) {
-                            endY =
-                                startNoteRenderer.y +
-                                startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Top);
+                            endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Top);
                         } else {
                             endY =
-                                startNoteRenderer.y +
-                                startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Bottom);
+                                startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Bottom);
                         }
                     } else {
                         endX =
@@ -237,18 +227,14 @@ export class ScoreSlideLineGlyph extends Glyph implements ITieGlyph {
                 break;
             case SlideOutType.OutUp:
                 startX =
-                    startNoteRenderer.x +
-                    startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) +
-                    offsetX;
+                    startNoteRenderer.x + startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) + offsetX;
                 startY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center);
                 endX = startX + sizeX;
                 endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Top);
                 break;
             case SlideOutType.OutDown:
                 startX =
-                    startNoteRenderer.x +
-                    startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) +
-                    offsetX;
+                    startNoteRenderer.x + startNoteRenderer.getNoteX(this._startNote, NoteXPosition.Right) + offsetX;
                 startY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Center);
                 endX = startX + sizeX;
                 endY = startNoteRenderer.y + startNoteRenderer.getNoteY(this._startNote, NoteYPosition.Bottom);

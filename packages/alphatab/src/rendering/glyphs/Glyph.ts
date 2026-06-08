@@ -42,11 +42,7 @@ export class Glyph {
         // to be implemented in subclass
     }
 
-    /**
-     * Hook for glyphs whose bbox is only final after `scaleToWidth`. Opt in by
-     * calling `renderer.registerDeferredSkyline(this)` from `doLayout` and
-     * overriding this method. Default no-op.
-     */
+    /** Hook for glyphs whose bbox is only final after `scaleToWidth`. Default no-op. */
     public populateSkyline(): void {
         // to be implemented in subclass
     }

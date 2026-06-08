@@ -43,45 +43,25 @@ export class EffectBand extends Glyph {
     public placedMagnitude: number = 0;
 
     /**
-     * Stable prefix of the {@link EffectSystemPlacement} sort key — the three
-     * fields that never change after band construction. The final 4-key sort
-     * is reproduced exactly by `_stableSortKey + renderer.index` because the
-     * low 20 bits of the key are reserved for renderer.index.
-     *
-     * Computed once in the constructor:
-     *   placementCategory * 2^40   (3 bits used; 0..15 reserved)
-     * + (0xFFFF - order)   * 2^24  (16 bits; higher `order` → smaller term → first)
-     * + voice.index        * 2^20  (4 bits; 0..15)
-     *
-     * renderer.index is NOT baked in: a renderer can be moved between staves
-     * during system formation (see `RenderStaff.addBarRenderer`) and have its
-     * `index` reassigned long after the band was created. It is added back at
-     * sort time (see {@link sortKey}).
-     *
-     * Max final key ≈ 3*2^40 + 0xFFFF*2^24 + 15*2^20 + ~maxBars ≈ 3.6e12,
-     * well within JS safe integer range (2^53).
+     * Stable prefix of the {@link EffectSystemPlacement} sort key. Final key
+     * is `_stableSortKey + renderer.index` (renderer.index can change after
+     * construction when bars are moved between staves). Bit layout:
+     *   placementCategory * 2^40 + (0xFFFF - order) * 2^24 + voice.index * 2^20
+     * (order is inverted so higher `order` sorts first).
      */
     private _stableSortKey: number = 0;
 
-    /**
-     * Full lexicographic sort key matching the legacy 4-key comparator
-     * (placementCategory asc, order desc, voice.index asc, renderer.index asc).
-     */
+    /** 4-key sort: placementCategory asc, order desc, voice.index asc, renderer.index asc. */
     public get sortKey(): number {
         return this._stableSortKey + this.renderer.index;
     }
 
     /**
-     * Cached renderer-local x-range used by {@link computeLocalXRange}.
-     *
-     * The base snapshot (`_xRangeBase*`) is computed lazily on the first
-     * `computeLocalXRange` call after {@link alignGlyphs}, unioning every
-     * glyph's paint extent (and, for FullBar, the `(0, renderer.width)`
-     * baseline). The live fields (`_xRange*`) start each cycle equal to the
-     * base snapshot and are widened incrementally by {@link publishSpanRange}
-     * when {@link GroupedEffectGlyph} publishes cross-renderer span ranges
-     * during SystemFinalize. {@link clearPublishedSpans} resets the live
-     * fields back to the snapshot.
+     * Renderer-local x-range cache. The base snapshot is the union of glyph
+     * paint extents (and `[0, renderer.width)` for FullBar); the live fields
+     * start equal to the base and are widened by {@link publishSpanRange}
+     * when a {@link GroupedEffectGlyph} publishes its cross-renderer span.
+     * {@link clearPublishedSpans} resets live to base.
      */
     private _xRangeMin: number = 0;
     private _xRangeMax: number = 0;
@@ -102,10 +82,7 @@ export class EffectBand extends Glyph {
         this._chainHeads.push(head);
     }
 
-    /**
-     * Republishes each chain head's cross-renderer xEnd. Called once per band
-     * by the staff orchestrator after every renderer in the staff is finalized.
-     */
+    /** Republishes each chain head's cross-renderer xEnd. Called once per band after the staff is finalized. */
     public finalizeChainSpans(): void {
         this.clearPublishedSpans();
         for (let i = 0, n = this._chainHeads.length; i < n; i++) {
@@ -124,8 +101,6 @@ export class EffectBand extends Glyph {
     }
 
     public publishSpanRange(xStart: number, xEnd: number): void {
-        // Ensure live fields reflect the band's own glyph extents before
-        // widening them with the published span.
         if (this._xRangeBaseDirty) {
             this._refreshXRangeBase();
         }
@@ -144,8 +119,7 @@ export class EffectBand extends Glyph {
     }
 
     public clearPublishedSpans(): void {
-        // Reset live to base. If the base is stale (alignGlyphs invalidated
-        // it), defer recomputation to the next read/publish.
+        // Defer base recomputation if stale (alignGlyphs invalidated it).
         if (this._xRangeBaseDirty) {
             this._xRangeMin = 0;
             this._xRangeMax = 0;
@@ -162,7 +136,6 @@ export class EffectBand extends Glyph {
         let max = 0;
         let found = false;
         if (this.info.sizingMode === EffectBarGlyphSizing.FullBar) {
-            // FullBar bands always cover at least `[0, renderer.width)`.
             min = 0;
             max = this.renderer.width;
             found = true;
@@ -206,10 +179,6 @@ export class EffectBand extends Glyph {
         this.info = info;
         this._container = container;
         this.renderer = renderer;
-        // See `_stableSortKey` field doc for the bit layout. Order is inverted
-        // via (0xFFFF - order) so higher `order` sorts first (closer to staff,
-        // e.g. voltas at order=1000). `renderer.index` is added back at sort
-        // time because it can change after construction.
         const clampedOrder = order < 0 ? 0 : order > 0xffff ? 0xffff : order;
         this._stableSortKey =
             info.placementCategory * 1099511627776 + // 2^40
@@ -217,14 +186,7 @@ export class EffectBand extends Glyph {
             voice.index * 1048576; // 2^20
     }
 
-    /**
-     * Per-voice insertion-ordered view of every glyph the band owns.
-     * Consumers iterate two nested arrays directly — no generator state
-     * machine, no Map iterator allocation. Treat as read-only; the band
-     * owns lifetime. Typed `EffectGlyph[][]` (not `readonly (readonly
-     * EffectGlyph[])[]`) because the transpiler cannot synthesise nested
-     * `IReadOnlyList` properties cleanly.
-     */
+    /** Per-voice insertion-ordered view of every glyph the band owns. Read-only; band owns lifetime. */
     public get glyphsByVoice(): EffectGlyph[][] {
         return this._uniqueEffectGlyphs;
     }
@@ -237,10 +199,6 @@ export class EffectBand extends Glyph {
         if (!this.info.contributesToBeatSpacing) {
             return;
         }
-        // Iterate `_uniqueEffectGlyphs` to avoid the per-iteration tuple
-        // destructure that `for (const [beatIndex, glyph] of map)` allocates,
-        // and to read `g.beat` directly instead of going through
-        // `voices[v].beats[beatIndex]`. Matches alignGlyphs.
         for (let v = 0; v < this._uniqueEffectGlyphs.length; v++) {
             const voiceGlyphs = this._uniqueEffectGlyphs[v];
             for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
@@ -253,7 +211,7 @@ export class EffectBand extends Glyph {
                 if (!container) {
                     continue;
                 }
-                // glyph.x is still 0 at this lifecycle stage (set later by `_alignGlyph`).
+                // glyph.x is 0 here; set later by `_alignGlyph`.
                 const preBeat = Math.max(0, -glyph.getBoundingBoxLeft());
                 const postBeat = Math.max(0, glyph.getBoundingBoxRight());
                 if (preBeat > 0 || postBeat > 0) {
@@ -313,18 +271,6 @@ export class EffectBand extends Glyph {
         this.height = this.originalHeight;
     }
 
-    // NOTE on per-call cross-renderer lookups (`previousContainer`,
-    // `previousBand`, `prevBar`, `prevVoice`, `prevLastBeat`): these were
-    // considered for hoisting into per-band cached fields. They look stable
-    // for the band's lifetime, but `_container.previousContainer` resolves
-    // via `_renderer.previousRenderer` which can change during system
-    // formation (`StaffSystem.revertLastBar` moves bar renderers between
-    // systems; see `_stableSortKey` doc above for the renderer.index
-    // mutability story). A cached previousContainer set at band
-    // construction time would point past a stale boundary after a revert.
-    // Skipped — the per-call cost is bounded (one map lookup + a few
-    // pointer derefs) and runs only on the band's first beat of each
-    // grouped chain crossing a renderer boundary.
     private _createOrResizeGlyph(sizing: EffectBarGlyphSizing, b: Beat): EffectGlyph {
         let g: EffectGlyph;
         switch (sizing) {
@@ -336,8 +282,7 @@ export class EffectBand extends Glyph {
                 g.doLayout();
                 this._effectGlyphs[b.voice.index].set(b.index, g);
                 this._uniqueEffectGlyphs[b.voice.index].push(g);
-                // FullBar chain link across renderers so EffectSystemPlacement keeps
-                // continuation bars at one magnitude.
+                // FullBar chain link so continuation bars stay at one magnitude.
                 if (this.renderer.index > 0 && b.index === 0) {
                     const previousContainer = this._container.previousContainer;
                     const previousBand = previousContainer?.getBand(b.voice, this.info.effectId);
@@ -403,11 +348,7 @@ export class EffectBand extends Glyph {
                             newGlyph.previousGlyph = prevEffect;
                             // mark renderers as linked for consideration when layouting the renderers (line breaking, partial breaking)
                             this.isLinkedToPrevious = true;
-                            // On the 1->2 transition the previous-effect just became
-                            // a chain head; track it on its owning band so the chain
-                            // span is republished once the staff is finalized. Plain
-                            // EffectGlyph chain heads have no cross-renderer span
-                            // semantics, so the instanceof filter is enough.
+                            // 1->2 transition: track the chain head so its span gets republished after staff finalize.
                             if (
                                 prevEffect.previousGlyph === null &&
                                 prevEffect.band &&
@@ -442,18 +383,12 @@ export class EffectBand extends Glyph {
     }
 
     public alignGlyphs(): void {
-        // Invalidate the cached x-range; it will be lazily rebuilt on the next
-        // computeLocalXRange/publishSpanRange call after glyph extents have
-        // fully settled.
+        // x-range is rebuilt lazily after extents settle.
         this._xRangeBaseDirty = true;
         this._xRangeMin = 0;
         this._xRangeMax = 0;
         this._xRangeFound = false;
 
-        // Iterate `_uniqueEffectGlyphs` (insertion-ordered, holds the
-        // glyphs directly with `g.beat` available) instead of
-        // `_effectGlyphs[v].keys()` + voice/beat lookup. Same set; one fewer
-        // map probe per glyph.
         for (let v: number = 0; v < this._uniqueEffectGlyphs.length; v++) {
             const voiceGlyphs = this._uniqueEffectGlyphs[v];
             for (let i = 0, n = voiceGlyphs.length; i < n; i++) {
@@ -464,15 +399,10 @@ export class EffectBand extends Glyph {
     }
 
     /**
-     * Writes the renderer-local x range used by {@link EffectSystemPlacement}
-     * into `out`. Unions glyph paint extents (not `x`/`width` — many effect
-     * glyphs keep `width = 0`) with any cross-renderer spans published via
-     * {@link publishSpanRange}. Returns `false` when the band has no usable
-     * range (empty or every glyph reports a degenerate paint extent).
-     *
-     * O(1) after the cache is built. The first call after {@link alignGlyphs}
-     * lazily walks `_uniqueEffectGlyphs` once; subsequent calls and incremental
-     * widening from {@link publishSpanRange} are O(1).
+     * Writes the renderer-local x range into `out`. Unions glyph paint
+     * extents (effect glyphs often have width=0, so x/width is not enough)
+     * with cross-renderer spans from {@link publishSpanRange}. Returns
+     * `false` when the band has no usable range.
      */
     public computeLocalXRange(out: EffectBandXRange): boolean {
         if (this.isEmpty) {

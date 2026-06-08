@@ -128,7 +128,7 @@ export abstract class ScoreLayout {
 
     private _lazyPartials: Map<string, LazyPartial> = new Map<string, LazyPartial>();
 
-    protected getExistingPartialArgs(id:string): RenderFinishedEventArgs|undefined {
+    protected getExistingPartialArgs(id: string): RenderFinishedEventArgs | undefined {
         return this._lazyPartials.has(id) ? this._lazyPartials.get(id)!.args : undefined;
     }
 

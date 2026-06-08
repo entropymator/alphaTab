@@ -895,11 +895,7 @@ export abstract class LineBarRenderer extends BarRendererBase {
         canvas.fill();
     }
 
-    /**
-     * Writes the helper's beam/flag/tuplet-bracket y-extent into `out`
-     * (0 = no overflow on that side). Shared by the scalar overflow pass
-     * and the per-x skyline pass.
-     */
+    /** Writes the helper's beam/flag/tuplet-bracket y-extent into `out` (0 = no overflow on that side). */
     private _computeBeamingBounds(h: BeamingHelper, out: BeamingBounds): void {
         let topY = 0;
         let bottomY = 0;
@@ -960,12 +956,9 @@ export abstract class LineBarRenderer extends BarRendererBase {
                     topY -= this.tupletSize + this.tupletOffset;
                 }
                 if (h.hasTuplet && tupletDirection !== direction) {
-                    // Use flag position in tuplet direction (matches `paintTuplets`),
-                    // not getLowestNoteY which excludes content below the notehead.
+                    // Use flag position (matches paintTuplets); getLowestNoteY skips content below the notehead.
                     bottomY =
-                        this.getFlagBottomY(h.beatOfLowestNote, tupletDirection) +
-                        this.tupletSize +
-                        this.tupletOffset;
+                        this.getFlagBottomY(h.beatOfLowestNote, tupletDirection) + this.tupletSize + this.tupletOffset;
                 } else {
                     bottomY = this.voiceContainer.getLowestNoteY(h.beatOfLowestNote, NoteYPosition.Bottom);
                 }
@@ -975,12 +968,8 @@ export abstract class LineBarRenderer extends BarRendererBase {
                     bottomY += this.tupletSize + this.tupletOffset;
                 }
                 if (h.hasTuplet && tupletDirection !== direction) {
-                    // Use flag position in tuplet direction (matches `paintTuplets`),
-                    // not getHighestNoteY which excludes octave dots above the digit.
-                    topY =
-                        this.getFlagTopY(h.beatOfHighestNote, tupletDirection) -
-                        this.tupletSize -
-                        this.tupletOffset;
+                    // Use flag position (matches paintTuplets); getHighestNoteY skips octave dots.
+                    topY = this.getFlagTopY(h.beatOfHighestNote, tupletDirection) - this.tupletSize - this.tupletOffset;
                 } else {
                     topY = this.voiceContainer.getHighestNoteY(h.beatOfHighestNote, NoteYPosition.Top);
                 }
@@ -1027,10 +1016,8 @@ export abstract class LineBarRenderer extends BarRendererBase {
     }
 
     protected initializeBeamDrawingInfo(h: BeamingHelper, direction: BeamDirection) {
-        // Populate the helper's pre-allocated per-direction slot in place; the
-        // caller marks it valid after `ensureBeamDrawingInfo` finishes its
-        // mid-element shifts. Reusing the slot avoids the per-cycle allocation
-        // that the prior `new BeamingHelperDrawInfo()` + `Map.set` pattern paid.
+        // Populate the helper's pre-allocated slot in place; caller marks it
+        // valid once mid-element shifts complete.
         const drawingInfo = h.getDrawingInfo(direction);
 
         const firstBeat = h.beats[0];

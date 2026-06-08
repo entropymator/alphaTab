@@ -2,13 +2,13 @@ import type { EventEmitterOfT } from '@coderline/alphatab/EventEmitter';
 import { Logger } from '@coderline/alphatab/Logger';
 import { ScoreSubElement } from '@coderline/alphatab/model/Score';
 import { type ICanvas, TextAlign } from '@coderline/alphatab/platform/ICanvas';
+import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 import type { TextGlyph } from '@coderline/alphatab/rendering/glyphs/TextGlyph';
 import type { RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import { ScoreLayout } from '@coderline/alphatab/rendering/layout/ScoreLayout';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
 import type { MasterBarsRenderers } from '@coderline/alphatab/rendering/staves/MasterBarsRenderers';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
-import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 
 /**
  * Base layout for page and parchment style layouts where we have an endless
@@ -339,7 +339,6 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
                     system.y = y;
                 }
             }
-            // Push the trailing system if non-empty (mirrors `_layoutAndRenderScore`).
             if (system.masterBarsRenderers.length > 0) {
                 system.isLast = this.lastBarIndex === system.lastBarIndex;
                 this._systems.push(system);
@@ -451,8 +450,6 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
         const distributable = Math.max(0, staffWidth - system.totalFixedOverhead);
         const contentShare = weightTotal > 0 ? distributable / weightTotal : 0;
 
-        // Single Phase-2 entry reset of cross-bar staff state. See
-        // {@link StaffSystem.resetAllStavesSharedLayoutData}.
         system.resetAllStavesSharedLayoutData();
 
         for (const s of system.allStaves) {

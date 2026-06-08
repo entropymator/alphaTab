@@ -245,8 +245,6 @@ export class RenderStaff {
         // group's final x (settled by scaleToWidth) before unioning.
         const postBaseX = baseX + renderer.postBeatGroupOffset;
 
-        // Pair-merge each bar-local skyline into the staff skyline in
-        // O(s_local + s_staff_growing) per call. Closure-free hot path.
         sky.upSky.unionShifted(bar.upSky, baseX);
         sky.downSky.unionShifted(bar.downSky, baseX);
         sky.upSky.unionShifted(pre.upSky, baseX);
@@ -283,20 +281,9 @@ export class RenderStaff {
 
         this.height = 0;
 
-        // Each renderer's x/width has been settled by the Phase-2 scaleToWidth pass.
         this.systemSkyline.reset();
 
-        // SystemFinalize 4-substep ordering. Each sub-step completes for every
-        // renderer before the next starts. Tie writes in (ii) land before
-        // (iii)'s union and (iv)'s placement read the staff skyline, so a
-        // second pass is unnecessary.
-
-        // (i) Mark every renderer finalized before any cross-renderer chain
-        // walk reads it. Multi-system slur registration is hoisted out of the
-        // per-renderer loop: `SlurRegistry.getAllContinuations` early-returns
-        // for `renderer.index > 0`, so only renderer 0 ever yields work — and
-        // `registerMultiSystemSlurs` over an empty generator is a no-op (the
-        // field is preserved when no items are yielded).
+        // Only renderer 0 ever yields continuations; hoist out of the per-renderer loop.
         if (this.barRenderers.length > 0) {
             this.barRenderers[0].registerMultiSystemSlurs(
                 this.system.layout!.slurRegistry.getAllContinuations(this.barRenderers[0])
@@ -306,15 +293,8 @@ export class RenderStaff {
             renderer.finalizeRendererMinusTies();
         }
 
-        // (ii) Per-renderer cross-renderer work, orchestrated by the staff so
-        // individual bar renderers never write into each other's state:
-        //   - tie writes (which may target spanned renderers' barLocalSkylines)
-        //   - cross-renderer `populateSkyline` dispatch.
-        // Tie writes go first so any height/overflow changes settle before the
-        // chain walk reads renderer geometry. Renderers whose tie writes grew
-        // their own overflow flip `tiesDirty`; the dirty pass is fused with
-        // (iii) below so `updateSizes` / `registerStaffOverflows` runs once
-        // per renderer in the same loop body that consumes the result.
+        // Tie writes go first: they may grow a spanned renderer's overflow,
+        // and the dirty refresh is fused into the union loop below.
         for (const renderer of this.barRenderers) {
             this._finalizeRendererTies(renderer, renderer.ties);
             const multiSystemSlurs = renderer.multiSystemSlurs;
@@ -324,12 +304,6 @@ export class RenderStaff {
             renderer.finalizeEffectBandSpans();
         }
 
-        // (iii) Dirty consume + union bar-local skyline into the staff skyline.
-        // Each renderer's dirty refresh mutates only its own dimensions and
-        // the staff's top/bottom overflows; it does not touch other renderers'
-        // bar-local skylines. So fusing the dirty pass with the per-renderer
-        // union is safe — the union reads only `renderer`'s own state, which
-        // is finalized within the same iteration before the union runs.
         for (const renderer of this.barRenderers) {
             if (renderer.tiesDirty) {
                 renderer.refreshSizes();
@@ -340,7 +314,6 @@ export class RenderStaff {
             this._unionBarLocalIntoStaffSkyline(renderer);
         }
 
-        // (iv) Place effect bands once per staff.
         this.effectPlacement.placeAndApply();
 
         const topOverflow: number = this.topOverflow;
@@ -358,33 +331,11 @@ export class RenderStaff {
     }
 
     /**
-     * Cross-bar arcs live on the start beat's renderer (`owner`) but paint
-     * across subsequent bars; slice each tie's bbox into every spanned bar's
-     * skyline. Tie Y is renderer-local (every renderer in a staff shares
-     * `renderer.y`); X is staff-absolute.
-     *
+     * Slice each tie's bbox into every renderer it spans. Tie X is
+     * staff-absolute; Y is renderer-local (staff renderers share `y`).
      * Ties never span renderers earlier than `owner`, so the walk starts at
-     * `owner.index` and breaks as soon as a renderer starts past the tie's
-     * right edge — bounded by `spans` per tie instead of by `R`. Renderers
-     * that grow their own overflow during this pass flip their `tiesDirty`
-     * flag so `updateSizes` / `registerStaffOverflows` runs once for each at
-     * the end of sub-step (ii), not inline per tie.
-     *
-     * Post-Skyline-binary-search cost profile: each non-owner write is one
-     * `Skyline.insertPlaced` call, internally `_splitAt(xStart) [O(log s)] +
-     * _splitAt(xEnd) [O(log s)] + raise loop + bounded merge`, both bounded
-     * by the touched-segment count. Per-call total is
-     * `T ties × average_spans × O(log s)`. Pre-aggregating same-renderer
-     * writes into a sorted scratch buffer and dispatching a single batched
-     * sweep per (target, side) was investigated and shelved: ties' x-ranges
-     * derive from beat positions, so two ties only collide on the same
-     * `(target, xStart, xEnd)` triple when they attach to the exact same
-     * beats (chord ties) AND span the same renderer. In typical fixtures
-     * `T` is small, `average_spans` ≈ 1–2, and chord-tie collisions are
-     * rare — the win is bounded to a small constant on edge-case scores
-     * and zero on the common path, while the batched-write API would add
-     * a new Skyline entry point plus a per-renderer scratch buffer. Not
-     * worth the scaffolding until a profile flags this as a hot spot.
+     * `owner.index` and breaks once a renderer starts past the tie's right
+     * edge.
      */
     private _finalizeRendererTies(owner: BarRendererBase, ties: Iterable<ITieGlyph>): void {
         const staffRenderers = this.barRenderers;
