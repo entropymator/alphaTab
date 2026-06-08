@@ -397,6 +397,10 @@ export class BarRendererBase {
         this.bottomEffects.populateSkyline();
 
         this.emitSubclassBarLocalSkyline();
+
+        // Geometry is now settled; cross-renderer chain walks during
+        // finalizeStaff can rely on this flag. Reset by {@link afterReverted}.
+        this.isFinalized = true;
     }
 
     protected emitHelperSkyline(_h: BeamingHelper): void {}
@@ -509,11 +513,6 @@ export class BarRendererBase {
         }
 
         this._multiSystemSlurs = ties;
-    }
-
-    /** Marks finalized so cross-renderer chain walks see every renderer in the staff as ready. */
-    public finalizeRendererMinusTies(): void {
-        this.isFinalized = true;
     }
 
     /** Republish each effect band's cross-renderer chain spans. */

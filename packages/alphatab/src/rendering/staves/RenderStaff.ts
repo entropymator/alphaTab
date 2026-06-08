@@ -289,10 +289,9 @@ export class RenderStaff {
                 this.system.layout!.slurRegistry.getAllContinuations(this.barRenderers[0])
             );
         }
-        for (const renderer of this.barRenderers) {
-            renderer.finalizeRendererMinusTies();
-        }
 
+        // `isFinalized` was set at the tail of each renderer's `scaleToWidth`,
+        // so cross-renderer chain walks below see a consistent staff state.
         // Tie writes go first: they may grow a spanned renderer's overflow,
         // and the dirty refresh is fused into the union loop below.
         for (const renderer of this.barRenderers) {
