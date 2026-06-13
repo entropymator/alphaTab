@@ -40,9 +40,41 @@ node dist/run.mjs --only canon-resize --label probe-canon --trials 3
 
 # Diff two saved baselines (markdown to stdout). The diff column `sig`
 # marks ★ for ≥ 2σ pooled (real win/regression), ~ for 1-2σ (marginal),
-# · for below noise floor.
+# · for below noise floor. The diff REFUSES to compare baselines with
+# different --trials counts, and warns when the saved hostname / CPU
+# model / governor / Turbo state / pin set differ between baseline and
+# candidate, or when their savedAt timestamps are >30 min apart.
 node dist/cli.mjs diff baselines/feature-perf.json baselines/<later>.json
+
+# By default, child processes are pinned to a stable core set with
+# `taskset` (linux only; auto-picks cores 2,3 when ≥4 CPUs visible) so
+# cache state survives across trials. Override the pin or disable it
+# entirely when you actually want the OS scheduler to float:
+node dist/run.mjs --trials 3 --pin 4,5 ...
+node dist/run.mjs --trials 3 --no-pin ...
 ```
+
+### Host preflight (linux)
+
+The bench reads `/sys/devices/system/cpu/.../scaling_governor` and the
+Turbo Boost knob at startup and warns when either would inflate σ. To
+silence the warnings:
+
+```bash
+# Lock CPU clock (the bench will pin to two cores; this stops them ramping)
+sudo cpupower frequency-set -g performance
+
+# Disable Turbo Boost — first-trial clock would otherwise differ from
+# sustained, biasing the first sample optimistically.
+sudo bash -c 'echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo'   # intel
+sudo bash -c 'echo 0 > /sys/devices/system/cpu/cpufreq/boost'           # amd
+```
+
+These changes survive until reboot. On a shared workstation, run them
+just before a perf session and don't bother reverting — `performance`
+governor + no Turbo costs a few percent of peak throughput but the
+single-digit-percent perf wins this bench is designed to detect can
+otherwise be drowned by clock-state variance.
 
 Per-scenario output lands in:
 - Single-trial: `runs/<label>/<scenario-id>/{result.json, cpu.cpuprofile, heap.heapprofile}`
@@ -163,6 +195,15 @@ Next iteration measures against the new floor.
   later.
 - **Visual tests are sacred.** Never `npm run test-accept-reference` to make
   a perf patch pass. If pixels changed, the perf change is wrong.
+- **Always re-baseline in the same session, at the same `--trials`.** Saved
+  baselines older than ~30 min, or measured at a different trial count,
+  are no longer valid comparison anchors — the noise floor is a property
+  of *this* session's host load and *this* trial count, not of the code
+  itself. The diff CLI hard-errors on a trial-count mismatch and warns on
+  savedAt drift / host-info mismatch; treat both as "go re-baseline" not
+  "ignore and continue". (This rule exists because round 2026-06-13 lost
+  a full day to apparent `★` wins that were 3-trial baseline noise; a
+  fair 5/5-trial re-baseline showed +2.5 % regression on the same code.)
 
 ## Known limitations to fix early
 

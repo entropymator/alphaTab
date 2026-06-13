@@ -23,10 +23,22 @@ interface BaselineScenario {
     trials: BaselineTrial[];
 }
 
+interface BaselineHost {
+    hostname?: string;
+    platform?: string;
+    arch?: string;
+    cpuModel?: string;
+    cpuCount?: number;
+    tasksetCores?: string | null;
+    cpuGovernors?: string[];
+    turboBoost?: { engine: string; on: boolean } | null;
+}
+
 interface BaselineFile {
     label: string;
     savedAt: string;
     trialsPerScenario: number;
+    host?: BaselineHost;
     scenarios: BaselineScenario[];
 }
 
@@ -67,9 +79,73 @@ function significance(deltaNs: number, baseStd: number, candStd: number): string
     return '·';
 }
 
+/**
+ * Threshold: two baselines whose savedAt timestamps differ by more than this
+ * window almost certainly come from different sessions, and so likely from
+ * different host states (load, clock state, V8 warm-up). Comparing them
+ * means the wall-clock σ on one side will reflect a different machine reality
+ * than the other. The diff still runs — we just shout.
+ */
+const SAVED_AT_DRIFT_WARN_MIN = 30;
+
+function compareHosts(a: BaselineFile, b: BaselineFile): string[] {
+    const warnings: string[] = [];
+    const ah = a.host;
+    const bh = b.host;
+    if (!ah || !bh) {
+        // Pre-host-metadata baselines: nothing we can compare beyond timestamps.
+    } else {
+        if (ah.hostname && bh.hostname && ah.hostname !== bh.hostname) {
+            warnings.push(`hostname differs: ${ah.hostname} vs ${bh.hostname} — cross-host deltas are meaningless`);
+        }
+        if (ah.cpuModel && bh.cpuModel && ah.cpuModel !== bh.cpuModel) {
+            warnings.push(`CPU model differs: ${ah.cpuModel} vs ${bh.cpuModel}`);
+        }
+        const aGov = (ah.cpuGovernors ?? []).join('/');
+        const bGov = (bh.cpuGovernors ?? []).join('/');
+        if (aGov && bGov && aGov !== bGov) {
+            warnings.push(`CPU governor differs: ${aGov} vs ${bGov}`);
+        }
+        const aBoost = ah.turboBoost ? String(ah.turboBoost.on) : 'unknown';
+        const bBoost = bh.turboBoost ? String(bh.turboBoost.on) : 'unknown';
+        if (aBoost !== 'unknown' && bBoost !== 'unknown' && aBoost !== bBoost) {
+            warnings.push(`Turbo Boost differs: ${aBoost} vs ${bBoost}`);
+        }
+        const aPin = ah.tasksetCores ?? 'none';
+        const bPin = bh.tasksetCores ?? 'none';
+        if (aPin !== bPin) {
+            warnings.push(`CPU pin differs: ${aPin} vs ${bPin}`);
+        }
+    }
+    try {
+        const driftMs = Math.abs(new Date(b.savedAt).getTime() - new Date(a.savedAt).getTime());
+        const driftMin = driftMs / 60_000;
+        if (driftMin > SAVED_AT_DRIFT_WARN_MIN) {
+            warnings.push(
+                `baselines saved ${driftMin.toFixed(0)} min apart (> ${SAVED_AT_DRIFT_WARN_MIN} min) — likely different sessions; re-baseline candidate's pair in the same session`
+            );
+        }
+    } catch {
+        /* ignore unparseable dates */
+    }
+    return warnings;
+}
+
 export function diffRuns(baselinePath: string, candidatePath: string): string {
     const a = JSON.parse(fs.readFileSync(baselinePath, 'utf8')) as BaselineFile;
     const b = JSON.parse(fs.readFileSync(candidatePath, 'utf8')) as BaselineFile;
+
+    if (a.trialsPerScenario !== b.trialsPerScenario) {
+        // Hard error: comparing different trial counts means baseline and
+        // candidate have systematically different σ floors, and the apparent
+        // delta may be entirely an artefact of one side being measured more
+        // tightly. See round summary 2026-06-13 — EW-5 paintStaffLines was
+        // killed by exactly this confound.
+        throw new Error(
+            `baseline trials=${a.trialsPerScenario} vs candidate trials=${b.trialsPerScenario} — refusing to diff. Re-measure both at the same --trials N.`
+        );
+    }
+
     const bById = new Map(b.scenarios.map(s => [s.id, s]));
 
     const lines: string[] = [];
@@ -79,6 +155,14 @@ export function diffRuns(baselinePath: string, candidatePath: string): string {
         `baseline: trials=${a.trialsPerScenario}, label=${a.label} · candidate: trials=${b.trialsPerScenario}, label=${b.label}`
     );
     lines.push('');
+    const hostWarnings = compareHosts(a, b);
+    if (hostWarnings.length > 0) {
+        lines.push('> ⚠️  Host / session drift detected:');
+        for (const w of hostWarnings) {
+            lines.push(`> - ${w}`);
+        }
+        lines.push('');
+    }
     lines.push(
         'Significance: `★` = ≥ 2σ pooled (clear win/regression), `~` = 1-2σ (marginal), `·` = below noise floor.'
     );
