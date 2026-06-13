@@ -1,0 +1,32 @@
+{
+    "name": "@coderline/alphatab-bench",
+    "version": "1.9.0",
+    "description": "Profiling and benchmarking harness for alphaTab.",
+    "private": true,
+    "author": "Daniel Kuschny",
+    "license": "MPL-2.0",
+    "type": "module",
+    "scripts": {
+        "clean": "rimraf dist runs",
+        "lint": "biome lint",
+        "typecheck": "tsc --noEmit",
+        "build": "vite build",
+        "bench": "npm run build && node dist/run.mjs",
+        "bench:scenario": "npm run build && node dist/runOne.mjs",
+        "bench:diff": "npm run build && node dist/cli.mjs diff",
+        "bench:baseline": "npm run build && node dist/run.mjs --save-baseline"
+    },
+    "dependencies": {
+        "@coderline/alphatab": "*"
+    },
+    "devDependencies": {
+        "@coderline/alphaskia": "^3.5.147",
+        "@coderline/alphaskia-linux": "^3.5.147",
+        "@coderline/alphaskia-windows": "^3.5.147",
+        "@types/node": "^25.9.1",
+        "rimraf": "^6.1.3",
+        "tslib": "^2.8.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.14"
+    }
+}
