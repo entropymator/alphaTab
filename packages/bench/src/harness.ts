@@ -1,7 +1,5 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import * as v8 from 'node:v8';
-import * as alphaSkiaModule from '@coderline/alphaskia';
 
 import { Environment } from '@coderline/alphatab/Environment';
 import { ScoreLoader } from '@coderline/alphatab/importer/ScoreLoader';
@@ -10,42 +8,15 @@ import { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
 import { Settings } from '@coderline/alphatab/Settings';
 import { type Scenario } from './scenarios';
 
-let _alphaSkiaPrepared = false;
-
-async function prepareAlphaSkia(): Promise<void> {
-    if (_alphaSkiaPrepared) return;
-    const repoRoot = path.resolve(new URL('../..', import.meta.url).pathname, '..');
-    const fontDir = path.join(repoRoot, 'packages/alphatab/font');
-
-    const bravura = fs.readFileSync(path.join(fontDir, 'bravura/Bravura.otf')).buffer as ArrayBuffer;
-    (alphaSkiaModule as typeof alphaSkiaModule & {
-        AlphaSkiaCanvas: { switchToFreeTypeFonts(): void };
-    }).AlphaSkiaCanvas.switchToFreeTypeFonts();
-    Environment.enableAlphaSkia(bravura, alphaSkiaModule);
-
-    for (const name of [
-        'noto-sans/NotoSans-Regular.otf',
-        'noto-sans/NotoSans-Italic.otf',
-        'noto-sans/NotoSans-Bold.otf',
-        'noto-sans/NotoSans-BoldItalic.otf',
-        'noto-serif/NotoSerif-Regular.otf',
-        'noto-serif/NotoSerif-Italic.otf',
-        'noto-serif/NotoSerif-Bold.otf',
-        'noto-serif/NotoSerif-BoldItalic.otf',
-        'noto-music/NotoMusic-Regular.otf',
-        'noto-color-emoji/NotoColorEmoji_WindowsCompatible.ttf',
-        'petaluma/Petaluma.otf'
-    ]) {
-        const full = path.join(fontDir, name);
-        const buf = fs.readFileSync(full);
-        Environment.registerAlphaSkiaCustomFont(new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength));
-    }
-    _alphaSkiaPrepared = true;
-}
-
 function makeSettings(): Settings {
     const settings = new Settings();
-    settings.core.engine = 'skia';
+    // SVG is the primary engine in the web version of alphaTab, and what the
+    // user actually feels when resizing. We measure that path. CssFontSvgCanvas
+    // generates markup as strings, so it has no DOM dependency in Node — the
+    // measurement layer (FontSizes) falls back to a constant character-width
+    // table on Node.js, which gives reproducible (if visually imprecise)
+    // numbers. Layout cost — what we're profiling — is unaffected.
+    settings.core.engine = 'svg';
     settings.core.enableLazyLoading = false;
     Environment.highDpiFactor = 1;
     settings.display.resources.tablatureFont.families = ['Noto Sans', 'Noto Music', 'Noto Color Emoji'];
@@ -92,7 +63,6 @@ export interface ScenarioResult {
 }
 
 export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
-    await prepareAlphaSkia();
     const settings = makeSettings();
 
     const data = fs.readFileSync(scenario.scorePath);

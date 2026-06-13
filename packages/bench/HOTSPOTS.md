@@ -1,75 +1,95 @@
 # alphaTab rendering hotspots
 
 Living backlog. Updated every bench iteration. Numbers in this file refer to
-the initial baseline (see [INITIAL_BASELINE_REPORT.md](./INITIAL_BASELINE_REPORT.md))
-captured on `feature/perf` HEAD with `node dist/run.mjs --label initial-baseline`.
+the SVG baseline (see [INITIAL_BASELINE_REPORT.md](./INITIAL_BASELINE_REPORT.md))
+captured on `feature/perf` HEAD with `node dist/run.mjs --label svg-baseline`.
+
+The bench uses the **SVG render engine** because that is the primary engine
+in the web version of alphaTab — the one the user experiences when resizing
+in a browser. (An earlier skia-based baseline existed; switching to SVG made
+GC and unionShifted jump in the top-self table because skia's native paint
+calls were hiding them.)
 
 > Self-time percentages below are out of the whole sampled CPU profile,
-> including alphaskia native calls and Node internals. Layout-only wins compete
-> for a fraction of the total — keep that in mind when scoping work.
+> including Node module compilation. Layout-only wins compete for a fraction
+> of the total — keep that in mind when scoping work.
+
+## Headline numbers (SVG baseline)
+
+| Scenario | median |
+| --- | --- |
+| tiny-render | 0.80 ms |
+| nightwish-render | 24.5 ms |
+| nightwish-resize (4 widths ≈ 7.5 ms each) | 30 ms |
+| canon-render | 95 ms |
+| canon-resize (4 widths ≈ 36 ms each) | 145 ms |
+| fade-to-black-resize | ~ |
+
+The `nightwish-resize` ≈ 7.5 ms per width change matches the user's reported
+"12-15 ms" range once browser overhead (DOM diffing, repaint, font metrics
+from real `measureText`) is layered on top.
 
 ## Easy wins — open
 
-Candidates that look like single-file, no-API-change patches. Verify by running
-the relevant scenario with the bench, applying the patch, and re-running to
-confirm ≥ 1 % improvement on the target metric with no visual-test regressions.
+Candidates that look like single-file, no-API-change patches. Verify by
+running the relevant scenario with the bench, applying the patch, and
+re-running to confirm ≥ 1 % improvement on the target metric with no
+visual-test regressions.
 
-### EW-1. `_fillMusicFontSymbolText` polymorphism in `SkiaCanvas`
-- **Where**: [SkiaCanvas.ts:352](packages/alphatab/src/platform/skia/SkiaCanvas.ts#L352)
-- **Signal**: appears 3+ times in the CPU top-15 for nightwish-render
-  (14.9 ms + 12.3 ms + 10.4 ms ≈ 4.0 % combined self-time). Multiple distinct
-  frames for the same function = polymorphic call site that V8 can't inline.
-- **Hypothesis**: `centerAtPosition` boolean + symbol string path creates
-  branches V8 splits into separate compiled variants. Splitting into two
-  monomorphic helpers (`_fillSymbol`, `_fillCenteredSymbol`) may collapse the
-  frames.
-- **Risk**: low — file-local refactor.
+### EW-1. `unionShifted` is the top alphatab hotspot on resize
+- **Where**: [Skyline.unionShifted](packages/alphatab/src/rendering/skyline/Skyline.ts), recently introduced (commit b3215e97 — "Skyline.unionShifted; drop 6 closures × R in _unionBarLocalIntoStaffSkyline")
+- **Signal**: 2.1 % + 0.8 % self-time in nightwish-resize, 2.0 % in
+  canon-resize — same function appearing twice = polymorphic site V8 can't
+  inline. Combined with GC at ~10 %, this is almost certainly still
+  allocating in a hot loop despite the recent closure-removal patch.
+- **Hypothesis**: an inner allocation site remains (intermediate array, Map,
+  or coordinate object per segment). Track the source line with a `Counter`
+  bump, then read the heap profile against that.
+- **Risk**: low — Skyline state is internal.
 
-### EW-2. `paintExtended` virtual call cost
-- **Where**: [BarLineGlyph.ts:21](packages/alphatab/src/rendering/glyphs/BarLineGlyph.ts#L21) and overrides
-- **Signal**: 5.2 % self-time in canon-render, 6.2 % in fade-to-black-resize,
-  3.0 % in canon-resize. Abstract virtual method with multiple overrides —
-  classic megamorphic dispatch.
-- **Hypothesis**: hoist the variant type into a numeric tag and dispatch via
-  switch in a single concrete method. Eliminates the v-table lookup per bar
-  per paint.
-- **Risk**: medium — touches every BarLineGlyph subclass.
+### EW-2. `buildBoundingsLookup` runs on every resize
+- **Where**: [BarRendererBase / staves](packages/alphatab/src/rendering/utils/BoundsLookup.ts) — exact site TBD
+- **Signal**: 0.7 % in nightwish-resize, 1.2 % in canon-resize. A bounds
+  lookup rebuild is appropriate on first render but not on a pure width
+  change.
+- **Hypothesis**: `boundsLookup = new BoundsLookup()` fires on every resize
+  in [ScoreRenderer.resizeRender](packages/alphatab/src/rendering/ScoreRenderer.ts#L186).
+  Cache the bounds across width-only resizes — invalidate only when system
+  packing actually changes.
+- **Risk**: medium — partial-render path depends on the bounds lookup state.
 
-### EW-3. `unionShifted` allocation pattern
-- **Where**: [Skyline.ts](packages/alphatab/src/rendering/skyline/Skyline.ts) (recently introduced per commit b3215e97)
-- **Signal**: 7.45 ms / 0.8 % self-time in nightwish-render. Combined with
-  the GC at 7 %, this is a near-certain allocation hotspot.
-- **Hypothesis**: the helper still allocates intermediate arrays or builds
-  short-lived objects per iteration. Reusable scratch buffer.
-- **Risk**: low if scoped to internal Skyline state.
+### EW-3. `collectSpaces` polymorphism
+- **Where**: [layout/BarLayoutingInfo.ts (`collectSpaces`)](packages/alphatab/src/rendering/staves/BarLayoutingInfo.ts)
+- **Signal**: 0.6 % × 2 frames in canon-resize → polymorphic call site.
+- **Hypothesis**: same as EW-2 in shape — split into monomorphic variants
+  or inline at the single hot caller.
+- **Risk**: low.
 
-### EW-4. `paintStaffLines` per-line strokes
-- **Where**: [LineBarRenderer.ts:131](packages/alphatab/src/rendering/LineBarRenderer.ts#L131)
-- **Signal**: 1.9 – 3.1 % self-time across canon/nightwish. Five staff lines
-  per bar × many bars = thousands of `moveTo`/`lineTo`/`stroke` triplets.
-- **Hypothesis**: batch all five staff lines into one Path then stroke once
-  per bar. Reduces skia native crossings by ~5x.
-- **Risk**: low — purely paint optimisation, no layout impact.
+### EW-4. `fillRect` polymorphism in SvgCanvas
+- **Where**: [SvgCanvas.fillRect](packages/alphatab/src/platform/svg/SvgCanvas.ts)
+- **Signal**: 3 distinct frames at canon-resize (1.2 % + 0.9 % + 0.6 %).
+  Same pattern as the skia-baseline `_fillMusicFontSymbolText`
+  polymorphism.
+- **Hypothesis**: integer vs float coordinate handling, or
+  with/without-style code paths split V8's IC into separate compiled
+  variants. Single monomorphic path likely a 1-2 % win.
+- **Risk**: low — pure paint optimisation.
 
-### EW-5. `Map` allocation churn in canon-render
-- **Where**: needs tracing — `Map` native frames account for 2.2 MB+ of
-  sampled allocations across canon scenarios.
-- **Signal**: see "Heap allocation hotspots / canon-render" — three separate
-  Map allocation entries totalling > 1 MB.
-- **Hypothesis**: per-bar or per-beat scratch Maps that could be reused.
-  Pattern matches the wins already landed in T4 batch A (ca1895b4).
-- **Risk**: low if call sites are isolated.
-- **Next step**: enable `--enable-source-maps` in the bench child and resolve
-  the Map allocation frames to source files (currently they show as `<native>`).
+### EW-5. `paintStaffLines` per-line strokes
+- **Where**: [LineBarRenderer.paintStaffLines](packages/alphatab/src/rendering/LineBarRenderer.ts#L131)
+- **Signal**: 0.5-0.7 % across all scenarios, two polymorphic frames in
+  canon-resize.
+- **Hypothesis**: 5 staff lines × many bars = thousands of `moveTo`/
+  `lineTo`/`stroke` triplets. Batch into one Path per bar.
+- **Risk**: low — paint-only.
 
-### EW-6. Heap profile measures process lifetime, not the measured loop
-- **Where**: [harness.ts](packages/bench/src/harness.ts)
+### EW-6. Harness: heap profile measures process lifetime, not the loop
+- **Where**: [bench/src/harness.ts](packages/bench/src/harness.ts)
 - **Signal**: heap top-N is currently dominated by `readNote` / `readBeat`
   (the GP importer) because `--heap-prof` accumulates from process start.
 - **Fix**: use the `node:inspector` Heap Profiler API to start sampling at
-  the beginning of the measured loop and stop at the end. The CPU profile
-  has the same issue but is more diluted by sample volume.
-- **Risk**: low — harness-internal change. Lands as `chore(bench)`, not perf.
+  the beginning of the measured loop and stop at the end.
+- **Risk**: low — harness-internal. Lands as `chore(bench)`, not perf.
 
 ## Easy wins — landed
 
@@ -80,50 +100,47 @@ confirm ≥ 1 % improvement on the target metric with no visual-test regressions
 Candidates too large for a single iteration. Each entry: hypothesis,
 expected payoff, blast radius, sketch.
 
-### DR-1. Resize path re-walks the whole score even when only viewport width changed
-- **Observation**: nightwish-resize median is 102 ms across 4 width changes
-  (~25 ms each). Canon resize is 138 ms per width change. resize.layoutResize
-  dominates: 99 % of resize.total.
-- **Hypothesis**: a width change reuses no per-bar layout state across calls.
-  Per-bar sizing is invariant under width changes; only system packing and
-  paint should re-run. Caching bar-local widths and just re-running the
-  packer could collapse 25 ms → ~5 ms per resize.
+### DR-1. Resize re-walks every bar even when only the viewport width changed
+- **Observation**: canon-resize is 36 ms per width change. `layout.doResize`
+  dominates `resize.total`. Bar-local sizing is invariant under a width
+  change; only system packing + paint should re-run.
+- **Hypothesis**: cache the per-bar layout result, re-pack systems only.
+  Could collapse 36 ms → ~5-10 ms per resize.
 - **Risk**: high — touches the layout pipeline's central invariants.
-  Affects partial render and lazy loading paths.
-- **Estimated payoff**: 3–5x improvement on resize scenarios, addressing the
-  user's primary reported pain point directly.
+- **Estimated payoff**: 3-5x improvement on resize. Largest single lever.
 
-### DR-2. Paint contributes more to "resize" cost than layout
-- **Observation**: in canon-resize, layout.finalizeSystem + finalizeStaff
-  totals 318 ms out of 4350 ms of resize.layoutResize (~7 %). The remaining
-  93 % is in `doResize` outside our instrumented layout stages — almost
-  entirely paint and skia ops.
-- **Hypothesis**: today's `resize()` re-paints everything. A real fix is
-  layout-only resize that defers paint, similar to browser layout/paint
-  separation.
-- **Risk**: high — public API contract change for `resizeRender`. Could
-  break consumers that expect paint to be done by the time the event fires.
-- **Estimated payoff**: order-of-magnitude on resize wall time. Biggest
-  single lever available.
-
-### DR-3. SkiaCanvas wrapper overhead
-- **Observation**: skia native frames (fillText, fillRect, beginRender,
-  measureText) account for 15-25 % combined self-time in resize scenarios,
-  with multiple stack frames per native call indicating wrapper churn.
-- **Hypothesis**: SkiaCanvas adds ~1-2 µs of wrapper logic per glyph paint.
-  Across ~10k glyphs per resize, that's 10-20 ms of pure overhead.
-- **Risk**: medium — wrapper exists for cross-engine compatibility (Skia /
-  HTML5 / SVG).
-- **Estimated payoff**: 5-10 % on heavy paint scenarios.
-
-### DR-4. GC pressure 2.4 – 7.2 % of CPU time
-- **Observation**: garbage collector consistently ranks in top-5 self-time
-  across all scenarios. 7.2 % in nightwish-render is the worst.
+### DR-2. GC pressure 8-10 % of CPU across resize scenarios
+- **Observation**: GC is consistently the top self-time entry across all
+  resize scenarios (9.9 % nightwish-resize, 8.9 % canon-resize). Six prior
+  T-series perf commits attacked individual allocation sites; the pattern
+  persists.
 - **Hypothesis**: not one site — death by a thousand short-lived objects
-  (closures captured in `.map`/`.filter`, Maps recreated per call, etc.).
-  Already 6+ T-series perf commits have addressed individual sites; the
-  pattern is endemic.
-- **Risk**: low per individual fix, but the project needs a sustained
-  allocation audit rather than ad-hoc patches.
-- **Estimated payoff**: each well-targeted alloc fix is ~0.3-0.8 % global.
-  Compounding across 20 sites: 6-15 %.
+  (closures, Maps, sort keys, segment objects). Needs a systematic
+  allocation audit, not ad-hoc patches.
+- **Risk**: low per individual fix; the project needs sustained focus.
+- **Estimated payoff**: each well-targeted alloc fix is 0.3-0.8 % global;
+  compounding across 20 sites: 6-15 %.
+
+### DR-3. SvgCanvas string-concat paint API
+- **Observation**: with the SVG engine, paint cost is no longer dominated
+  by native calls (as it was with skia). Instead the cost is JS-side
+  markup generation: string concatenation per glyph, attribute formatting,
+  etc.
+- **Hypothesis**: a Path-batching SvgCanvas (group N similar primitives
+  into one `<path d="...">` element) could halve markup size and
+  generation cost.
+- **Risk**: medium — API contract change for SvgCanvas, affects every
+  glyph paint method.
+- **Estimated payoff**: 10-20 % on paint-bound scenarios.
+
+### DR-4. Polymorphic call sites everywhere
+- **Observation**: across the new SVG baseline, four separate functions
+  (`unionShifted`, `collectSpaces`, `fillRect`, `paintStaffLines`,
+  `compileForInternalLoader`) show up twice or more in the top-15 with
+  distinct frames — the V8 hallmark of megamorphic IC.
+- **Hypothesis**: alphatab's abstract method dispatch (BarLineGlyph,
+  BarRendererBase virtuals, etc.) is poisoning V8's inline caches. A
+  tagged-union flat-dispatch refactor would eliminate the v-table lookups.
+- **Risk**: high — touches the entire glyph type hierarchy.
+- **Estimated payoff**: 5-10 % from collapsed dispatch + better
+  inlining downstream.
