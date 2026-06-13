@@ -1078,9 +1078,7 @@ export class StaffSystem {
     }
 
     public finalizeSystem(): void {
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('layout.finalizeSystem');
-        }
+        Profiler.begin('layout.finalizeSystem');
         const settings = this.layout.renderer.settings;
         if (this.index === 0) {
             this.topPadding = settings.display.firstSystemPaddingTop;
@@ -1114,9 +1112,7 @@ export class StaffSystem {
         for (const b of this._brackets!) {
             b.finalizeBracket(settings.display.resources.engravingSettings);
         }
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('layout.finalizeSystem');
-        }
+        Profiler.end('layout.finalizeSystem');
     }
 
     private _finalizeTrackGroups(onlyFirstGroup: boolean = false) {

@@ -12,6 +12,7 @@ import { createApiDtsFiles } from './typescript';
 import generateDts from './vite.plugin.dts';
 import { emitDtsPlugin } from './vite.plugin.emit-dts';
 import min from './vite.plugin.min';
+import { stripProfilingPlugin } from './vite.plugin.strip-profiling';
 import { elementStyleUsingPlugin } from './vite.plugin.transform';
 
 const terserOptions: MinifyOptions = {
@@ -120,19 +121,9 @@ export function buildTsconfigAliases(projectDir: string): Array<{ find: RegExp; 
     return aliases;
 }
 
-/**
- * Compile-time profiling flag. `if (__PROFILING__) { ... }` blocks are removed
- * from any bundle built with this set to `false` (dead-code elimination). Use
- * `true` only in dedicated profiling builds (packages/bench).
- */
-export function profilingDefine(enabled: boolean): Record<string, string> {
-    return { __PROFILING__: JSON.stringify(enabled) };
-}
-
 export function defaultBuildUserConfig(projectDir: string = process.cwd()): UserConfig {
     return {
-        define: profilingDefine(false),
-        plugins: [licenseHeaderPlugin(), elementStyleUsingPlugin()],
+        plugins: [licenseHeaderPlugin(), elementStyleUsingPlugin(), stripProfilingPlugin({ enabled: false })],
         resolve: {
             tsconfigPaths: true,
             alias: buildTsconfigAliases(projectDir)

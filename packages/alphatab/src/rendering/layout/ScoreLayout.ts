@@ -81,13 +81,9 @@ export abstract class ScoreLayout {
     public resize(): void {
         this._lazyPartials.clear();
         this.slurRegistry.clear();
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('layout.doResize');
-        }
+        Profiler.begin('layout.doResize');
         this.doResize();
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('layout.doResize');
-        }
+        Profiler.end('layout.doResize');
     }
     public abstract doResize(): void;
 
@@ -130,13 +126,9 @@ export abstract class ScoreLayout {
         }
 
         this._createScoreInfoGlyphs();
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('layout.doLayoutAndRender');
-        }
+        Profiler.begin('layout.doLayoutAndRender');
         this.doLayoutAndRender(renderHints);
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('layout.doLayoutAndRender');
-        }
+        Profiler.end('layout.doLayoutAndRender');
     }
 
     private _lazyPartials: Map<string, LazyPartial> = new Map<string, LazyPartial>();

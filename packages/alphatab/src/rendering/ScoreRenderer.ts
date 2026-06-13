@@ -137,14 +137,10 @@ export class ScoreRenderer implements IScoreRenderer {
     }
 
     public render(renderHints?: RenderHints): void {
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('render.total');
-        }
+        Profiler.begin('render.total');
         if (this.width === 0) {
             Logger.warning('Rendering', 'AlphaTab skipped rendering because of width=0 (element invisible)', null);
-            if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-                Profiler.end('render.total');
-            }
+            Profiler.end('render.total');
             return;
         }
         // For partial renders we preserve the existing lookup so bars outside the re-layouted
@@ -177,15 +173,11 @@ export class ScoreRenderer implements IScoreRenderer {
             this._layoutAndRender(renderHints);
             Logger.debug('Rendering', 'Rendering finished');
         }
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('render.total');
-        }
+        Profiler.end('render.total');
     }
 
     public resizeRender(): void {
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('resize.total');
-        }
+        Profiler.begin('resize.total');
         if (this._recreateLayout() || this._recreateCanvas() || this._renderedTracks !== this.tracks || !this.tracks) {
             Logger.debug('Rendering', 'Starting full rerendering due to layout or canvas change', null);
             this.render();
@@ -194,22 +186,16 @@ export class ScoreRenderer implements IScoreRenderer {
             this.boundsLookup = new BoundsLookup();
             (this.preRender as EventEmitterOfT<boolean>).trigger(true);
             this.canvas!.settings = this.settings;
-            if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-                Profiler.begin('resize.layoutResize');
-            }
+            Profiler.begin('resize.layoutResize');
             this.layout!.resize();
-            if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-                Profiler.end('resize.layoutResize');
-            }
+            Profiler.end('resize.layoutResize');
             this._onRenderFinished();
             (this.postRenderFinished as EventEmitter).trigger();
         } else {
             Logger.debug('Rendering', 'Current layout does not support dynamic resizing, nothing was done', null);
         }
         Logger.debug('Rendering', 'Resize finished');
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('resize.total');
-        }
+        Profiler.end('resize.total');
     }
 
     private _layoutAndRender(renderHints?: RenderHints): void {
@@ -218,13 +204,9 @@ export class ScoreRenderer implements IScoreRenderer {
             `Rendering at scale ${this.settings.display.scale} with layout ${this.layout!.name}`,
             null
         );
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('render.layoutAndRender');
-        }
+        Profiler.begin('render.layoutAndRender');
         this.layout!.layoutAndRender(renderHints);
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('render.layoutAndRender');
-        }
+        Profiler.end('render.layoutAndRender');
         this._renderedTracks = this.tracks;
         this._onRenderFinished();
         (this.postRenderFinished as EventEmitter).trigger();

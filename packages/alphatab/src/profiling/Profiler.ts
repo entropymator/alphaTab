@@ -1,9 +1,18 @@
 /**
- * Profiling instrumentation. All call sites are guarded by
- * `if (__PROFILING__) { ... }` blocks that DCE away in production builds.
+ * Profiling instrumentation. Call sites are unconditional one-liners:
  *
- * In a profiling build (packages/bench), measurements accumulate into the
- * static fields below and are dumped via {@link Profiler.snapshot}. The bench
+ *     Profiler.begin('render.total');
+ *     // ... work ...
+ *     Profiler.end('render.total');
+ *
+ * In production / library / vitest / playground builds, the
+ * `stripProfilingPlugin` from packages/tooling removes these statements
+ * (and the `Profiler` import) at transform time, so the call sites and the
+ * module itself are tree-shaken out of the bundle entirely — verified by
+ * `grep -c Profiler dist/alphaTab*.{mjs,js}` returning 0.
+ *
+ * In a profiling build (packages/bench), the plugin is a passthrough,
+ * measurements accumulate into the static fields below, and the bench
  * harness reads the snapshot at the end of each scenario iteration.
  */
 

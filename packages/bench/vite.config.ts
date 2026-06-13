@@ -2,24 +2,27 @@ import path from 'node:path';
 import url from 'node:url';
 import type { OutputOptions } from 'rollup';
 import { defineConfig } from 'vite';
-import { defaultBuildUserConfig, profilingDefine } from '../tooling/src/vite';
+import { defaultBuildUserConfig } from '../tooling/src/vite';
+import { stripProfilingPlugin } from '../tooling/src/vite.plugin.strip-profiling';
 
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig(() => {
     const config = defaultBuildUserConfig(__dirname);
 
-    // Override the inherited `__PROFILING__: false` from defaultBuildUserConfig.
-    // The bench bundles alphatab source with profiling baked in; everything else
-    // (the published library, vitest visual tests, sibling plugin packages)
-    // keeps the default `false` and strips the profiler bodies out.
-    config.define = { ...config.define, ...profilingDefine(true) };
-
-    // Drop the license-banner plugin — this is an internal bench, not a
+    // The bench is the one consumer that keeps profiler calls in the bundle.
+    // Drop the default `enabled: false` strip plugin inherited from
+    // `defaultBuildUserConfig`, replace with `enabled: true` (passthrough).
+    // Also drop the license-banner plugin — this is an internal bench, not a
     // published artifact, and the banner plugin demands a LICENSE.header file.
-    config.plugins = (config.plugins ?? []).filter(
-        p => !(p && typeof p === 'object' && 'name' in p && (p as { name: string }).name === 'rollup-plugin-license')
-    );
+    config.plugins = (config.plugins ?? []).filter(p => {
+        if (!p || typeof p !== 'object' || !('name' in p)) {
+            return true;
+        }
+        const name = (p as { name: string }).name;
+        return name !== 'rollup-plugin-license' && name !== 'alphatab:strip-profiling';
+    });
+    config.plugins.push(stripProfilingPlugin({ enabled: true }));
 
     const lib = config.build!.lib!;
     (lib as { entry: Record<string, string> }).entry = {

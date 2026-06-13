@@ -275,9 +275,7 @@ export class RenderStaff {
     }
 
     public finalizeStaff(): void {
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.begin('layout.finalizeStaff');
-        }
+        Profiler.begin('layout.finalizeStaff');
         this._applyStaffPaddings();
 
         this.height = 0;
@@ -315,9 +313,7 @@ export class RenderStaff {
         this.height = Math.ceil(this.height);
 
         this._updateVisibility();
-        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
-            Profiler.end('layout.finalizeStaff');
-        }
+        Profiler.end('layout.finalizeStaff');
     }
 
     public paint(cx: number, cy: number, canvas: ICanvas, startIndex: number, count: number): void {
