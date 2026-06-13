@@ -1,21 +1,21 @@
-import { LayoutMode } from '@coderline/alphatab/LayoutMode';
 import { Environment } from '@coderline/alphatab/Environment';
 import {
     EventEmitter,
+    EventEmitterOfT,
     type IEventEmitter,
-    type IEventEmitterOfT,
-    EventEmitterOfT
+    type IEventEmitterOfT
 } from '@coderline/alphatab/EventEmitter';
+import { LayoutMode } from '@coderline/alphatab/LayoutMode';
+import { Logger } from '@coderline/alphatab/Logger';
 import type { Score } from '@coderline/alphatab/model/Score';
 import type { Track } from '@coderline/alphatab/model/Track';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
+import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 import type { IScoreRenderer, RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import type { ScoreLayout } from '@coderline/alphatab/rendering/layout/ScoreLayout';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
 import { BoundsLookup } from '@coderline/alphatab/rendering/utils/BoundsLookup';
 import type { Settings } from '@coderline/alphatab/Settings';
-import { Logger } from '@coderline/alphatab/Logger';
-import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 
 /**
  * This is the main wrapper of the rendering engine which
@@ -137,10 +137,14 @@ export class ScoreRenderer implements IScoreRenderer {
     }
 
     public render(renderHints?: RenderHints): void {
-        if (__PROFILING__) { Profiler.begin('render.total'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.begin('render.total');
+        }
         if (this.width === 0) {
             Logger.warning('Rendering', 'AlphaTab skipped rendering because of width=0 (element invisible)', null);
-            if (__PROFILING__) { Profiler.end('render.total'); }
+            if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+                Profiler.end('render.total');
+            }
             return;
         }
         // For partial renders we preserve the existing lookup so bars outside the re-layouted
@@ -173,11 +177,15 @@ export class ScoreRenderer implements IScoreRenderer {
             this._layoutAndRender(renderHints);
             Logger.debug('Rendering', 'Rendering finished');
         }
-        if (__PROFILING__) { Profiler.end('render.total'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.end('render.total');
+        }
     }
 
     public resizeRender(): void {
-        if (__PROFILING__) { Profiler.begin('resize.total'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.begin('resize.total');
+        }
         if (this._recreateLayout() || this._recreateCanvas() || this._renderedTracks !== this.tracks || !this.tracks) {
             Logger.debug('Rendering', 'Starting full rerendering due to layout or canvas change', null);
             this.render();
@@ -186,16 +194,22 @@ export class ScoreRenderer implements IScoreRenderer {
             this.boundsLookup = new BoundsLookup();
             (this.preRender as EventEmitterOfT<boolean>).trigger(true);
             this.canvas!.settings = this.settings;
-            if (__PROFILING__) { Profiler.begin('resize.layoutResize'); }
+            if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+                Profiler.begin('resize.layoutResize');
+            }
             this.layout!.resize();
-            if (__PROFILING__) { Profiler.end('resize.layoutResize'); }
+            if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+                Profiler.end('resize.layoutResize');
+            }
             this._onRenderFinished();
             (this.postRenderFinished as EventEmitter).trigger();
         } else {
             Logger.debug('Rendering', 'Current layout does not support dynamic resizing, nothing was done', null);
         }
         Logger.debug('Rendering', 'Resize finished');
-        if (__PROFILING__) { Profiler.end('resize.total'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.end('resize.total');
+        }
     }
 
     private _layoutAndRender(renderHints?: RenderHints): void {
@@ -204,9 +218,13 @@ export class ScoreRenderer implements IScoreRenderer {
             `Rendering at scale ${this.settings.display.scale} with layout ${this.layout!.name}`,
             null
         );
-        if (__PROFILING__) { Profiler.begin('render.layoutAndRender'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.begin('render.layoutAndRender');
+        }
         this.layout!.layoutAndRender(renderHints);
-        if (__PROFILING__) { Profiler.end('render.layoutAndRender'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.end('render.layoutAndRender');
+        }
         this._renderedTracks = this.tracks;
         this._onRenderFinished();
         (this.postRenderFinished as EventEmitter).trigger();

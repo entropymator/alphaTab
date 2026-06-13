@@ -9,6 +9,7 @@ import type { Staff } from '@coderline/alphatab/model/Staff';
 import { type Track, TrackSubElement } from '@coderline/alphatab/model/Track';
 import { NotationElement } from '@coderline/alphatab/NotationSettings';
 import { type ICanvas, TextAlign, TextBaseline } from '@coderline/alphatab/platform/ICanvas';
+import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 import { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import { type EffectBandInfo, EffectBandMode } from '@coderline/alphatab/rendering/BarRendererFactory';
@@ -27,7 +28,6 @@ import type { BeamingRuleLookup } from '@coderline/alphatab/rendering/utils/Beam
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 import type { Settings } from '@coderline/alphatab/Settings';
 import { Lazy } from '@coderline/alphatab/util/Lazy';
-import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 
 /**
  * @internal
@@ -81,9 +81,13 @@ export abstract class ScoreLayout {
     public resize(): void {
         this._lazyPartials.clear();
         this.slurRegistry.clear();
-        if (__PROFILING__) { Profiler.begin('layout.doResize'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.begin('layout.doResize');
+        }
         this.doResize();
-        if (__PROFILING__) { Profiler.end('layout.doResize'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.end('layout.doResize');
+        }
     }
     public abstract doResize(): void;
 
@@ -126,9 +130,13 @@ export abstract class ScoreLayout {
         }
 
         this._createScoreInfoGlyphs();
-        if (__PROFILING__) { Profiler.begin('layout.doLayoutAndRender'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.begin('layout.doLayoutAndRender');
+        }
         this.doLayoutAndRender(renderHints);
-        if (__PROFILING__) { Profiler.end('layout.doLayoutAndRender'); }
+        if (typeof __PROFILING__ !== 'undefined' && __PROFILING__) {
+            Profiler.end('layout.doLayoutAndRender');
+        }
     }
 
     private _lazyPartials: Map<string, LazyPartial> = new Map<string, LazyPartial>();
