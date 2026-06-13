@@ -63,6 +63,21 @@ visual-test regressions.
   × 2-frame win. Next: re-measure round-start fresh, target canon-render
   instead (same hotspot, no resize-loop multiplier), or batch with a
   larger paint-path refactor whose expected delta clears noise.
+- **A/B-confirmed below noise floor (2026-06-13 round 3)**: same shape
+  re-applied (override `paintStaffLines` on `TabBarRenderer`,
+  monomorphic-per-subclass dispatch instead of the 4-way megamorphic
+  `collectSpaces`) and verified with the paired A/B harness at n=64.
+  Result: canon-resize -0.1 % `·`, canon-render +1.4 % `·`, all six
+  scenarios within ±0.5 ms of zero (none clear `★` or even `~`). The
+  polymorphic dispatch the profiler flagged is real but its absolute
+  cost (~0.3 ms across both frames) is in the same range as
+  iteration-to-iteration variance of canon-resize (A/B CI half-width
+  ≈ 0.8 ms at n=64). vitest 1599/1599 passed in both runs. This is the
+  first time we have decisive evidence that the win simply doesn't
+  exist at a measurable scale — not noise, not measurement failure,
+  just too small. **Demote**: bundle with a larger paint-path refactor
+  only if one materialises for unrelated reasons; standalone the
+  candidate cannot clear the σ floor.
 
 ### EW-4. `fillRect` polymorphism in SvgCanvas
 - **Where**: [SvgCanvas.fillRect](packages/alphatab/src/platform/svg/SvgCanvas.ts)
