@@ -5,6 +5,21 @@ cycle against alphaTab using the bench harness. Each cycle should produce
 either a committed measured win, or a documented `HOTSPOTS.md` entry —
 never silent thrashing.
 
+The bench has two modes:
+
+- **Multi-process baseline + diff** (`run.mjs` + `cli.mjs diff`). Each
+  scenario runs in its own fresh child process; cross-process variance
+  sets the noise floor. Use this for routine profiling — the per-process
+  CPU + heap profiles drive HOTSPOTS analysis.
+- **Same-process A/B paired** (`runAB.mjs`). Two alphatab bundles
+  loaded into one Node process, ticked back-to-back per iteration,
+  paired-sample stats (median delta, sign-test z, bootstrap CI). Eats
+  the V8-isolate noise floor: deltas of ~1 % on canon-resize resolve at
+  n=64. Use this when a candidate looks like a sub-3 % win that the
+  multi-process diff can't decide. Round 2026-06-13 round 2 EW-1 fuse
+  patch is the canonical example — diff said `·` at trials=5; A/B said
+  `★ -1.9 %` at n=64.
+
 ## Architecture in one paragraph
 
 The bench is a sibling workspace at [packages/bench](.). It bundles the alphatab
@@ -53,6 +68,52 @@ node dist/cli.mjs diff baselines/feature-perf.json baselines/<later>.json
 node dist/run.mjs --trials 3 --pin 4,5 ...
 node dist/run.mjs --trials 3 --no-pin ...
 ```
+
+### Same-process A/B (decisive sub-3 % comparison)
+
+When the multi-process diff says `·` / `~` on a target you have a
+strong algorithmic argument for, run A/B:
+
+```bash
+# Build both arms. Each arm's runOneCore.mjs has its own alphatab
+# inlined (resolved from a fresh git worktree at the named ref).
+node scripts/build-ab.mjs --ref-a <baseline-ref> --ref-b <candidate-ref>
+
+# OR: --ref-b omitted ⇒ arm B is the working tree (handy for
+# uncommitted patches: --ref-a HEAD measures working tree vs HEAD).
+
+# Pair them at high iteration count for a tight bootstrap CI.
+node dist/runAB.mjs --a dist/ab/A/runOneCore.mjs \
+                    --b dist/ab/B/runOneCore.mjs \
+                    --only canon-resize \
+                    --iterations 64 \
+                    --label probe-<short-name>
+```
+
+Output (`runs/<label>/REPORT.md`):
+
+| field | meaning |
+| --- | --- |
+| `median A`, `median B` | per-tick wall-clock (one driveOnce call). Notably *lower* than the diff harness's per-iteration time — the A/B driver skips the inspector profiler, which on this codebase costs ≈ 13 % on resize scenarios. |
+| `Δ ms`, `Δ %` | median of the per-iteration paired deltas `b_i − a_i`. |
+| `95 % CI` | bootstrap percentile CI on the median delta. Excludes 0 ⇒ direction is significant. |
+| `B<A` | how many of the N pairs had B faster than A. Sign test. |
+| `sign z` | `(B<A − N/2) / √(N/4)`. |z| ≥ 2 ⇒ direction is significant. |
+| `sig` | `★` if CI excludes 0 **and** \|z\| ≥ 2. `~` if one of the two. `·` if neither. |
+
+Iteration cost: ~3-5 s per pair on canon-resize, so n=64 is ~2-3 min
+per scenario. Default n=`scenario.iterations × 2` (≈16 for most
+scenarios) is fast feedback only; for a decisive verdict, pass
+`--iterations 64`.
+
+Costs the A/B harness pays so you don't have to:
+- No CPU / heap profile (would cross-contaminate between arms in one
+  isolate). Use the multi-process flow when you need a profile.
+- Two alphatab copies in one heap ⇒ ~2× memory. Fine for the
+  scenarios as shipped; will need attention if anyone adds a fixture
+  that's already heap-tight.
+- Polymorphic IC across the two arms is a real cost, but it affects
+  both arms equally and cancels in the paired delta.
 
 ### Host preflight (linux)
 

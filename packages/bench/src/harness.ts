@@ -102,6 +102,65 @@ export interface RunOptions {
     outDir: string;
 }
 
+export interface PreparedScenario {
+    /** Run one iteration of the scenario, return its wall-clock duration in ns. */
+    tick(): number;
+}
+
+/**
+ * Variant of `runScenario` for the paired A/B driver. Sets up the score,
+ * renderer, and initial render ONCE (those costs are not what we're
+ * measuring), runs the scenario's warmup, then returns a `tick()` that
+ * executes exactly one iteration of `driveOnce` and returns its wall-clock
+ * duration. The driver alternates `tick()` calls between two prepared arms
+ * to get per-iteration paired samples within a single Node process.
+ *
+ * Does NOT enable the CPU / heap inspector profilers — those would
+ * cross-contaminate between the two arms in one isolate. Use the regular
+ * `runScenario` flow when you need a profile.
+ */
+export function prepareScenario(scenario: Scenario): PreparedScenario {
+    const settings = makeSettings();
+
+    const data = fs.readFileSync(scenario.scorePath);
+    const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const score = ScoreLoader.loadScoreFromBytes(bytes, settings);
+
+    const tracks = scenario.tracks ?? [0];
+    const renderer = new ScoreRenderer(settings);
+    renderer.width = scenario.width;
+
+    const driveOnce = () => {
+        if (scenario.mode === 'render') {
+            renderer.renderScore(score, tracks);
+        } else {
+            const widths = scenario.resizeWidths!;
+            for (const w of widths) {
+                renderer.width = w;
+                renderer.resizeRender();
+            }
+            renderer.width = scenario.width;
+            renderer.resizeRender();
+        }
+    };
+
+    if (scenario.mode === 'resize') {
+        renderer.renderScore(score, tracks);
+    }
+    for (let i = 0; i < scenario.warmup; i++) {
+        driveOnce();
+    }
+
+    return {
+        tick(): number {
+            const t0 = process.hrtime.bigint();
+            driveOnce();
+            const t1 = process.hrtime.bigint();
+            return Number(t1 - t0);
+        }
+    };
+}
+
 /**
  * Runs one scenario in the current process. CPU and heap profilers are
  * scoped via the node:inspector API to the measured loop only — warmup,

@@ -14,7 +14,9 @@
         "bench": "npm run build && node dist/run.mjs",
         "bench:scenario": "npm run build && node dist/runOne.mjs",
         "bench:diff": "npm run build && node dist/cli.mjs diff",
-        "bench:baseline": "npm run build && node dist/run.mjs --save-baseline"
+        "bench:baseline": "npm run build && node dist/run.mjs --save-baseline",
+        "bench:ab:build": "npm run build && node scripts/build-ab.mjs",
+        "bench:ab": "node dist/runAB.mjs --a dist/ab/A/runOneCore.mjs --b dist/ab/B/runOneCore.mjs"
     },
     "dependencies": {
         "@coderline/alphatab": "*"

@@ -1,8 +1,24 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import url from 'node:url';
 
 const __dirname = url.fileURLToPath(new URL('.', import.meta.url));
-const REPO_ROOT = path.resolve(__dirname, '../../..');
+
+// Walk upward looking for the .git marker so scenarios.ts resolves the same
+// REPO_ROOT regardless of how deeply nested the bundle ends up under dist/
+// (e.g. dist/runOne.mjs vs dist/ab/A/runOneCore.mjs for the A/B harness).
+function findRepoRoot(start: string): string {
+    let cur = start;
+    while (cur !== path.parse(cur).root) {
+        if (fs.existsSync(path.join(cur, '.git'))) {
+            return cur;
+        }
+        cur = path.dirname(cur);
+    }
+    throw new Error(`scenarios.ts: cannot find repo root walking up from ${start}`);
+}
+
+const REPO_ROOT = findRepoRoot(__dirname);
 const DATA = path.join(REPO_ROOT, 'packages/alphatab/test-data');
 
 /**
