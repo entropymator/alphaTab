@@ -47,6 +47,13 @@ visual-test regressions.
   or coordinate object per segment). Track the source line with a `Counter`
   bump, then read the heap profile against that.
 - **Risk**: low — Skyline state is internal.
+- **Tried (2026-06-13)**: instance-owned `_scratchSegs` reuse + `.length =` /
+  indexed overwrite in the swap-in step regressed canon-resize +6-14 %.
+  V8 prefers the fresh short-lived `[]` (packed SMI elements kind, young-gen
+  cheap to collect); the `pop()`/`push()` loops on `_segments` were already
+  on a fast path that `.length =` + indexed assignment lost. Next: skip the
+  array entirely by folding into staff-skyline finalisation, or pool by the
+  6-call paired-renderer shape instead of per-instance.
 
 ### EW-2. `buildBoundingsLookup` runs on every resize
 - **Where**: [BarRendererBase / staves](packages/alphatab/src/rendering/utils/BoundsLookup.ts) — exact site TBD
@@ -60,11 +67,20 @@ visual-test regressions.
 - **Risk**: medium — partial-render path depends on the bounds lookup state.
 
 ### EW-3. `collectSpaces` polymorphism
-- **Where**: [layout/BarLayoutingInfo.ts (`collectSpaces`)](packages/alphatab/src/rendering/staves/BarLayoutingInfo.ts)
-- **Signal**: 0.6 % × 2 frames in canon-resize → polymorphic call site.
-- **Hypothesis**: same as EW-2 in shape — split into monomorphic variants
-  or inline at the single hot caller.
+- **Where**: actually [LineBarRenderer.collectSpaces](packages/alphatab/src/rendering/LineBarRenderer.ts) (no-op stub) overridden in [TabBarRenderer.collectSpaces](packages/alphatab/src/rendering/TabBarRenderer.ts). Path in the HOTSPOTS entry below is wrong — the symbol lives on the renderer hierarchy, not BarLayoutingInfo.
+- **Signal**: 0.6 % × 2 frames in canon-resize → polymorphic call site. 4 concrete receiver classes flow through (Score / Slash / Numbered / Tab) — classic 4-way megamorphic IC.
+- **Hypothesis**: split into monomorphic variants or inline the no-op stub away.
 - **Risk**: low.
+- **Tried (2026-06-13)**: eliminated the virtual `collectSpaces` hook by
+  extracting a module-level `paintStaffLineRects` helper, having
+  `LineBarRenderer.paintStaffLines` pass `null`, and overriding
+  `paintStaffLines` directly in `TabBarRenderer`. Refactor compiled clean
+  and biome-passed, but the session noise floor on canon-resize had drifted
+  to ~10 % wall-clock (reverted-tree control re-run produced +10.5 %
+  against the same baseline), which swamps any plausible sub-1 ms / 0.6 %
+  × 2-frame win. Next: re-measure round-start fresh, target canon-render
+  instead (same hotspot, no resize-loop multiplier), or batch with a
+  larger paint-path refactor whose expected delta clears noise.
 
 ### EW-4. `fillRect` polymorphism in SvgCanvas
 - **Where**: [SvgCanvas.fillRect](packages/alphatab/src/platform/svg/SvgCanvas.ts)
@@ -75,6 +91,15 @@ visual-test regressions.
   with/without-style code paths split V8's IC into separate compiled
   variants. Single monomorphic path likely a 1-2 % win.
 - **Risk**: low — pure paint optimisation.
+- **Tried (2026-06-13)**: the 3 frames are NOT polymorphic IC fan-out —
+  they're sample-bucket aggregations of V8-inlined copies at multiple
+  callers (paintStaffLines, paintBar, paintBeams, etc.) all pointing at the
+  same source line (`runOne.mjs:49856`). Re-baselining with 5/5 then 10/10
+  trials showed -2.7 % → +0.5 % depending on noise; intra-function tweaks
+  (`scale` local cache, manual `+` chain vs template literal, early-return
+  guard) cannot move past noise. Real fix would be reducing call volume
+  from a hot caller (see what EW-5 did for staff lines) or batching into
+  a fragment list joined once at endRender — both lean toward DR-3.
 
 ### EW-5. `paintStaffLines` per-line strokes
 - **Where**: [LineBarRenderer.paintStaffLines](packages/alphatab/src/rendering/LineBarRenderer.ts#L131)
@@ -83,18 +108,25 @@ visual-test regressions.
 - **Hypothesis**: 5 staff lines × many bars = thousands of `moveTo`/
   `lineTo`/`stroke` triplets. Batch into one Path per bar.
 - **Risk**: low — paint-only.
-
-### EW-6. Harness: heap profile measures process lifetime, not the loop
-- **Where**: [bench/src/harness.ts](packages/bench/src/harness.ts)
-- **Signal**: heap top-N is currently dominated by `readNote` / `readBeat`
-  (the GP importer) because `--heap-prof` accumulates from process start.
-- **Fix**: use the `node:inspector` Heap Profiler API to start sampling at
-  the beginning of the measured loop and stop at the end.
-- **Risk**: low — harness-internal. Lands as `chore(bench)`, not perf.
+- **Tried (2026-06-13)**: agent-worktree patch (commit 60bad13c on
+  `worktree-agent-a28e6b018e119d331`) batched the per-bar rects into one
+  filled `<path>` per bar. In-isolation `--only canon-resize` measurement
+  showed -7.7 % / -7.27 ms ★ with vitest 1599/1599 green. Host
+  full-bench cherry-pick at 3 trials: canon-resize -1.8 % `·`, stage
+  breakdown clear -8.4 % on `layout.finalizeStaff`. Re-run at 5 trials:
+  canon-resize -2.7 % `~` (1.19σ pooled), nightwish-resize -11.3 % ★,
+  fade-to-black-resize / canon-render / nightwish-render directionally
+  faster but `·`. Per strict decision matrix the cherry-pick was dropped
+  (target = canon-resize, gate = `★`). The patch is real — next round
+  can revive it by retargeting nightwish-resize, or by re-baselining on
+  a quieter host run and probing canon-resize with `--trials 10` to
+  push the ratio over 2σ.
 
 ## Easy wins — landed
 
-(empty — first iteration produced the harness, not yet a measured win)
+| ID | Commit | Scenario | Δ ms | Date | Notes |
+| --- | --- | --- | ---: | --- | --- |
+| EW-6 | `74c133ea` | (harness) | n/a | 2026-06-13 | Heap profile scoped to the measured loop via `node:inspector` Heap Profiler API; ships as `feat(bench)`, not `perf`. |
 
 ## Major refactors — deferred
 
