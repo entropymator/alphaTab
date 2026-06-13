@@ -165,7 +165,16 @@ export abstract class SvgCanvas implements ICanvas {
         this.buffer += s;
     }
 
+    private static readonly _escapeTextRegex = /[&<>"']/;
+
     private static _escapeText(text: string) {
+        // Front-load with a single character-class test; the bench corpus is
+        // mostly numeric text (bar numbers, time signatures, fret numbers,
+        // tuplet labels) where this short-circuits and the 5-pass replace
+        // chain never runs.
+        if (!SvgCanvas._escapeTextRegex.test(text)) {
+            return text;
+        }
         return text
             .replace(/&/g, '&amp;')
             .replace(/"/g, '&quot;')
