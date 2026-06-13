@@ -54,6 +54,26 @@ visual-test regressions.
   on a fast path that `.length =` + indexed assignment lost. Next: skip the
   array entirely by folding into staff-skyline finalisation, or pool by the
   6-call paired-renderer shape instead of per-instance.
+- **Tried (2026-06-13 round 2)**: call-site fold — agent commit `dfacffd9` on
+  `worktree-agent-a588fa4918ff7dae6` added `Skyline.unionShifted3(o1, dx1,
+  o2, dx2, o3, dx3)` (4-way pair-merge) and collapsed the 6 calls in
+  `RenderStaff._unionBarLocalIntoStaffSkyline` down to 2. Algorithmically
+  correct — `newSegs` stays a fresh `[]` per call, total merges drop 3×.
+  vitest 1599/1599 green. Agent's worktree measurement (3 trials,
+  CPU-pinned) showed canon-resize -10.1 % ★, nightwish-resize -9.2 % ★.
+  Host re-verification at 3 trials (hot cores, immediately after worktree
+  probes): canon-resize +1.2 % `·`. Cooled cores: +1.9 % `~`. Fair 5/5
+  re-baseline: canon-resize -1.8 % `·` (0.61σ pooled), fade-to-black-resize
+  -4.2 % `~`, all six scenarios directionally faster, no regressions. Per
+  strict matrix (target canon-resize `·`) the cherry-pick was dropped.
+  **Diagnostic**: the 5-trial baseline included a 34.23 ms first-trial
+  outlier on nightwish-resize (vs 17.82-18.64 on trials 2-5) → first-trial
+  V8 warmup is sometimes insufficient even with CPU pinning. The patch is
+  almost certainly a real ~2 % win but is below the noise floor on
+  canon-resize specifically. Reviving it requires either (a) the
+  same-process A/B harness already on the determinism roadmap, or (b)
+  re-targeting fade-to-black-resize (where `~` was clear) and re-running
+  with the warmup beefed up.
 
 ### EW-2. `buildBoundingsLookup` runs on every resize
 - **Where**: [BarRendererBase / staves](packages/alphatab/src/rendering/utils/BoundsLookup.ts) — exact site TBD
