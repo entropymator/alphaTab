@@ -41,9 +41,15 @@ running the relevant scenario with the bench, applying the patch, and
 re-running to confirm ≥ 1 % improvement on the target metric with no
 visual-test regressions.
 
-### EW-7. `BeatGlyphBase._paintEffects` ternary forces `_usingCtx` heavy transpile
-- **Where**: [packages/alphatab/src/rendering/glyphs/BeatGlyphBase.ts:70-77](packages/alphatab/src/rendering/glyphs/BeatGlyphBase.ts#L70-L77).
-  Body:
+### EW-7. Ternary `ElementStyleHelper` `using` sites fall through `elementStyleUsingPlugin` matcher → heavy `_usingCtx` lowering
+- **Where**: 3 sites with a ternary initializer:
+  - [packages/alphatab/src/rendering/glyphs/BeatGlyphBase.ts:70-77](packages/alphatab/src/rendering/glyphs/BeatGlyphBase.ts#L70-L77)
+    — on the canon / nightwish / fade-to-black hot path.
+  - [packages/alphatab/src/rendering/glyphs/NumberedNoteHeadGlyph.ts:48](packages/alphatab/src/rendering/glyphs/NumberedNoteHeadGlyph.ts#L48)
+    — numbered-notation only, not in bench corpus.
+  - [packages/alphatab/src/rendering/glyphs/SlashNoteHeadGlyph.ts:29](packages/alphatab/src/rendering/glyphs/SlashNoteHeadGlyph.ts#L29)
+    — slash-notation only, not in bench corpus.
+  Hot-path body:
   ```ts
   private _paintEffects(cx: number, cy: number, canvas: ICanvas) {
       using _ = this.effectElement
@@ -57,52 +63,69 @@ visual-test regressions.
 - **Signal**: bundle frame `_usingCtx` self-time is 15.43 ms / 2.0 %
   canon-resize, 3.17 ms / 1.4 % nightwish-resize, 4.48 ms / 1.1 %
   fade-to-black-resize, ~3 ms canon-render. There are exactly **4**
-  `_usingCtx()` call sites in the entire bundle and only this one is on
-  the canon/nightwish/fade-to-black hot path (the other three are
-  SkiaCanvas.measureText — irrelevant for SVG — and the
-  Slash/Numbered-notation note-head paints, neither of which is in the
-  bench corpus).
-- **Why it allocates so heavily**: OXC's `using` transpiler emits the
-  cheap form `const _ = expr; try { } finally { _?.[Symbol.dispose]?.(); }`
-  for simple `using _ = expr;` declarations — that's what the other ~30
-  `using` sites in the rendering package look like in the bundle, and
-  none of them appear in `_usingCtx` self-time. When the resource
-  expression is a **ternary**, OXC instead emits a full
-  `try { var _u = _usingCtx(); _u.u(...); ... } catch (_) { _u.e = _; } finally { _u.d(); }`
-  wrapper. The factory body allocates `{e, u, a, d}`, two
+  `_usingCtx()` call sites in the entire bundle — the 3 above plus
+  `SkiaCanvas.measureText` (irrelevant for the SVG bench corpus).
+- **Why it allocates so heavily**: the project already ships a custom
+  Vite plugin
+  [`elementStyleUsingPlugin`](packages/tooling/src/vite.plugin.transform.ts)
+  that lowers `using x = ElementStyleHelper.foo(...)` to the cheap
+  `const x = ...; try { ... } finally { x?.[Symbol.dispose]?.(); }`
+  form — that's what the ~30 other `using` sites in the rendering
+  package look like in the bundle, and none of them appear in
+  `_usingCtx` self-time. The plugin's matcher `isElementStyleHelperUsing`
+  requires `init.type === 'CallExpression'`, but the 3 sites above use
+  a **`ConditionalExpression`** initializer, so the matcher rejects them
+  and OXC's stock `using` lowering takes over: a wrapper
+  `try { var _u = _usingCtx(); _u.u(...); ... } catch (_) { _u.e = _; } finally { _u.d(); }`.
+  The `_usingCtx()` factory allocates `{e, u, a, d}`, two
   `using.bind(null, ...)` bound functions, and a fresh `n = []` array
-  per call. Then `u(...)` pushes a wrapper object into `n` on the
-  with-resource path, and `d()` runs a `next()` loop over `n` even when
-  it's empty. That's 5+ short-lived allocations per `_paintEffects`
-  invocation — sustained at the per-beat-container call count.
-- **Hypothesis (concrete)**: lift the conditional outside the `using` so
-  the OXC transpiler emits the cheap form, identical in spirit to the
-  ~30 other rendering call sites that already get it. Two shapes both
-  work — `if (this.effectElement === undefined) { /* loop */; return; }
-  using _ = ElementStyleHelper.beat(canvas, this.effectElement!,
-  this.container.beat); /* loop */`, or an explicit
-  `const style = ...?? : undefined; try { /* loop */ } finally {
-  style?.[Symbol.dispose]?.(); }`. Both remove the `_usingCtx` factory
-  entirely from this path and drop the per-call wrapper allocation +
-  dispatch.
+  per call; then `u(...)` pushes a wrapper object into `n`, and `d()`
+  runs a `next()` loop. That's 5+ short-lived allocations per
+  `_paintEffects` invocation, sustained at the per-beat-container
+  call count.
+- **Hypothesis (concrete) — two options**:
+  - **(a) Source-level fix**: refactor each call site to match the
+    plugin's existing `CallExpression` shape. Two equivalent rewrites
+    both work — `if (this.effectElement === undefined) { /* loop */;
+    return; } using _ = ElementStyleHelper.beat(canvas,
+    this.effectElement, this.container.beat); /* loop */`, or a
+    method split that pulls the loop into a helper. ~5 lines per
+    site, no plugin change.
+  - **(b) Plugin-level fix**: extend
+    [`isElementStyleHelperUsing`](packages/tooling/src/vite.plugin.transform.ts)
+    to accept a `ConditionalExpression` initializer when one branch
+    is the `ElementStyleHelper.X(...)` call and the other is
+    `undefined` / `void 0` / a sibling `ElementStyleHelper.Y(...)` —
+    emit `const _ = (cond ? ElementStyleHelper.X(...) : undefined);
+    try { ... } finally { _?.[Symbol.dispose]?.(); }`. Single point
+    of fix; covers all 3 sites + future ternary writers.
+  Both options eliminate the `_usingCtx` factory entirely from these
+  3 sites.
 - **Estimated payoff**: -5 to -10 ms canon-resize (-5 to -11 %), -2 to
   -3 ms nightwish-resize, -2 to -4 ms fade-to-black-resize. Even the
-  conservative end of each range is ≥ 4× the cross-trial σ floor on the
-  named scenario, so a real win should be decisive at `--trials 5`. A
-  full attribution of `_usingCtx`'s 15.43 ms (canon-resize) ≈ 17 % is
-  the theoretical upper bound; the wrapper-dispatch frames around it
-  add a few ms more.
-- **Risk**: low. Single file, ~5-line refactor, no public API change,
-  no semantic change. The four SkiaCanvas / NumberedNoteHeadGlyph /
-  SlashNoteHeadGlyph sites can get the same treatment in the same
-  commit for completeness, though none affect the bench corpus today.
+  conservative end of each range is ≥ 4× the cross-trial σ floor on
+  the named scenario, so a real win should be decisive at
+  `--trials 5`. A full attribution of `_usingCtx`'s 15.43 ms
+  (canon-resize) ≈ 17 % is the theoretical upper bound; the
+  wrapper-dispatch frames around it add a few ms more. The
+  Slash / Numbered sites don't show in the bench corpus but the
+  plugin-level fix protects them for free.
+- **Risk**: low for option (a) — pure source-level refactor, no
+  semantic change, mirrors the cheap-form pattern that every other
+  `ElementStyleHelper` `using` site already uses. Slightly higher for
+  option (b) because it expands the plugin's accepted grammar; mitigated
+  by adding a unit test that the rewritten code parses + disposes
+  in both branches.
 - **Why this isn't EW-2(b)-shaped**: the EW-2(b) lesson was that
   replacing `new T()` with `pool.acquire()` is net-neutral or worse
   because V8's young-gen bump allocator is already fast and the pool's
   bookkeeping has its own cost. This candidate is the opposite shape:
-  it **removes** an allocation site (the `_usingCtx` factory) without
-  introducing any new bookkeeping — the replacement is fewer
-  instructions, fewer allocations, and one fewer try/catch boundary.
+  it **removes** a transpiler-emitted allocation site (the `_usingCtx`
+  factory) without introducing any new bookkeeping — the replacement
+  is fewer instructions, fewer allocations, and one fewer try/catch
+  boundary. The codebase already runs this same transformation on the
+  ~30 simple `using` sites; EW-7 just covers the 3 ternary sites that
+  slipped through.
 
 ### EW-8. `SvgCanvas._escapeText` runs 5 unconditional regex passes
 - **Where**: [packages/alphatab/src/platform/svg/SvgCanvas.ts](packages/alphatab/src/platform/svg/SvgCanvas.ts) —
