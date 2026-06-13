@@ -15,7 +15,8 @@ import type { LineBarRenderer } from '@coderline/alphatab/rendering/LineBarRende
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
 import type { BeamingHelper } from '@coderline/alphatab/rendering/utils/BeamingHelper';
-import type { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
+import { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
+import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 
 /**
  * Per-beat effect-glyph overflow; consumed by the per-beat skyline emission
@@ -326,19 +327,17 @@ export class BeatContainerGlyph extends BeatContainerGlyphBase {
     }
 
     public buildBoundingsLookup(barBounds: BarBounds, cx: number, cy: number) {
-        const scoreRenderer = this.renderer.scoreRenderer;
-        const boundsPool = scoreRenderer.boundsPool;
-        const beatBoundings: BeatBounds = scoreRenderer.beatBoundsPool.acquire();
+        const beatBoundings: BeatBounds = new BeatBounds();
         beatBoundings.beat = this.beat;
 
         if (this.beat.isEmpty) {
-            beatBoundings.visualBounds = boundsPool.acquire();
+            beatBoundings.visualBounds = new Bounds();
             beatBoundings.visualBounds.x = cx + this.x;
             beatBoundings.visualBounds.y = barBounds.visualBounds.y;
             beatBoundings.visualBounds.w = this.width;
             beatBoundings.visualBounds.h = barBounds.visualBounds.h;
 
-            beatBoundings.realBounds = boundsPool.acquire();
+            beatBoundings.realBounds = new Bounds();
             beatBoundings.realBounds.x = cx + this.x;
             beatBoundings.realBounds.y = barBounds.realBounds.y;
             beatBoundings.realBounds.w = this.width;
@@ -346,7 +345,7 @@ export class BeatContainerGlyph extends BeatContainerGlyphBase {
 
             beatBoundings.onNotesX = cx + this.x + this.onNotes.x + this.onNotes.onTimeX;
         } else {
-            beatBoundings.visualBounds = boundsPool.acquire();
+            beatBoundings.visualBounds = new Bounds();
             beatBoundings.visualBounds.x = cx + this.x;
 
             if (!this.preNotes.isEmpty) {
@@ -371,7 +370,7 @@ export class BeatContainerGlyph extends BeatContainerGlyphBase {
             beatBoundings.visualBounds.y = barBounds.visualBounds.y;
             beatBoundings.visualBounds.h = barBounds.visualBounds.h;
 
-            beatBoundings.realBounds = boundsPool.acquire();
+            beatBoundings.realBounds = new Bounds();
             beatBoundings.realBounds.x = cx + this.x;
             beatBoundings.realBounds.y = barBounds.realBounds.y;
             beatBoundings.realBounds.w = this.width;

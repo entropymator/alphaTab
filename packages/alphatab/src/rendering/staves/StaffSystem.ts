@@ -21,8 +21,10 @@ import { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayout
 import { MasterBarsRenderers } from '@coderline/alphatab/rendering/staves/MasterBarsRenderers';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
 import { StaffTrackGroup } from '@coderline/alphatab/rendering/staves/StaffTrackGroup';
+import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
-import type { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
+import { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
+import { StaffSystemBounds } from '@coderline/alphatab/rendering/utils/StaffSystemBounds';
 
 /**
  * @internal
@@ -1218,56 +1220,54 @@ export class StaffSystem {
         const lineHeight = lineBottom - lineTop;
 
         const x: number = this.x + firstStaff.x;
-        const renderer = this.layout.renderer;
-        const boundsPool = renderer.boundsPool;
-        const staffSystemBounds = renderer.staffSystemBoundsPool.acquire();
-        staffSystemBounds.visualBounds = boundsPool.acquire();
+        const staffSystemBounds = new StaffSystemBounds();
+        staffSystemBounds.visualBounds = new Bounds();
         staffSystemBounds.visualBounds.x = cx + this.x;
         staffSystemBounds.visualBounds.y = cy + this.y;
         staffSystemBounds.visualBounds.w = this.width;
         staffSystemBounds.visualBounds.h = this.height - this.topPadding - this.bottomPadding;
-        staffSystemBounds.realBounds = boundsPool.acquire();
+        staffSystemBounds.realBounds = new Bounds();
         staffSystemBounds.realBounds.x = cx + this.x;
         staffSystemBounds.realBounds.y = cy + this.y;
         staffSystemBounds.realBounds.w = this.width;
         staffSystemBounds.realBounds.h = this.height;
 
-        renderer.boundsLookup!.addStaffSystem(staffSystemBounds);
+        this.layout.renderer.boundsLookup!.addStaffSystem(staffSystemBounds);
         const masterBarBoundsLookup: Map<number, MasterBarBounds> = new Map<number, MasterBarBounds>();
         for (let i: number = 0; i < this.staves.length; i++) {
             for (const staff of this.staves[i].staves) {
                 if (!staff.isVisible) {
                     continue;
                 }
-                for (const barRenderer of staff.barRenderers) {
+                for (const renderer of staff.barRenderers) {
                     let masterBarBounds: MasterBarBounds;
-                    if (!masterBarBoundsLookup.has(barRenderer.bar.masterBar.index)) {
-                        masterBarBounds = renderer.masterBarBoundsPool.acquire();
-                        masterBarBounds.index = barRenderer.bar.masterBar.index;
-                        masterBarBounds.isFirstOfLine = barRenderer.isFirstOfStaff;
-                        masterBarBounds.realBounds = boundsPool.acquire();
-                        masterBarBounds.realBounds.x = x + barRenderer.x;
+                    if (!masterBarBoundsLookup.has(renderer.bar.masterBar.index)) {
+                        masterBarBounds = new MasterBarBounds();
+                        masterBarBounds.index = renderer.bar.masterBar.index;
+                        masterBarBounds.isFirstOfLine = renderer.isFirstOfStaff;
+                        masterBarBounds.realBounds = new Bounds();
+                        masterBarBounds.realBounds.x = x + renderer.x;
                         masterBarBounds.realBounds.y = realTop;
-                        masterBarBounds.realBounds.w = barRenderer.width;
+                        masterBarBounds.realBounds.w = renderer.width;
                         masterBarBounds.realBounds.h = realHeight;
 
-                        masterBarBounds.visualBounds = boundsPool.acquire();
-                        masterBarBounds.visualBounds.x = x + barRenderer.x;
+                        masterBarBounds.visualBounds = new Bounds();
+                        masterBarBounds.visualBounds.x = x + renderer.x;
                         masterBarBounds.visualBounds.y = visualTop;
-                        masterBarBounds.visualBounds.w = barRenderer.width;
+                        masterBarBounds.visualBounds.w = renderer.width;
                         masterBarBounds.visualBounds.h = visualHeight;
 
-                        masterBarBounds.lineAlignedBounds = boundsPool.acquire();
-                        masterBarBounds.lineAlignedBounds.x = x + barRenderer.x;
+                        masterBarBounds.lineAlignedBounds = new Bounds();
+                        masterBarBounds.lineAlignedBounds.x = x + renderer.x;
                         masterBarBounds.lineAlignedBounds.y = lineTop;
-                        masterBarBounds.lineAlignedBounds.w = barRenderer.width;
+                        masterBarBounds.lineAlignedBounds.w = renderer.width;
                         masterBarBounds.lineAlignedBounds.h = lineHeight;
-                        renderer.boundsLookup!.addMasterBar(masterBarBounds);
+                        this.layout.renderer.boundsLookup!.addMasterBar(masterBarBounds);
                         masterBarBoundsLookup.set(masterBarBounds.index, masterBarBounds);
                     } else {
-                        masterBarBounds = masterBarBoundsLookup.get(barRenderer.bar.masterBar.index)!;
+                        masterBarBounds = masterBarBoundsLookup.get(renderer.bar.masterBar.index)!;
                     }
-                    barRenderer.buildBoundingsLookup(masterBarBounds, x, cy + this.y + staff.y);
+                    renderer.buildBoundingsLookup(masterBarBounds, x, cy + this.y + staff.y);
                 }
             }
         }

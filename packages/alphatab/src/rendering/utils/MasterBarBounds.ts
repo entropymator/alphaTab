@@ -2,14 +2,13 @@ import type { Beat } from '@coderline/alphatab/model/Beat';
 import type { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
 import type { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
 import type { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
-import type { IPoolable } from '@coderline/alphatab/rendering/utils/ObjectPool';
 import type { StaffSystemBounds } from '@coderline/alphatab/rendering/utils/StaffSystemBounds';
 
 /**
  * Represents the boundaries of a list of bars related to a single master bar.
  * @public
  */
-export class MasterBarBounds implements IPoolable {
+export class MasterBarBounds {
     /**
      * The MasterBar index within the data model represented by these bounds.
      */
@@ -116,13 +115,5 @@ export class MasterBarBounds implements IPoolable {
      */
     public addBeat(bounds: BeatBounds): void {
         this.staffSystemBounds!.boundsLookup.addBeat(bounds);
-    }
-
-    /** @internal */
-    public reset(): void {
-        this.index = 0;
-        this.isFirstOfLine = false;
-        this.bars.splice(0);
-        this.staffSystemBounds = null;
     }
 }

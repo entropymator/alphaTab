@@ -1,13 +1,12 @@
 import type { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import type { BoundsLookup } from '@coderline/alphatab/rendering/utils/BoundsLookup';
 import type { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
-import type { IPoolable } from '@coderline/alphatab/rendering/utils/ObjectPool';
 
 /**
  * Represents the bounds of a staff system.
  * @public
  */
-export class StaffSystemBounds implements IPoolable {
+export class StaffSystemBounds {
     /**
      * Gets or sets the index of the bounds within the parent lookup.
      * This allows fast access of the next/previous system.
@@ -84,12 +83,5 @@ export class StaffSystemBounds implements IPoolable {
             }
         }
         return b;
-    }
-
-    /** @internal */
-    public reset(): void {
-        this.index = 0;
-        this.isFinished = false;
-        this.bars.splice(0);
     }
 }

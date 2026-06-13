@@ -2,13 +2,12 @@ import type { Bar } from '@coderline/alphatab/model/Bar';
 import type { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
 import type { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import type { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
-import type { IPoolable } from '@coderline/alphatab/rendering/utils/ObjectPool';
 
 /**
  * Represents the boundaries of a single bar.
  * @public
  */
-export class BarBounds implements IPoolable {
+export class BarBounds {
     /**
      * Gets or sets the reference to the related {@link MasterBarBounds}
      */
@@ -72,10 +71,5 @@ export class BarBounds implements IPoolable {
         for (const b of this.beats) {
             b.finish(scale);
         }
-    }
-
-    /** @internal */
-    public reset(): void {
-        this.beats.splice(0);
     }
 }

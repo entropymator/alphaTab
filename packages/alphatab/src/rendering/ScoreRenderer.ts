@@ -14,14 +14,7 @@ import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 import type { IScoreRenderer, RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import type { ScoreLayout } from '@coderline/alphatab/rendering/layout/ScoreLayout';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
-import { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
-import { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
-import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import { BoundsLookup } from '@coderline/alphatab/rendering/utils/BoundsLookup';
-import { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
-import { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
-import { ObjectPool } from '@coderline/alphatab/rendering/utils/ObjectPool';
-import { StaffSystemBounds } from '@coderline/alphatab/rendering/utils/StaffSystemBounds';
 import type { Settings } from '@coderline/alphatab/Settings';
 
 /**
@@ -44,29 +37,6 @@ export class ScoreRenderer implements IScoreRenderer {
     public settings: Settings;
     public boundsLookup: BoundsLookup | null = null;
     public width: number = 0;
-
-    /**
-     * Pools that back the {@link BoundsLookup} tree. Each render reuses slots
-     * allocated by previous renders via the bump-allocator pattern: a full
-     * render calls {@link _releaseBoundsPools} once before populating the tree,
-     * resetting all pool cursors to 0 in O(1).
-     * @internal
-     */
-    public readonly staffSystemBoundsPool: ObjectPool<StaffSystemBounds> = new ObjectPool<StaffSystemBounds>(
-        () => new StaffSystemBounds()
-    );
-    /** @internal */
-    public readonly masterBarBoundsPool: ObjectPool<MasterBarBounds> = new ObjectPool<MasterBarBounds>(
-        () => new MasterBarBounds()
-    );
-    /** @internal */
-    public readonly barBoundsPool: ObjectPool<BarBounds> = new ObjectPool<BarBounds>(() => new BarBounds());
-    /** @internal */
-    public readonly beatBoundsPool: ObjectPool<BeatBounds> = new ObjectPool<BeatBounds>(() => new BeatBounds());
-    /** @internal */
-    public readonly noteBoundsPool: ObjectPool<NoteBounds> = new ObjectPool<NoteBounds>(() => new NoteBounds());
-    /** @internal */
-    public readonly boundsPool: ObjectPool<Bounds> = new ObjectPool<Bounds>(() => new Bounds());
 
     /**
      * Initializes a new instance of the {@link ScoreRenderer} class.
@@ -178,12 +148,7 @@ export class ScoreRenderer implements IScoreRenderer {
         // before the paint pass re-registers fresh entries for it.
         if (renderHints?.firstChangedMasterBar !== undefined && this.boundsLookup) {
             this.boundsLookup.resetForPartialUpdate();
-            // Pool reset is intentionally skipped on the partial-update path:
-            // preserved subtree objects still occupy pool slots below the
-            // current cursor. New acquires extend past the cursor and the
-            // leak gets reclaimed at the next full render.
         } else {
-            this._releaseBoundsPools();
             this.boundsLookup = new BoundsLookup();
         }
         this._recreateCanvas();
@@ -218,7 +183,6 @@ export class ScoreRenderer implements IScoreRenderer {
             this.render();
         } else if (this.layout!.supportsResize) {
             Logger.debug('Rendering', 'Starting optimized rerendering for resize');
-            this._releaseBoundsPools();
             this.boundsLookup = new BoundsLookup();
             (this.preRender as EventEmitterOfT<boolean>).trigger(true);
             this.canvas!.settings = this.settings;
@@ -265,14 +229,5 @@ export class ScoreRenderer implements IScoreRenderer {
         e.totalWidth = this.layout!.width;
         e.renderResult = this.canvas!.onRenderFinished();
         (this.renderFinished as EventEmitterOfT<RenderFinishedEventArgs>).trigger(e);
-    }
-
-    private _releaseBoundsPools(): void {
-        this.staffSystemBoundsPool.releaseAll();
-        this.masterBarBoundsPool.releaseAll();
-        this.barBoundsPool.releaseAll();
-        this.beatBoundsPool.releaseAll();
-        this.noteBoundsPool.releaseAll();
-        this.boundsPool.releaseAll();
     }
 }

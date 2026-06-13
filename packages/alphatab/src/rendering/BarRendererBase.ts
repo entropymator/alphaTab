@@ -22,9 +22,10 @@ import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer'
 import { BarLocalSkyline, StaffSide } from '@coderline/alphatab/rendering/skyline/BarLocalSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
-import type { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
+import { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
 import { BarHelpers } from '@coderline/alphatab/rendering/utils/BarHelpers';
 import type { BeamingHelper } from '@coderline/alphatab/rendering/utils/BeamingHelper';
+import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 import type { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
 import type { Settings } from '@coderline/alphatab/Settings';
@@ -781,16 +782,15 @@ export class BarRendererBase {
     }
 
     public buildBoundingsLookup(masterBarBounds: MasterBarBounds, cx: number, cy: number): void {
-        const boundsPool = this.scoreRenderer.boundsPool;
-        const barBounds: BarBounds = this.scoreRenderer.barBoundsPool.acquire();
+        const barBounds: BarBounds = new BarBounds();
         barBounds.bar = this.bar;
-        barBounds.visualBounds = boundsPool.acquire();
+        barBounds.visualBounds = new Bounds();
         barBounds.visualBounds.x = cx + this.x;
         barBounds.visualBounds.y = cy + this.y;
         barBounds.visualBounds.w = this.width;
         barBounds.visualBounds.h = this.height;
 
-        barBounds.realBounds = boundsPool.acquire();
+        barBounds.realBounds = new Bounds();
         barBounds.realBounds.x = cx + this.x;
         barBounds.realBounds.y = cy + this.y;
         barBounds.realBounds.w = this.width;
