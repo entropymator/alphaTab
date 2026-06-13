@@ -16,8 +16,6 @@ import { TremoloPickingGlyph } from '@coderline/alphatab/rendering/glyphs/Tremol
 import type { SlashBarRenderer } from '@coderline/alphatab/rendering/SlashBarRenderer';
 import { BeamDirection } from '@coderline/alphatab/rendering/utils/BeamDirection';
 import type { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
-import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
-import { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
 
 /**
  * @internal
@@ -62,9 +60,10 @@ export class SlashBeatGlyph extends BeatOnNoteGlyphBase {
 
     public override buildBoundingsLookup(beatBounds: BeatBounds, cx: number, cy: number) {
         if (this.noteHeads && this.container.beat.notes.length > 0) {
-            const noteBounds = new NoteBounds();
+            const scoreRenderer = this.renderer.scoreRenderer;
+            const noteBounds = scoreRenderer.noteBoundsPool.acquire();
             noteBounds.note = this.container.beat.notes[0];
-            noteBounds.noteHeadBounds = new Bounds();
+            noteBounds.noteHeadBounds = scoreRenderer.boundsPool.acquire();
             noteBounds.noteHeadBounds.x = cx + this.x + this.noteHeads.x;
             noteBounds.noteHeadBounds.y = cy + this.y + this.noteHeads.y - this.noteHeads.height / 2;
             noteBounds.noteHeadBounds.w = this.width;

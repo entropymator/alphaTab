@@ -3,12 +3,13 @@ import type { Note } from '@coderline/alphatab/model/Note';
 import type { BarBounds } from '@coderline/alphatab/rendering/utils/BarBounds';
 import type { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import type { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
+import type { IPoolable } from '@coderline/alphatab/rendering/utils/ObjectPool';
 
 /**
  * Represents the bounds of a single beat.
  * @public
  */
-export class BeatBounds {
+export class BeatBounds implements IPoolable {
     /**
      * Gets or sets the reference to the parent {@link BarBounds}.
      */
@@ -88,6 +89,16 @@ export class BeatBounds {
             for (const n of this.notes!) {
                 n.finish(scale);
             }
+        }
+    }
+
+    /** @internal */
+    public reset(): void {
+        this.onNotesX = 0;
+        // Keep the array allocated for reuse; addNote treats a non-null
+        // (even empty) array as ready-to-push.
+        if (this.notes !== null) {
+            this.notes.splice(0);
         }
     }
 }

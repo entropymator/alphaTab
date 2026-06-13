@@ -1,8 +1,10 @@
+import type { IPoolable } from '@coderline/alphatab/rendering/utils/ObjectPool';
+
 /**
  * Represents a rectangular area within the renderer music notation.
  * @public
  */
-export class Bounds {
+export class Bounds implements IPoolable {
     /**
      * Gets or sets the X-position of the rectangle within the music notation.
      */
@@ -35,5 +37,13 @@ export class Bounds {
         this.y = y;
         this.h = h;
         this.w = w;
+    }
+
+    /** @internal */
+    public reset(): void {
+        this.x = 0;
+        this.y = 0;
+        this.w = 0;
+        this.h = 0;
     }
 }

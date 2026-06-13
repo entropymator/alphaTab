@@ -8,9 +8,8 @@ import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { Glyph } from '@coderline/alphatab/rendering/glyphs/Glyph';
 import type { TabBarRenderer } from '@coderline/alphatab/rendering/TabBarRenderer';
 import type { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
-import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
-import { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
+import type { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
 
 /**
  * @internal
@@ -135,9 +134,10 @@ export class NoteNumberGlyph extends Glyph {
     }
 
     public buildBoundingsLookup(beatBounds: BeatBounds, cx: number, cy: number) {
-        const noteBounds: NoteBounds = new NoteBounds();
+        const scoreRenderer = this.renderer.scoreRenderer;
+        const noteBounds: NoteBounds = scoreRenderer.noteBoundsPool.acquire();
         noteBounds.note = this._note;
-        noteBounds.noteHeadBounds = new Bounds();
+        noteBounds.noteHeadBounds = scoreRenderer.boundsPool.acquire();
         noteBounds.noteHeadBounds.x = cx + this.x;
         noteBounds.noteHeadBounds.y = cy + this.y - this.height / 2;
         noteBounds.noteHeadBounds.w = this.width;

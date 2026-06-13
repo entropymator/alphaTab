@@ -17,9 +17,8 @@ import { TremoloPickingGlyph } from '@coderline/alphatab/rendering/glyphs/Tremol
 import type { ScoreBarRenderer } from '@coderline/alphatab/rendering/ScoreBarRenderer';
 import { BeamDirection } from '@coderline/alphatab/rendering/utils/BeamDirection';
 import type { BeatBounds } from '@coderline/alphatab/rendering/utils/BeatBounds';
-import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
-import { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
+import type { NoteBounds } from '@coderline/alphatab/rendering/utils/NoteBounds';
 
 /**
  * @internal
@@ -281,12 +280,15 @@ export class ScoreNoteChordGlyph extends ScoreNoteChordGlyphBase {
     }
 
     public buildBoundingsLookup(beatBounds: BeatBounds, cx: number, cy: number) {
+        const scoreRenderer = this.renderer.scoreRenderer;
+        const noteBoundsPool = scoreRenderer.noteBoundsPool;
+        const boundsPool = scoreRenderer.boundsPool;
         for (const note of this._notes) {
             if (this._noteGlyphLookup.has(note.id)) {
                 const glyph: EffectGlyph = this._noteGlyphLookup.get(note.id)!;
-                const noteBounds: NoteBounds = new NoteBounds();
+                const noteBounds: NoteBounds = noteBoundsPool.acquire();
                 noteBounds.note = note;
-                noteBounds.noteHeadBounds = new Bounds();
+                noteBounds.noteHeadBounds = boundsPool.acquire();
                 noteBounds.noteHeadBounds.x = cx + this.x + glyph.x;
                 noteBounds.noteHeadBounds.y = cy + this.y + glyph.y - glyph.height / 2;
                 noteBounds.noteHeadBounds.w = glyph.width;
