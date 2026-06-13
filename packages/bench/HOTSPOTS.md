@@ -37,44 +37,6 @@ running the relevant scenario with the bench, applying the patch, and
 re-running to confirm ≥ 1 % improvement on the target metric with no
 visual-test regressions.
 
-### EW-1. `unionShifted` is the top alphatab hotspot on resize
-- **Where**: [Skyline.unionShifted](packages/alphatab/src/rendering/skyline/Skyline.ts), recently introduced (commit b3215e97 — "Skyline.unionShifted; drop 6 closures × R in _unionBarLocalIntoStaffSkyline")
-- **Signal**: 2.1 % + 0.8 % self-time in nightwish-resize, 2.0 % in
-  canon-resize — same function appearing twice = polymorphic site V8 can't
-  inline. Combined with GC at ~10 %, this is almost certainly still
-  allocating in a hot loop despite the recent closure-removal patch.
-- **Hypothesis**: an inner allocation site remains (intermediate array, Map,
-  or coordinate object per segment). Track the source line with a `Counter`
-  bump, then read the heap profile against that.
-- **Risk**: low — Skyline state is internal.
-- **Tried (2026-06-13)**: instance-owned `_scratchSegs` reuse + `.length =` /
-  indexed overwrite in the swap-in step regressed canon-resize +6-14 %.
-  V8 prefers the fresh short-lived `[]` (packed SMI elements kind, young-gen
-  cheap to collect); the `pop()`/`push()` loops on `_segments` were already
-  on a fast path that `.length =` + indexed assignment lost. Next: skip the
-  array entirely by folding into staff-skyline finalisation, or pool by the
-  6-call paired-renderer shape instead of per-instance.
-- **Tried (2026-06-13 round 2)**: call-site fold — agent commit `dfacffd9` on
-  `worktree-agent-a588fa4918ff7dae6` added `Skyline.unionShifted3(o1, dx1,
-  o2, dx2, o3, dx3)` (4-way pair-merge) and collapsed the 6 calls in
-  `RenderStaff._unionBarLocalIntoStaffSkyline` down to 2. Algorithmically
-  correct — `newSegs` stays a fresh `[]` per call, total merges drop 3×.
-  vitest 1599/1599 green. Agent's worktree measurement (3 trials,
-  CPU-pinned) showed canon-resize -10.1 % ★, nightwish-resize -9.2 % ★.
-  Host re-verification at 3 trials (hot cores, immediately after worktree
-  probes): canon-resize +1.2 % `·`. Cooled cores: +1.9 % `~`. Fair 5/5
-  re-baseline: canon-resize -1.8 % `·` (0.61σ pooled), fade-to-black-resize
-  -4.2 % `~`, all six scenarios directionally faster, no regressions. Per
-  strict matrix (target canon-resize `·`) the cherry-pick was dropped.
-  **Diagnostic**: the 5-trial baseline included a 34.23 ms first-trial
-  outlier on nightwish-resize (vs 17.82-18.64 on trials 2-5) → first-trial
-  V8 warmup is sometimes insufficient even with CPU pinning. The patch is
-  almost certainly a real ~2 % win but is below the noise floor on
-  canon-resize specifically. Reviving it requires either (a) the
-  same-process A/B harness already on the determinism roadmap, or (b)
-  re-targeting fade-to-black-resize (where `~` was clear) and re-running
-  with the warmup beefed up.
-
 ### EW-2. `buildBoundingsLookup` runs on every resize
 - **Where**: [BarRendererBase / staves](packages/alphatab/src/rendering/utils/BoundsLookup.ts) — exact site TBD
 - **Signal**: 0.7 % in nightwish-resize, 1.2 % in canon-resize. A bounds
@@ -148,11 +110,19 @@ visual-test regressions.
   attacked again, do it as `<line>` stroking (closer to the visual
   intent and avoids fill rasterisation) or batch ALL per-bar
   paint elements into one path — not just the rects.
+- **A/B confirmation (2026-06-13 round 3)**: re-measured commit `60bad13c`
+  with the paired-sample harness at n=64. canon-resize **`★` +2.0 % /
+  +1.05 ms regression** (CI [0.23, 1.79], z=-2.50). canon-render +2.2 %,
+  nightwish-resize +1.7 %, nightwish-render +2.7 % — all directionally
+  worse, none other than canon-resize clears `★`. Confirms the
+  rectangular `<path>` is strictly worse than `<rect>` on this SVG
+  canvas. Do not retry this shape.
 
 ## Easy wins — landed
 
 | ID | Commit | Scenario | Δ ms | Date | Notes |
 | --- | --- | --- | ---: | --- | --- |
+| EW-1 | `f2a44866` | canon-resize | -1.55 ms (-3.0 % ★); canon-render -0.60 ms (-2.1 % ★) | 2026-06-13 | Fuse 6 `Skyline.unionShifted` calls into 2 four-way merges via new `unionShifted3`. Revived after the A/B paired harness landed (commit `da928b26`); the multi-process diff couldn't resolve the ~1.5 ms effect because its σ floor exceeded it. A/B at n=64 paired iterations: canon-resize `★`, canon-render `★`, nightwish-resize / fade-to-black-resize directionally faster (`·` trending). vitest 1599/1599. |
 | EW-6 | `74c133ea` | (harness) | n/a | 2026-06-13 | Heap profile scoped to the measured loop via `node:inspector` Heap Profiler API; ships as `feat(bench)`, not `perf`. |
 
 ## Major refactors — deferred
