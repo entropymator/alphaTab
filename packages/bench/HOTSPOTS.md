@@ -247,3 +247,16 @@ expected payoff, blast radius, sketch.
   the lifecycle-hook variant; possibly less at the push-skyline variant.
 - **Investigated 2026-06-13 round 3** (worktree `agent-a8b7633e1140de83c`):
   identified the lifecycle gap above; no patch applied.
+- **Micro-devirt also doesn't help (2026-06-13 round 3 follow-up)**: the
+  base `Glyph.getBoundingBoxBottom` does `return this.getBoundingBoxTop()
+  + this.height` — a self-virtual call. Tried inlining it to
+  `this.y + this.height` (with explicit overrides on the two MusicFont*
+  classes that need offset semantics). A/B at n=64 showed canon-resize
+  -1.2 % `·` (z=1.75, CI just touching 0); at n=128 the effect dropped
+  to -0.9 % `·` (z=1.24). Below the harness's resolution floor.
+  **Implication**: the 12.3 ms self-time on `getBoundingBoxTop` is
+  dominated by the function bodies (smuflMetrics lookups, recursion in
+  GlyphGroup), not by dispatch overhead per se. Removing virtual calls
+  one at a time will not move the needle on this hotspot — the win has
+  to come from restructuring (push-based skyline, full lifecycle hook)
+  or from DR-4-shape system-wide polymorphism collapse. Reverted.
