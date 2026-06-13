@@ -58,14 +58,42 @@ visual-test regressions.
     longer eagerly required).
   - **(b)** reduce per-bounds allocation churn — each system creates
     O(bars × beats × notes) small `Bounds` objects per resize. Room
-    for object pooling or flat-array storage. **Low risk; potentially
-    a real easy-win on its own.**
+    for object pooling or flat-array storage. **Tried, reverted — see below.**
   - **(c)** collapse the `MasterBarBounds → BarBounds → BeatBounds →
     NoteBounds` tree where staves overlap (currently each visible staff
     reconstructs masterbar entries via the `masterBarBoundsLookup` Map).
     Risk medium.
 - **Investigated 2026-06-13 round 3** (worktree `agent-ad88e27bb5b046f2c`):
   no patch attempted; original hypothesis falsified.
+- **EW-2(b) object pooling tried 2026-06-13 round 3** (commit
+  `2d7a4de3`, reverted as `79beda40`): full bump-allocator design —
+  six concrete `ObjectPool<T>` instances on `ScoreRenderer` (one per
+  Bounds subclass), `releaseAll()` is O(1) cursor reset, pool
+  ownership at the renderer level so backing arrays persist across
+  resizes. The cost model said this should clear the ~1.8 MB/iter
+  young-gen pressure for ~1.5-2.5 % win on canon-resize. A/B at n=64
+  measured **★ +3.0 % canon-resize regression** instead (CI
+  [0.79, 2.26], z=-3.50) even after eliminating the megamorphic
+  `obj.reset()` call inside `acquire()` and inlining resets at
+  concrete call sites. Initial naive version (auto-reset in pool)
+  was ★ +5.4 %. nightwish-resize +8 %, canon-render +2 % `·`,
+  fade-to-black-resize -1 % `·`. vitest 1599/1599 in both arms.
+  **Conclusion**: V8's young-gen bump allocator for `new` is
+  competitive (~equal or faster) than even a pool's `_items[cursor++]`
+  steady-state acquire, when both are amortised over the actual
+  workload. The pool's overhead — property-access chain
+  (`renderer.scoreRenderer.boundsPool.acquire()`), the `_recycled`
+  empty-check on every acquire, and per-type `reset()` calls — adds
+  more cycles than the GC saves. Predicted "8-15 % GC × 20 % alloc
+  share = 2 % CPU" doesn't materialise because the GC cost is
+  amortised across short-lived objects V8 already collects cheaply.
+  The {@link ObjectPool} abstraction from commit `3c0deea4`
+  (refactor of `SkylineSegmentPool`) is kept — it's neutral on
+  Skyline (where releases are paired and the pool is already
+  long-lived) and a reusable shape for any future
+  one-pair-many-releases pattern. **Demote**: pooling-style
+  allocation reduction on the Bounds tree empirically loses; do not
+  retry without a fundamentally different cost model.
 
 ### EW-3. `collectSpaces` polymorphism
 - **Where**: actually [LineBarRenderer.collectSpaces](packages/alphatab/src/rendering/LineBarRenderer.ts) (no-op stub) overridden in [TabBarRenderer.collectSpaces](packages/alphatab/src/rendering/TabBarRenderer.ts). Path in the HOTSPOTS entry below is wrong — the symbol lives on the renderer hierarchy, not BarLayoutingInfo.
