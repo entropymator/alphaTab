@@ -11,24 +11,28 @@ in the web version of alphaTab. CPU and heap profiles are scoped to the
 measured loop only (via `node:inspector`), so they do not contain module
 load or score-importer noise.
 
-## Headline numbers (SVG baseline, 3 trials × N iterations)
+## Headline numbers (SVG baseline, 5 trials × N iterations — 2026-06-14 post-EW-1)
 
 | Scenario | median* | ± cross-trial σ |
 | --- | --- | --- |
-| tiny-render | 0.76 ms | ± 0.01 ms |
-| nightwish-render | 24.46 ms | ± 0.51 ms |
-| nightwish-resize (4 widths) | 31.44 ms | ± 1.24 ms (~7.9 ms/resize) |
-| canon-render | 98.96 ms | ± 5.02 ms |
-| canon-resize (4 widths) | 130.38 ms | ± 0.46 ms (~32.6 ms/resize) |
-| fade-to-black-resize | 72.58 ms | ± 1.98 ms |
+| tiny-render | 0.49 ms | ± 0.02 ms |
+| nightwish-render | 16.58 ms | ± 1.74 ms |
+| nightwish-resize (4 widths) | 20.34 ms | ± 0.47 ms (~5.1 ms/resize) |
+| canon-render | 67.01 ms | ± 3.45 ms |
+| canon-resize (4 widths) | 90.69 ms | ± 1.29 ms (~22.7 ms/resize) |
+| fade-to-black-resize | 46.17 ms | ± 1.04 ms |
+
+Baseline: `node dist/run.mjs --trials 5 --save-baseline analysis-start --label
+analysis-start-1781388785` on `feature/perf` `fbff8993`.
 
 `median*` is the median of per-trial medians. The cross-trial σ is the noise
 floor for cross-run comparison — a candidate run is only convincingly faster
 when its median is ≥ 2σ below the baseline median.
 
-The `nightwish-resize` ≈ 7.9 ms per width change matches the user's reported
-"12-15 ms" range once browser overhead (DOM diffing, repaint, font metrics
-from real `measureText`) is layered on top.
+The prior table (canon-resize 130 ms, nightwish-resize 31 ms, etc.) was
+captured before EW-1 `f2a44866` landed; the four-way Skyline merge dropped
+canon-resize by ~30 % and the σ floor tightened in tandem. Use the table
+above for sizing new candidates.
 
 ## Easy wins — open
 
@@ -36,6 +40,115 @@ Candidates that look like single-file, no-API-change patches. Verify by
 running the relevant scenario with the bench, applying the patch, and
 re-running to confirm ≥ 1 % improvement on the target metric with no
 visual-test regressions.
+
+### EW-7. `BeatGlyphBase._paintEffects` ternary forces `_usingCtx` heavy transpile
+- **Where**: [packages/alphatab/src/rendering/glyphs/BeatGlyphBase.ts:70-77](packages/alphatab/src/rendering/glyphs/BeatGlyphBase.ts#L70-L77).
+  Body:
+  ```ts
+  private _paintEffects(cx: number, cy: number, canvas: ICanvas) {
+      using _ = this.effectElement
+          ? ElementStyleHelper.beat(canvas, this.effectElement!, this.container.beat)
+          : undefined;
+      for (const g of this._effectGlyphs) {
+          g.paint(cx + this.x, cy + this.y, canvas);
+      }
+  }
+  ```
+- **Signal**: bundle frame `_usingCtx` self-time is 15.43 ms / 2.0 %
+  canon-resize, 3.17 ms / 1.4 % nightwish-resize, 4.48 ms / 1.1 %
+  fade-to-black-resize, ~3 ms canon-render. There are exactly **4**
+  `_usingCtx()` call sites in the entire bundle and only this one is on
+  the canon/nightwish/fade-to-black hot path (the other three are
+  SkiaCanvas.measureText — irrelevant for SVG — and the
+  Slash/Numbered-notation note-head paints, neither of which is in the
+  bench corpus).
+- **Why it allocates so heavily**: OXC's `using` transpiler emits the
+  cheap form `const _ = expr; try { } finally { _?.[Symbol.dispose]?.(); }`
+  for simple `using _ = expr;` declarations — that's what the other ~30
+  `using` sites in the rendering package look like in the bundle, and
+  none of them appear in `_usingCtx` self-time. When the resource
+  expression is a **ternary**, OXC instead emits a full
+  `try { var _u = _usingCtx(); _u.u(...); ... } catch (_) { _u.e = _; } finally { _u.d(); }`
+  wrapper. The factory body allocates `{e, u, a, d}`, two
+  `using.bind(null, ...)` bound functions, and a fresh `n = []` array
+  per call. Then `u(...)` pushes a wrapper object into `n` on the
+  with-resource path, and `d()` runs a `next()` loop over `n` even when
+  it's empty. That's 5+ short-lived allocations per `_paintEffects`
+  invocation — sustained at the per-beat-container call count.
+- **Hypothesis (concrete)**: lift the conditional outside the `using` so
+  the OXC transpiler emits the cheap form, identical in spirit to the
+  ~30 other rendering call sites that already get it. Two shapes both
+  work — `if (this.effectElement === undefined) { /* loop */; return; }
+  using _ = ElementStyleHelper.beat(canvas, this.effectElement!,
+  this.container.beat); /* loop */`, or an explicit
+  `const style = ...?? : undefined; try { /* loop */ } finally {
+  style?.[Symbol.dispose]?.(); }`. Both remove the `_usingCtx` factory
+  entirely from this path and drop the per-call wrapper allocation +
+  dispatch.
+- **Estimated payoff**: -5 to -10 ms canon-resize (-5 to -11 %), -2 to
+  -3 ms nightwish-resize, -2 to -4 ms fade-to-black-resize. Even the
+  conservative end of each range is ≥ 4× the cross-trial σ floor on the
+  named scenario, so a real win should be decisive at `--trials 5`. A
+  full attribution of `_usingCtx`'s 15.43 ms (canon-resize) ≈ 17 % is
+  the theoretical upper bound; the wrapper-dispatch frames around it
+  add a few ms more.
+- **Risk**: low. Single file, ~5-line refactor, no public API change,
+  no semantic change. The four SkiaCanvas / NumberedNoteHeadGlyph /
+  SlashNoteHeadGlyph sites can get the same treatment in the same
+  commit for completeness, though none affect the bench corpus today.
+- **Why this isn't EW-2(b)-shaped**: the EW-2(b) lesson was that
+  replacing `new T()` with `pool.acquire()` is net-neutral or worse
+  because V8's young-gen bump allocator is already fast and the pool's
+  bookkeeping has its own cost. This candidate is the opposite shape:
+  it **removes** an allocation site (the `_usingCtx` factory) without
+  introducing any new bookkeeping — the replacement is fewer
+  instructions, fewer allocations, and one fewer try/catch boundary.
+
+### EW-8. `SvgCanvas._escapeText` runs 5 unconditional regex passes
+- **Where**: [packages/alphatab/src/platform/svg/SvgCanvas.ts](packages/alphatab/src/platform/svg/SvgCanvas.ts) —
+  static `_escapeText` (bundle line 49927):
+  ```js
+  text.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  ```
+- **Signal**: `_escapeText` self-time 16.26 ms / 2.1 % canon-resize,
+  9.49 ms / 2.2 % fade-to-black-resize, 3.32 ms / 1.5 % nightwish-resize,
+  3.97 ms / 0.7 % canon-render. Called from `SvgCanvas.fillText` on
+  every text element painted.
+- **Why it costs**: each `.replace(/regex/g, "...")` activates the
+  regex engine and scans the full string. On no-match the engine still
+  pays the activation + scan cost; only the allocation of a new result
+  is skipped. The bench corpus renders mostly numeric text (bar numbers,
+  time signatures, fret numbers, tuplet labels, tempo labels) which
+  contain no `&<>"'` — the no-match path is the common case, plausibly
+  ≥ 80 % of calls.
+- **Hypothesis (concrete)**: front-load with a single character-class
+  test and early-return the input unchanged on no-match:
+  ```js
+  static _escapeText(text) {
+      if (!/[&<>"']/.test(text)) return text;
+      return text.replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  ```
+  Per no-match call: 1 regex test instead of 5 full regex+replace
+  passes. Per with-match call: same 5 replaces + one extra `test()`
+  (~free).
+- **Estimated payoff**: assume 80 % of calls are no-match and 4-of-5
+  regex engine activations are removed on that path → ~64 % of
+  `_escapeText`'s self-time saved. -10 ms canon-resize (-11 %), -6 ms
+  fade-to-black-resize (-13 %), -2 ms nightwish-resize (-10 %). The
+  conservative half-of-that bound is -5 ms canon-resize ≈ 4× σ — still
+  decisive.
+- **Risk**: low at the patch level (single file, semantically
+  identical), **medium for actually clearing the noise floor**. EW-4
+  established that intra-`SvgCanvas` "early-return guards" and similar
+  micro-tweaks on `fillRect` couldn't move past noise even at 5/5 and
+  10/10 trials. EW-8 differs in mechanism (skipping 4 of 5 regex engine
+  activations is a coarser saving than scale-local caching), but the
+  family-level lesson is real: verify with the paired A/B harness at
+  n=64 before declaring a win, not the multi-process diff which lost
+  EW-1 the first time around.
 
 ### EW-2. `StaffSystem.buildBoundingsLookup` per-system paint-time work
 - **Where**: [packages/alphatab/src/rendering/staves/StaffSystem.ts:1118](packages/alphatab/src/rendering/staves/StaffSystem.ts#L1118) — invoked from `VerticalLayoutBase._paintSystem:383` and `HorizontalScreenLayout:139` once per system during every layout / resize paint.
@@ -191,6 +304,38 @@ visual-test regressions.
 
 Candidates too large for a single iteration. Each entry: hypothesis,
 expected payoff, blast radius, sketch.
+
+**2026-06-14 analysis-start re-confirms** that the five DR entries
+below remain the principal structural levers. Specifically:
+
+- **DR-1** is the largest single lever — the fresh profile shows
+  `registerLayoutingInfo` (18.76 ms canon-resize, across two IC
+  buckets), `_scaleToForce` (12.92 ms), `scaleToWidth` (6.67 ms), and
+  `_emitGroupOverflows` (4.48 ms fade-to-black-resize) all re-running
+  per width change despite being bar-local invariant.
+- **DR-2**'s GC pressure (canon-render 18.2 %, nightwish-resize
+  13.6 %) is now dominated by `unionShifted3`'s 10.6 MB / iter
+  allocation footprint (canon-resize), not the Bounds tree. EW-2(b)
+  established that pool-style allocation reduction loses against V8's
+  young-gen bump allocator, so the next-action under DR-2 is
+  **algorithmic call-count reduction** of `unionShifted3` (already
+  fused 6→2 by EW-1; further reduction would require either skipping
+  union work when offsets unchanged, which folds back into DR-1, or
+  reducing the segment list size per union, which requires a
+  structural change in how bar-local skylines are emitted).
+- **DR-3**'s SvgCanvas paint surface (`_escapeText`, `fillRect`,
+  `fillText`, `_fillMusicFontSymbolText`) jointly accounts for
+  ~10–12 % of canon-resize CPU. EW-8 attacks the smallest sub-piece
+  (`_escapeText`) with a per-call early-return; the rest of the
+  surface still sits under DR-3's path-batching banner.
+- **DR-4** has been narrowed by three negative results (EW-3, EW-5
+  rectangular-path, DR-5 micro-devirt) into a "system-wide refactor
+  only" deferred slot — single-symbol devirtualisation is empirically
+  below the σ floor.
+- **DR-5** still holds; `calculateOverflows` (7.30 ms canon-resize)
+  and `getBoundingBoxTop` (6.88 ms canon-resize, multiple frames) are
+  still the same chained virtual-call surface, blocked on a layout-
+  lifecycle hook.
 
 ### DR-1. Resize re-walks every bar even when only the viewport width changed
 - **Observation**: canon-resize is 36 ms per width change. `layout.doResize`
