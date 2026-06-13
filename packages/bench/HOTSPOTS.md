@@ -111,16 +111,23 @@ visual-test regressions.
 - **Tried (2026-06-13)**: agent-worktree patch (commit 60bad13c on
   `worktree-agent-a28e6b018e119d331`) batched the per-bar rects into one
   filled `<path>` per bar. In-isolation `--only canon-resize` measurement
-  showed -7.7 % / -7.27 ms ★ with vitest 1599/1599 green. Host
-  full-bench cherry-pick at 3 trials: canon-resize -1.8 % `·`, stage
-  breakdown clear -8.4 % on `layout.finalizeStaff`. Re-run at 5 trials:
-  canon-resize -2.7 % `~` (1.19σ pooled), nightwish-resize -11.3 % ★,
-  fade-to-black-resize / canon-render / nightwish-render directionally
-  faster but `·`. Per strict decision matrix the cherry-pick was dropped
-  (target = canon-resize, gate = `★`). The patch is real — next round
-  can revive it by retargeting nightwish-resize, or by re-baselining on
-  a quieter host run and probing canon-resize with `--trials 10` to
-  push the ratio over 2σ.
+  showed -7.7 % ★ with vitest 1599/1599 green. Host cherry-pick at 3
+  trials: canon-resize -1.8 % `·`. At 5 trials: canon-resize -2.7 % `~`,
+  nightwish-resize -11.3 % ★. Dropped per strict matrix, then revived
+  with nightwish-resize as the target. On a **fair 5/5 trial re-baseline**
+  the win evaporated: round-start nightwish-resize median was 20.64 ± 1.14
+  (3 trials, biased high) → 18.35 ± 0.40 (5 trials), and the patched
+  candidate ran 18.81 (+2.5 % `·`). Canon-resize +2.2 % `~`,
+  fade-to-black-resize +4.7 % `~` — directionally worse, not better.
+  **Conclusion**: the apparent wins were 3-trial baseline noise; batching
+  per-bar rects into one filled `<path>` is NOT faster than emitting 5
+  separate `<rect>` elements in this SVG canvas. Likely cause: SVG
+  rasterisers special-case `<rect>` (axis-aligned, cheap fill) while a
+  `<path>` with rectangular subpaths goes through the general path
+  rasteriser. Don't retry this exact shape. If staff-line paint is
+  attacked again, do it as `<line>` stroking (closer to the visual
+  intent and avoids fill rasterisation) or batch ALL per-bar
+  paint elements into one path — not just the rects.
 
 ## Easy wins — landed
 
