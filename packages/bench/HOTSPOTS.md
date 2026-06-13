@@ -189,3 +189,42 @@ expected payoff, blast radius, sketch.
 - **Risk**: high — touches the entire glyph type hierarchy.
 - **Estimated payoff**: 5-10 % from collapsed dispatch + better
   inlining downstream.
+
+### DR-5. `getBoundingBoxTop` polymorphism — needs lifecycle support
+- **Where**: `Glyph.getBoundingBoxTop` (base, returns `this.y`) + 16
+  overrides across [packages/alphatab/src/rendering/glyphs/](packages/alphatab/src/rendering/glyphs/).
+  Hot callers: [BarRendererBase.calculateOverflows](packages/alphatab/src/rendering/BarRendererBase.ts) (3 call sites) and
+  `_finalizeTies`, both reached on every `reLayout` via the resize path.
+- **Signal** (post-determinism baseline): 3.3 % self-time on
+  fade-to-black-resize (12.30 ms), 2.2 % on nightwish-resize (4.97 ms),
+  1.3 % on canon-resize, plus the same source symbol shows up at
+  distinct call sites — classic megamorphic dispatch fan-out.
+- **Why naive caching is unsafe**: the "invariant after layout" claim
+  fails. `TieGlyph.doLayout` sets `this.y` and reruns via
+  `_finalizeTies` after layout shifts. `ScoreNoteChordGlyph` mutates
+  child `effect.y` during voice-container `applyLayoutingInfo` re-layout.
+  `MultiVoiceContainerGlyph._scaleToForce` triggers downstream
+  `scaleToWidth` chains. Container glyphs (`GlyphGroup`,
+  `MultiVoiceContainerGlyph`) recurse over children whose `.y` can
+  change during their own `doLayout` reruns — a parent's cached value
+  goes silently stale when a child is re-laid out. There is no
+  existing "all-layout-done" flag (`isFinalized` is set at the START
+  of `finalizeRenderer`, not the end of the final `applyLayoutingInfo`).
+- **Why naive dispatch table is unsafe**: pre/post-beat glyphs are
+  populated with at least 8 distinct subtypes flowing through the hot
+  loop; a monomorphic-dispatch table would need 8+ `instanceof` branches
+  and likely be net-neutral vs the IC miss it tries to avoid.
+- **Path forward**: introduce an end-of-finalize lifecycle hook that
+  fires after `applyLayoutingInfo` has run on every renderer in the
+  staff, letting each glyph populate a stable
+  bounding-box-top/bottom field. The hot loop then reads two numeric
+  fields per glyph and no virtual is needed. ~3-4 touchpoints in
+  `BarRendererBase` / `StaffSystem` / `ScoreLayout`.
+- **Alternative**: skip caching entirely; instead lift the hot
+  per-glyph loop out of `calculateOverflows` by maintaining a running
+  min/max y at `addPreBeatGlyph` time (push-based skyline).
+- **Risk**: high — lifecycle hook touches the layout pipeline contract.
+- **Estimated payoff**: 12-15 ms saved per resize-heavy scenario at
+  the lifecycle-hook variant; possibly less at the push-skyline variant.
+- **Investigated 2026-06-13 round 3** (worktree `agent-a8b7633e1140de83c`):
+  identified the lifecycle gap above; no patch applied.
