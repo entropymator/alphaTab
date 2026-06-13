@@ -37,16 +37,35 @@ running the relevant scenario with the bench, applying the patch, and
 re-running to confirm ≥ 1 % improvement on the target metric with no
 visual-test regressions.
 
-### EW-2. `buildBoundingsLookup` runs on every resize
-- **Where**: [BarRendererBase / staves](packages/alphatab/src/rendering/utils/BoundsLookup.ts) — exact site TBD
-- **Signal**: 0.7 % in nightwish-resize, 1.2 % in canon-resize. A bounds
-  lookup rebuild is appropriate on first render but not on a pure width
-  change.
-- **Hypothesis**: `boundsLookup = new BoundsLookup()` fires on every resize
-  in [ScoreRenderer.resizeRender](packages/alphatab/src/rendering/ScoreRenderer.ts#L186).
-  Cache the bounds across width-only resizes — invalidate only when system
-  packing actually changes.
-- **Risk**: medium — partial-render path depends on the bounds lookup state.
+### EW-2. `StaffSystem.buildBoundingsLookup` per-system paint-time work
+- **Where**: [packages/alphatab/src/rendering/staves/StaffSystem.ts:1118](packages/alphatab/src/rendering/staves/StaffSystem.ts#L1118) — invoked from `VerticalLayoutBase._paintSystem:383` and `HorizontalScreenLayout:139` once per system during every layout / resize paint.
+- **Signal**: 0.7 % nightwish-resize, 1.2 % canon-resize self-time.
+- **What it actually is**: builds pixel-coordinate `BarBounds` /
+  `BeatBounds` / `NoteBounds` for hit-testing. Coordinates derive from
+  `renderer.x`, `renderer.width`, `system.x/y/width/height`, `staff.y` —
+  all width-dependent because system packing changes with width.
+- **Original EW-2 hypothesis** ("cache the BoundsLookup across width-only
+  resizes") is unviable: the bench scenarios cycle widths `[970, 1400,
+  800, 1200]`, every iteration changes packing, so any cache signature
+  would miss 100 % of the time, and even if it hit the coordinates would
+  be wrong.
+- **Real sub-opportunities** if this stays a hotspot:
+  - **(a)** skip bounds construction entirely when there's no consumer
+    of the lookup (no API contract beyond hit-testing requires it after
+    every resize — could be lazily built on first
+    `findBeat`/`getBeatAtPos` query). Risk medium (changes hit-test
+    latency profile; need to ensure `boundsLookup.finish()` is no
+    longer eagerly required).
+  - **(b)** reduce per-bounds allocation churn — each system creates
+    O(bars × beats × notes) small `Bounds` objects per resize. Room
+    for object pooling or flat-array storage. **Low risk; potentially
+    a real easy-win on its own.**
+  - **(c)** collapse the `MasterBarBounds → BarBounds → BeatBounds →
+    NoteBounds` tree where staves overlap (currently each visible staff
+    reconstructs masterbar entries via the `masterBarBoundsLookup` Map).
+    Risk medium.
+- **Investigated 2026-06-13 round 3** (worktree `agent-ad88e27bb5b046f2c`):
+  no patch attempted; original hypothesis falsified.
 
 ### EW-3. `collectSpaces` polymorphism
 - **Where**: actually [LineBarRenderer.collectSpaces](packages/alphatab/src/rendering/LineBarRenderer.ts) (no-op stub) overridden in [TabBarRenderer.collectSpaces](packages/alphatab/src/rendering/TabBarRenderer.ts). Path in the HOTSPOTS entry below is wrong — the symbol lives on the renderer hierarchy, not BarLayoutingInfo.
