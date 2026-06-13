@@ -37,7 +37,9 @@ export function analyzeHeapProfile(filePath: string): HeapProfileAnalysis {
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf8')) as HeapProfileRoot;
     const entries: HeapHotspot[] = [];
     let total = 0;
-    walk(raw.head, entries, t => { total += t; });
+    walk(raw.head, entries, t => {
+        total += t;
+    });
     entries.sort((a, b) => b.selfBytes - a.selfBytes);
     return { totalBytes: total, topBytes: entries };
 }
@@ -56,13 +58,17 @@ function walk(node: HeapNode, out: HeapHotspot[], addTotal: (n: number) => void)
         }
     }
     if (node.children) {
-        for (const c of node.children) walk(c, out, addTotal);
+        for (const c of node.children) {
+            walk(c, out, addTotal);
+        }
     }
 }
 
 function locationOf(node: HeapNode): string {
     const url = node.callFrame.url ?? '';
-    if (!url) return '<native>';
+    if (!url) {
+        return '<native>';
+    }
     const trimmed = url.replace(/^file:\/\//, '').replace(/.*?\/packages\//, 'packages/');
     return `${trimmed}:${node.callFrame.lineNumber + 1}`;
 }

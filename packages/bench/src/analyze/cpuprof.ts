@@ -67,10 +67,14 @@ export function analyzeCpuProfile(filePath: string): CpuProfileAnalysis {
     const entries: CpuHotspot[] = [];
     for (const [id, micros] of selfMicros) {
         const node = byId.get(id);
-        if (!node) continue;
+        if (!node) {
+            continue;
+        }
         const fn = node.callFrame.functionName || '(anonymous)';
         // Skip the synthetic root nodes that have no real frame.
-        if (fn === '(root)' || fn === '(idle)' || fn === '(program)') continue;
+        if (fn === '(root)' || fn === '(idle)' || fn === '(program)') {
+            continue;
+        }
         entries.push({
             functionName: fn,
             location: locationOf(node),
@@ -90,7 +94,9 @@ export function analyzeCpuProfile(filePath: string): CpuProfileAnalysis {
 
 function locationOf(node: CpuNode): string {
     const url = node.callFrame.url ?? '';
-    if (!url) return '<native>';
+    if (!url) {
+        return '<native>';
+    }
     // Trim file:// and project prefix to keep table readable.
     const trimmed = url.replace(/^file:\/\//, '').replace(/.*?\/packages\//, 'packages/');
     return `${trimmed}:${node.callFrame.lineNumber + 1}`;

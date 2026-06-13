@@ -1,4 +1,6 @@
 import fs from 'node:fs';
+import inspector from 'node:inspector/promises';
+import path from 'node:path';
 import * as v8 from 'node:v8';
 
 import { Environment } from '@coderline/alphatab/Environment';
@@ -6,7 +8,7 @@ import { ScoreLoader } from '@coderline/alphatab/importer/ScoreLoader';
 import { Profiler, type ProfilerSnapshot } from '@coderline/alphatab/profiling/Profiler';
 import { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
 import { Settings } from '@coderline/alphatab/Settings';
-import { type Scenario } from './scenarios';
+import type { Scenario } from './scenarios';
 
 function makeSettings(): Settings {
     const settings = new Settings();
@@ -38,31 +40,75 @@ export interface IterationResult {
     durationNs: number;
 }
 
+export interface ScenarioSummary {
+    n: number;
+    medianNs: number;
+    meanNs: number;
+    minNs: number;
+    maxNs: number;
+    p5Ns: number;
+    p95Ns: number;
+    /** Sample standard deviation across iterations. */
+    stddevNs: number;
+    /**
+     * Approximate standard error of the median, computed as
+     * 1.2533 * stddev / sqrt(n) (the asymptotic SE of the median for a
+     * normal distribution). Useful as a noise-floor guide when comparing
+     * two runs — wins below ~2× SE are not distinguishable from noise.
+     */
+    medianSeNs: number;
+}
+
 export interface ScenarioResult {
     scenarioId: string;
     iterations: IterationResult[];
-    /** Profiler snapshot accumulated across measured iterations. */
+    /**
+     * Profiler stage stats accumulated across the measured iterations only
+     * (Profiler.reset() is called immediately before the measured loop).
+     */
     profiler: ProfilerSnapshot;
-    /** Heap stats sampled before/after the measured loop. */
+    /** v8.getHeapStatistics() before and after the measured loop. */
     heap: {
         usedHeapBefore: number;
         usedHeapAfter: number;
         totalHeapBefore: number;
         totalHeapAfter: number;
     };
-    /** Iteration counts and median wall times for the report. */
-    summary: {
-        n: number;
-        medianNs: number;
-        meanNs: number;
-        minNs: number;
-        maxNs: number;
-        p5Ns: number;
-        p95Ns: number;
+    summary: ScenarioSummary;
+}
+
+function summarize(iterations: IterationResult[]): ScenarioSummary {
+    const durations = iterations.map(i => i.durationNs).sort((a, b) => a - b);
+    const n = durations.length;
+    const sum = durations.reduce((a, b) => a + b, 0);
+    const mean = sum / n;
+    const varianceSum = durations.reduce((acc, d) => acc + (d - mean) ** 2, 0);
+    const stddev = n > 1 ? Math.sqrt(varianceSum / (n - 1)) : 0;
+    return {
+        n,
+        medianNs: durations[Math.floor(n / 2)],
+        meanNs: mean,
+        minNs: durations[0],
+        maxNs: durations[n - 1],
+        p5Ns: durations[Math.floor(n * 0.05)],
+        p95Ns: durations[Math.floor(n * 0.95)],
+        stddevNs: stddev,
+        medianSeNs: n > 1 ? (1.2533 * stddev) / Math.sqrt(n) : 0
     };
 }
 
-export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
+export interface RunOptions {
+    /** Where to write `cpu.cpuprofile` and `heap.heapprofile`. */
+    outDir: string;
+}
+
+/**
+ * Runs one scenario in the current process. CPU and heap profilers are
+ * scoped via the node:inspector API to the measured loop only — warmup,
+ * module load, and score loading are excluded — so the resulting profiles
+ * are not contaminated by one-time startup costs.
+ */
+export async function runScenario(scenario: Scenario, options: RunOptions): Promise<ScenarioResult> {
     const settings = makeSettings();
 
     const data = fs.readFileSync(scenario.scorePath);
@@ -77,69 +123,77 @@ export async function runScenario(scenario: Scenario): Promise<ScenarioResult> {
         if (scenario.mode === 'render') {
             renderer.renderScore(score, tracks);
         } else {
-            // For resize: keep one rendered baseline across iterations.
-            // Each measured iteration runs through every resize width once.
             const widths = scenario.resizeWidths!;
             for (const w of widths) {
                 renderer.width = w;
                 renderer.resizeRender();
             }
-            // Reset to initial width so the next iteration starts from the same state.
             renderer.width = scenario.width;
             renderer.resizeRender();
         }
     };
 
-    // Warmup
     if (scenario.mode === 'resize') {
-        // resize needs an initial full render before resizeRender works.
         renderer.renderScore(score, tracks);
     }
     for (let i = 0; i < scenario.warmup; i++) {
         driveOnce();
     }
 
-    // Force a GC if exposed to flatten warmup noise.
     if (global.gc) {
         global.gc();
     }
 
-    Profiler.reset();
-    const heapBefore = v8.getHeapStatistics();
-    const iterations: IterationResult[] = [];
+    const session = new inspector.Session();
+    session.connect();
+    try {
+        await session.post('Profiler.enable');
+        await session.post('Profiler.setSamplingInterval', { interval: 100 });
+        await session.post('Profiler.start');
 
-    for (let i = 0; i < scenario.iterations; i++) {
-        const t0 = process.hrtime.bigint();
-        driveOnce();
-        const t1 = process.hrtime.bigint();
-        iterations.push({ durationNs: Number(t1 - t0) });
+        await session.post('HeapProfiler.enable');
+        await session.post('HeapProfiler.startSampling', { samplingInterval: 16384 });
+
+        Profiler.reset();
+        const heapBefore = v8.getHeapStatistics();
+        const iterations: IterationResult[] = [];
+
+        for (let i = 0; i < scenario.iterations; i++) {
+            const t0 = process.hrtime.bigint();
+            driveOnce();
+            const t1 = process.hrtime.bigint();
+            iterations.push({ durationNs: Number(t1 - t0) });
+        }
+
+        const heapAfter = v8.getHeapStatistics();
+        const profiler = Profiler.snapshot();
+
+        const cpu = await session.post('Profiler.stop');
+        const heap = await session.post('HeapProfiler.stopSampling');
+
+        fs.mkdirSync(options.outDir, { recursive: true });
+        fs.writeFileSync(
+            path.join(options.outDir, 'cpu.cpuprofile'),
+            JSON.stringify((cpu as { profile: unknown }).profile)
+        );
+        fs.writeFileSync(
+            path.join(options.outDir, 'heap.heapprofile'),
+            JSON.stringify((heap as { profile: unknown }).profile)
+        );
+
+        return {
+            scenarioId: scenario.id,
+            iterations,
+            profiler,
+            heap: {
+                usedHeapBefore: heapBefore.used_heap_size,
+                usedHeapAfter: heapAfter.used_heap_size,
+                totalHeapBefore: heapBefore.total_heap_size,
+                totalHeapAfter: heapAfter.total_heap_size
+            },
+            summary: summarize(iterations)
+        };
+    } finally {
+        session.disconnect();
     }
-
-    const heapAfter = v8.getHeapStatistics();
-    const profiler = Profiler.snapshot();
-
-    const durations = iterations.map(i => i.durationNs).sort((a, b) => a - b);
-    const sum = durations.reduce((a, b) => a + b, 0);
-    const summary = {
-        n: durations.length,
-        medianNs: durations[Math.floor(durations.length / 2)],
-        meanNs: sum / durations.length,
-        minNs: durations[0],
-        maxNs: durations[durations.length - 1],
-        p5Ns: durations[Math.floor(durations.length * 0.05)],
-        p95Ns: durations[Math.floor(durations.length * 0.95)]
-    };
-
-    return {
-        scenarioId: scenario.id,
-        iterations,
-        profiler,
-        heap: {
-            usedHeapBefore: heapBefore.used_heap_size,
-            usedHeapAfter: heapAfter.used_heap_size,
-            totalHeapBefore: heapBefore.total_heap_size,
-            totalHeapAfter: heapAfter.total_heap_size
-        },
-        summary
-    };
 }

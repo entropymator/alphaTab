@@ -24,26 +24,37 @@ All from `packages/bench/`:
 # build the bench bundle (must run after touching alphatab source)
 npx vite build
 
-# run all scenarios, write per-scenario profiles + combined report
-node dist/run.mjs --label <some-label>
+# Fast feedback: 1 trial per scenario. Single-trial summary shows per-iter
+# stddev + standard error of the median; useful while iterating quickly.
+node dist/run.mjs --label probe-quick
 
-# run one scenario only
-node dist/run.mjs --only canon-resize --label probe-canon
+# Rigorous: 3 trials per scenario in separate child processes. Cross-trial
+# stddev reveals the run-to-run noise floor — the threshold below which a
+# delta is meaningless. Use this for saving baselines and for diffing a
+# patch against the baseline.
+node dist/run.mjs --trials 3 --label feature-perf-$(date +%s) \
+    --save-baseline feature-perf
 
-# save the current run as a baseline (for later diff)
-node dist/run.mjs --save-baseline feature-perf --label feature-perf
+# Single scenario
+node dist/run.mjs --only canon-resize --label probe-canon --trials 3
 
-# diff two baseline JSON files (markdown table to stdout)
+# Diff two saved baselines (markdown to stdout). The diff column `sig`
+# marks ★ for ≥ 2σ pooled (real win/regression), ~ for 1-2σ (marginal),
+# · for below noise floor.
 node dist/cli.mjs diff baselines/feature-perf.json baselines/<later>.json
 ```
 
-Per-scenario output lands in `runs/<label>/<scenario-id>/`:
-- `result.json` — wall-clock per iteration + Profiler stage stats + heap deltas
-- `cpu.cpuprofile` — open in Chrome DevTools → Performance → Load profile
-- `heap.heapprofile` — open in Chrome DevTools → Memory → Load (sampled)
+Per-scenario output lands in:
+- Single-trial: `runs/<label>/<scenario-id>/{result.json, cpu.cpuprofile, heap.heapprofile}`
+- Multi-trial: `runs/<label>/<scenario-id>/trial-N/{result.json, cpu.cpuprofile, heap.heapprofile}`
 
-Each scenario runs in a fresh child process (clean V8 state, profilers
-attached at process start). See `scenarios.ts` for the corpus.
+CPU and heap profiles are **scoped to the measured loop only** via the
+`node:inspector` API — they do not include warmup, module load, or score
+parsing. The heap top-N is real layout-time allocation data (no importer
+noise).
+
+Each scenario runs in a fresh child process per trial (clean V8 state).
+See `scenarios.ts` for the corpus.
 
 ## One iteration
 
@@ -52,11 +63,14 @@ attached at process start). See `scenarios.ts` for the corpus.
 If you haven't already:
 
 ```bash
-node dist/run.mjs --save-baseline feature-perf --label feature-perf-$(date +%s)
+node dist/run.mjs --trials 3 --save-baseline feature-perf \
+    --label feature-perf-$(date +%s)
 ```
 
-This pins the current state of `feature/perf` HEAD as the baseline you'll
-measure against.
+This pins the current state of `feature/perf` HEAD as the baseline plus its
+per-scenario noise floor. **Always run baselines with `--trials 3+`**:
+single-trial medians can drift 5+ ms run-to-run on resize scenarios, which
+is bigger than most "easy win" deltas you're trying to detect.
 
 ### 2. Pick a target
 
@@ -79,30 +93,30 @@ heap-only suggests allocation pressure; both means a near-guaranteed win.
 
 ### 4. Patch and measure
 
-Apply the patch, then:
+Apply the patch, build, run with **the same trial count as the baseline**:
 
 ```bash
 npx vite build
-node dist/run.mjs --only <target-scenario> --label probe-<short-name>
-```
-
-Compare:
-
-```bash
+node dist/run.mjs --trials 3 --label probe-<short-name> \
+    --save-baseline probe-<short-name>
 node dist/cli.mjs diff baselines/feature-perf.json \
-    runs/probe-<short-name>/baseline-equivalent.json
+    baselines/probe-<short-name>.json
 ```
-
-(Or just eyeball the two REPORT.md files side by side; the harness keeps
-both.)
 
 **Decision rule:**
-- Improvement ≥ 1 % on target scenario median wall-clock AND
-- No > 2 % regression on any other scenario median AND
-- Stage breakdown shows the improvement landed on the targeted stage
-  (not just on noise)
+- The diff's `sig` column shows `★` on the target scenario (≥ 2σ pooled — a
+  real win), AND
+- No other scenario shows `★` regressing, AND
+- Stage breakdown shows the improvement landed on the targeted stage (not on
+  noise or elsewhere)
 
 → keep. Otherwise revert.
+
+A win that shows only `~` (1-2σ) is suggestive but not conclusive — re-run
+with `--trials 5` to either promote it to `★` or rule it out.
+
+A win below noise (`·`) is not a win, even if the median dropped. Trying
+to ship one is how perf regressions accidentally land.
 
 ### 5. Verify visual
 

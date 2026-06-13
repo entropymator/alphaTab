@@ -1,31 +1,32 @@
 # alphaTab rendering hotspots
 
 Living backlog. Updated every bench iteration. Numbers in this file refer to
-the SVG baseline (see [INITIAL_BASELINE_REPORT.md](./INITIAL_BASELINE_REPORT.md))
-captured on `feature/perf` HEAD with `node dist/run.mjs --label svg-baseline`.
+the SVG baseline captured on `feature/perf` HEAD with
+`node dist/run.mjs --label svg-baseline-3trials --trials 3 --save-baseline feature-perf`.
+See [INITIAL_BASELINE_REPORT.md](./INITIAL_BASELINE_REPORT.md) for the full
+report.
 
 The bench uses the **SVG render engine** because that is the primary engine
-in the web version of alphaTab — the one the user experiences when resizing
-in a browser. (An earlier skia-based baseline existed; switching to SVG made
-GC and unionShifted jump in the top-self table because skia's native paint
-calls were hiding them.)
+in the web version of alphaTab. CPU and heap profiles are scoped to the
+measured loop only (via `node:inspector`), so they do not contain module
+load or score-importer noise.
 
-> Self-time percentages below are out of the whole sampled CPU profile,
-> including Node module compilation. Layout-only wins compete for a fraction
-> of the total — keep that in mind when scoping work.
+## Headline numbers (SVG baseline, 3 trials × N iterations)
 
-## Headline numbers (SVG baseline)
+| Scenario | median* | ± cross-trial σ |
+| --- | --- | --- |
+| tiny-render | 0.76 ms | ± 0.01 ms |
+| nightwish-render | 24.46 ms | ± 0.51 ms |
+| nightwish-resize (4 widths) | 31.44 ms | ± 1.24 ms (~7.9 ms/resize) |
+| canon-render | 98.96 ms | ± 5.02 ms |
+| canon-resize (4 widths) | 130.38 ms | ± 0.46 ms (~32.6 ms/resize) |
+| fade-to-black-resize | 72.58 ms | ± 1.98 ms |
 
-| Scenario | median |
-| --- | --- |
-| tiny-render | 0.80 ms |
-| nightwish-render | 24.5 ms |
-| nightwish-resize (4 widths ≈ 7.5 ms each) | 30 ms |
-| canon-render | 95 ms |
-| canon-resize (4 widths ≈ 36 ms each) | 145 ms |
-| fade-to-black-resize | ~ |
+`median*` is the median of per-trial medians. The cross-trial σ is the noise
+floor for cross-run comparison — a candidate run is only convincingly faster
+when its median is ≥ 2σ below the baseline median.
 
-The `nightwish-resize` ≈ 7.5 ms per width change matches the user's reported
+The `nightwish-resize` ≈ 7.9 ms per width change matches the user's reported
 "12-15 ms" range once browser overhead (DOM diffing, repaint, font metrics
 from real `measureText`) is layered on top.
 
