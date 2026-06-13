@@ -12,6 +12,7 @@ import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffS
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import type { StaffTrackGroup } from '@coderline/alphatab/rendering/staves/StaffTrackGroup';
+import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 
 /**
  * A Staff represents a single line within a StaffSystem.
@@ -274,6 +275,7 @@ export class RenderStaff {
     }
 
     public finalizeStaff(): void {
+        if (__PROFILING__) { Profiler.begin('layout.finalizeStaff'); }
         this._applyStaffPaddings();
 
         this.height = 0;
@@ -311,6 +313,7 @@ export class RenderStaff {
         this.height = Math.ceil(this.height);
 
         this._updateVisibility();
+        if (__PROFILING__) { Profiler.end('layout.finalizeStaff'); }
     }
 
     public paint(cx: number, cy: number, canvas: ICanvas, startIndex: number, count: number): void {

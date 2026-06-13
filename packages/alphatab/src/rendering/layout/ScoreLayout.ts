@@ -27,6 +27,7 @@ import type { BeamingRuleLookup } from '@coderline/alphatab/rendering/utils/Beam
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 import type { Settings } from '@coderline/alphatab/Settings';
 import { Lazy } from '@coderline/alphatab/util/Lazy';
+import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 
 /**
  * @internal
@@ -80,7 +81,9 @@ export abstract class ScoreLayout {
     public resize(): void {
         this._lazyPartials.clear();
         this.slurRegistry.clear();
+        if (__PROFILING__) { Profiler.begin('layout.doResize'); }
         this.doResize();
+        if (__PROFILING__) { Profiler.end('layout.doResize'); }
     }
     public abstract doResize(): void;
 
@@ -123,7 +126,9 @@ export abstract class ScoreLayout {
         }
 
         this._createScoreInfoGlyphs();
+        if (__PROFILING__) { Profiler.begin('layout.doLayoutAndRender'); }
         this.doLayoutAndRender(renderHints);
+        if (__PROFILING__) { Profiler.end('layout.doLayoutAndRender'); }
     }
 
     private _lazyPartials: Map<string, LazyPartial> = new Map<string, LazyPartial>();

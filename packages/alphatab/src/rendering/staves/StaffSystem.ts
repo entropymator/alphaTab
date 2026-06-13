@@ -24,6 +24,7 @@ import { Bounds } from '@coderline/alphatab/rendering/utils/Bounds';
 import { ElementStyleHelper } from '@coderline/alphatab/rendering/utils/ElementStyleHelper';
 import { MasterBarBounds } from '@coderline/alphatab/rendering/utils/MasterBarBounds';
 import { StaffSystemBounds } from '@coderline/alphatab/rendering/utils/StaffSystemBounds';
+import { Profiler } from '@coderline/alphatab/profiling/Profiler';
 
 /**
  * @internal
@@ -1077,6 +1078,7 @@ export class StaffSystem {
     }
 
     public finalizeSystem(): void {
+        if (__PROFILING__) { Profiler.begin('layout.finalizeSystem'); }
         const settings = this.layout.renderer.settings;
         if (this.index === 0) {
             this.topPadding = settings.display.firstSystemPaddingTop;
@@ -1110,6 +1112,7 @@ export class StaffSystem {
         for (const b of this._brackets!) {
             b.finalizeBracket(settings.display.resources.engravingSettings);
         }
+        if (__PROFILING__) { Profiler.end('layout.finalizeSystem'); }
     }
 
     private _finalizeTrackGroups(onlyFirstGroup: boolean = false) {
