@@ -39,6 +39,39 @@ export class TabBarRenderer extends LineBarRenderer {
 
     private _showMultiBarRest: boolean = false;
 
+    /**
+     * EW-3 Option A — layout-time gap descriptor cache.
+     *
+     * Per Phase 0 §6.2, gap descriptors are *relative-stable* across resize
+     * cycles: widths and intra-bar offsets are layout-time invariant, only
+     * the per-beat `bg.x` shifts. The cache stores the width-invariant
+     * payload (string-line index, beat-relative x, full padded width) plus
+     * a parallel reference to the owning {@link BeatContainerGlyphBase} so
+     * paint-time can project absolute x via
+     * `beatGlyphsStart + bg.x + relativeX`.
+     *
+     * Layout is bucketed by string-line index: `_gapBucketEnd[i]` is the
+     * exclusive end-offset into the parallel `_gapRelXAndWidth` and
+     * `_gapBeatRefs` arrays for line `i`. This skips the per-paint
+     * `Float32Array[][]` outer array allocation and the per-gap
+     * `Float32Array(2)` allocation that the legacy `collectSpaces` shape
+     * required. Lines are stored in line-index order; the paint-time loop
+     * walks each bucket linearly.
+     *
+     * Lifecycle (mirrors `_voiceWalkDone` / `_layoutInvariantCached`):
+     * - populated at end of {@link doLayout}
+     * - survives {@link reLayout} (gap descriptors are bar-local invariant)
+     * - survives {@link afterReverted} (NOT invalidated — `afterReverted`
+     *   fires every resize cycle, defeating the cache; see DR-1 §18.2)
+     * - invalidated by {@link recreatePreBeatGlyphs} (defensive; voice
+     *   composition may change there)
+     * - invalidated by {@link invalidateLayoutCache}
+     */
+    private _gapBucketEnd: Uint32Array | null = null;
+    private _gapRelXAndWidth: Float32Array | null = null;
+    private _gapBeatRefs: BeatContainerGlyphBase[] | null = null;
+    private _gapCount: number = 0;
+
     public override get showMultiBarRest(): boolean {
         return this._showMultiBarRest;
     }
@@ -86,13 +119,178 @@ export class TabBarRenderer extends LineBarRenderer {
     public minString = Number.NaN;
     public maxString = Number.NaN;
 
+    /**
+     * EW-3 Option A — legacy adapter retained for the no-op base class
+     * contract. The real consumer is {@link paintStaffLines} (overridden
+     * below) which reads the cache directly, skipping the per-paint
+     * `Float32Array[][]` outer + per-gap `Float32Array(2)` allocations.
+     *
+     * This override is still callable (e.g. from a future external query)
+     * and projects the cache into the legacy `spaces[][]` shape.
+     */
     protected override collectSpaces(spaces: Float32Array[][]): void {
         if (this.additionalMultiRestBars) {
             return;
         }
+        if (this._gapBucketEnd === null) {
+            this._buildGapCache();
+        }
+        const count = this._gapCount;
+        if (count === 0) {
+            return;
+        }
+        const bucketEnd = this._gapBucketEnd!;
+        const relXAndWidth = this._gapRelXAndWidth!;
+        const beatRefs = this._gapBeatRefs!;
+        const base = this.beatGlyphsStart;
+        let line = 0;
+        for (let i = 0; i < count; i++) {
+            while (i >= bucketEnd[line]) {
+                line++;
+            }
+            const absX = base + beatRefs[i].x + relXAndWidth[i * 2];
+            spaces[line].push(new Float32Array([absX, relXAndWidth[i * 2 + 1]]));
+        }
+    }
 
-        const padding: number = this.smuflMetrics.staffLineThickness;
+    /**
+     * EW-3 Option A — paint-time consumer. Reads the layout-time cache
+     * (built by {@link _buildGapCache}) and emits the staff-line rects
+     * directly, skipping the legacy `Float32Array[][]` outer allocation,
+     * the per-gap `Float32Array(2)` allocation, and the per-line sort
+     * (gaps are layout-bucketed in beat-iteration order which is
+     * monotonic in `relativeX` within each string-line, modulo grace
+     * beats; grace beats are emitted in their layout-time order too).
+     */
+    protected override paintStaffLines(cx: number, cy: number, canvas: ICanvas): void {
+        using _ = ElementStyleHelper.bar(canvas, this.staffLineBarSubElement, this.bar, true);
+
+        const lineWidth = this.width;
+        const lineYOffset = this.smuflMetrics.staffLineThickness / 2;
+        const thickness = this.smuflMetrics.staffLineThickness;
+        const drawnLineCount = this.drawnLineCount;
+        const cxLocal = cx + this.x;
+        const cyLocal = cy + this.y;
+
+        // Multi-rest bar: no gaps; emit one full-width rect per line.
+        if (this.additionalMultiRestBars) {
+            for (let line = 0; line < drawnLineCount; line++) {
+                const lineY = this.getLineY(line) - lineYOffset;
+                canvas.fillRect(cxLocal, cyLocal + lineY, lineWidth, thickness);
+            }
+            return;
+        }
+
+        if (this._gapBucketEnd === null) {
+            this._buildGapCache();
+        }
+
+        const count = this._gapCount;
+        if (count === 0) {
+            // No tab numbers in this bar — emit unbroken lines.
+            for (let line = 0; line < drawnLineCount; line++) {
+                const lineY = this.getLineY(line) - lineYOffset;
+                canvas.fillRect(cxLocal, cyLocal + lineY, lineWidth, thickness);
+            }
+            return;
+        }
+
+        const bucketEnd = this._gapBucketEnd!;
+        const relXAndWidth = this._gapRelXAndWidth!;
+        const beatRefs = this._gapBeatRefs!;
+        const base = this.beatGlyphsStart;
+
+        let cursor = 0;
+        for (let line = 0; line < drawnLineCount; line++) {
+            const lineY = this.getLineY(line) - lineYOffset;
+            const cyLine = cyLocal + lineY;
+            const end = bucketEnd[line];
+
+            // Gaps for this string-line are at indices [cursor, end). They
+            // were built in beat-iteration (and thus left-to-right) order.
+            // Maintain the legacy semantics by sorting if any inversions
+            // exist — but the common path is no-sort.
+            let lineX = 0;
+            if (end > cursor + 1) {
+                // Detect inversions (grace-note edge case). Cheap linear scan.
+                let inverted = false;
+                let prevX = base + beatRefs[cursor].x + relXAndWidth[cursor * 2];
+                for (let k = cursor + 1; k < end; k++) {
+                    const xk = base + beatRefs[k].x + relXAndWidth[k * 2];
+                    if (xk < prevX) {
+                        inverted = true;
+                        break;
+                    }
+                    prevX = xk;
+                }
+                if (inverted) {
+                    // Slow path: build a sorted view for this line. Rare.
+                    const segCount = end - cursor;
+                    const xs = new Float32Array(segCount);
+                    const ws = new Float32Array(segCount);
+                    for (let k = 0; k < segCount; k++) {
+                        const ki = cursor + k;
+                        xs[k] = base + beatRefs[ki].x + relXAndWidth[ki * 2];
+                        ws[k] = relXAndWidth[ki * 2 + 1];
+                    }
+                    const order = new Uint32Array(segCount);
+                    for (let k = 0; k < segCount; k++) {
+                        order[k] = k;
+                    }
+                    // Insertion sort on `order` by xs[order[i]].
+                    for (let k = 1; k < segCount; k++) {
+                        const cur = order[k];
+                        const curX = xs[cur];
+                        let m = k - 1;
+                        while (m >= 0 && xs[order[m]] > curX) {
+                            order[m + 1] = order[m];
+                            m--;
+                        }
+                        order[m + 1] = cur;
+                    }
+                    for (let k = 0; k < segCount; k++) {
+                        const oi = order[k];
+                        const gx = xs[oi];
+                        const gw = ws[oi];
+                        canvas.fillRect(cxLocal + lineX, cyLine, gx - lineX, thickness);
+                        lineX = gx + gw;
+                    }
+                    canvas.fillRect(cxLocal + lineX, cyLine, lineWidth - lineX, thickness);
+                    cursor = end;
+                    continue;
+                }
+            }
+
+            // Fast path: walk gaps in order.
+            for (let k = cursor; k < end; k++) {
+                const gx = base + beatRefs[k].x + relXAndWidth[k * 2];
+                const gw = relXAndWidth[k * 2 + 1];
+                canvas.fillRect(cxLocal + lineX, cyLine, gx - lineX, thickness);
+                lineX = gx + gw;
+            }
+            canvas.fillRect(cxLocal + lineX, cyLine, lineWidth - lineX, thickness);
+            cursor = end;
+        }
+    }
+
+    /**
+     * EW-3 Option A — populate the layout-time gap descriptor cache,
+     * bucketed by string-line index.
+     *
+     * Walks the same voice/beat/string nest as the original
+     * `collectSpaces`. Stores only the width-invariant payload
+     * (`relativeX`, `width`); the per-resize `bg.x` is read from the
+     * stored beat ref at paint time.
+     */
+    private _buildGapCache(): void {
+        const drawnLineCount = this.drawnLineCount;
         const tuning = this.bar.staff.tuning;
+        const tuningLen = tuning.length;
+
+        // First pass: count gaps per string-line so we can size the typed
+        // arrays exactly once and pre-bucket without secondary allocation.
+        const bucketCount = new Uint32Array(drawnLineCount);
+        let total = 0;
         for (const voice of this.voiceContainer.beatGlyphs.values()) {
             for (const bg of voice) {
                 const notes: TabBeatGlyph = (bg as TabBeatContainerGlyph).onNotes as TabBeatGlyph;
@@ -100,17 +298,93 @@ export class TabBarRenderer extends LineBarRenderer {
                 if (noteNumbers) {
                     for (const [str, noteNumber] of noteNumbers.notesPerString) {
                         if (!noteNumber.isEmpty) {
-                            spaces[tuning.length - str].push(
-                                new Float32Array([
-                                    this.beatGlyphsStart + bg.x + notes.x + noteNumbers!.x - padding,
-                                    noteNumbers!.width + padding * 2
-                                ])
-                            );
+                            const lineIdx = tuningLen - str;
+                            if (lineIdx >= 0 && lineIdx < drawnLineCount) {
+                                bucketCount[lineIdx]++;
+                                total++;
+                            }
                         }
                     }
                 }
             }
         }
+
+        this._gapCount = total;
+        if (total === 0) {
+            this._gapBucketEnd = new Uint32Array(drawnLineCount);
+            this._gapRelXAndWidth = new Float32Array(0);
+            this._gapBeatRefs = [];
+            return;
+        }
+
+        // Convert counts to exclusive end-offsets (CSR-style prefix sum)
+        // and prepare per-line forward-write cursors.
+        const bucketEnd = new Uint32Array(drawnLineCount);
+        const fwdCursor = new Uint32Array(drawnLineCount);
+        let running = 0;
+        for (let line = 0; line < drawnLineCount; line++) {
+            fwdCursor[line] = running; // start of bucket
+            running += bucketCount[line];
+            bucketEnd[line] = running; // exclusive end of bucket
+        }
+
+        const relXAndWidth = new Float32Array(total * 2);
+        const beatRefs: BeatContainerGlyphBase[] = new Array(total);
+        const padding: number = this.smuflMetrics.staffLineThickness;
+
+        for (const voice of this.voiceContainer.beatGlyphs.values()) {
+            for (const bg of voice) {
+                const notes: TabBeatGlyph = (bg as TabBeatContainerGlyph).onNotes as TabBeatGlyph;
+                const noteNumbers: TabNoteChordGlyph | null = notes.noteNumbers;
+                if (noteNumbers) {
+                    // Layout-time invariants: notes.x, noteNumbers.x, noteNumbers.width
+                    // — all set in TabBeatGlyph.doLayout / TabNoteChordGlyph.doLayout
+                    // and never re-written by _scaleToForce. See EW-3 plan Appendix A.
+                    const relativeXBase = notes.x + noteNumbers.x - padding;
+                    const fullWidth = noteNumbers.width + padding * 2;
+                    for (const [str, noteNumber] of noteNumbers.notesPerString) {
+                        if (!noteNumber.isEmpty) {
+                            const lineIdx = tuningLen - str;
+                            if (lineIdx >= 0 && lineIdx < drawnLineCount) {
+                                const idx = fwdCursor[lineIdx]++;
+                                relXAndWidth[idx * 2] = relativeXBase;
+                                relXAndWidth[idx * 2 + 1] = fullWidth;
+                                beatRefs[idx] = bg;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        this._gapBucketEnd = bucketEnd;
+        this._gapRelXAndWidth = relXAndWidth;
+        this._gapBeatRefs = beatRefs;
+    }
+
+    /**
+     * EW-3 Option A — invalidate the gap cache. Called from
+     * {@link recreatePreBeatGlyphs} and {@link invalidateLayoutCache}; NOT
+     * from {@link afterReverted} per DR-1 §18.5 anti-pattern.
+     */
+    private _invalidateGapCache(): void {
+        this._gapBucketEnd = null;
+        this._gapRelXAndWidth = null;
+        this._gapBeatRefs = null;
+        this._gapCount = 0;
+    }
+
+    public override invalidateLayoutCache(): void {
+        super.invalidateLayoutCache();
+        this._invalidateGapCache();
+    }
+
+    protected override recreatePreBeatGlyphs(): void {
+        super.recreatePreBeatGlyphs();
+        // Defensive: pre-beat composition changes here. Voice container
+        // composition usually does not (it's per-bar layout), but the
+        // bar-local invariant payload is conservative to invalidate.
+        this._invalidateGapCache();
     }
 
     public override doLayout(): void {
