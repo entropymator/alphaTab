@@ -11,34 +11,43 @@ in the web version of alphaTab. CPU and heap profiles are scoped to the
 measured loop only (via `node:inspector`), so they do not contain module
 load or score-importer noise.
 
-## Headline numbers (SVG baseline, 5 trials × N iterations — 2026-06-14 post-DR-1 broker-lifecycle)
+## Headline numbers (SVG baseline, 5 trials × N iterations — 2026-06-14 post-EW-11)
 
 | Scenario | median* | ± cross-trial σ |
 | --- | --- | --- |
-| tiny-render | 0.42 ms | ± 0.01 ms (3.41 %) |
-| nightwish-render | 12.72 ms | ± 0.24 ms (1.86 %) |
-| nightwish-resize (4 widths) | 15.73 ms | ± 0.11 ms (0.72 %, ~3.9 ms/resize) |
-| canon-render | 57.62 ms | ± 2.28 ms (3.96 %) |
-| canon-resize (4 widths) | 71.29 ms | ± 1.26 ms (1.77 %, ~17.8 ms/resize) |
-| fade-to-black-resize | 38.52 ms | ± 1.29 ms (3.34 %) |
-| **canon-resize-drag (12 widths)** | **217.80 ms** | **± 1.34 ms (0.62 %, ~18.2 ms/resize)** |
+| tiny-render | 0.46 ms | ± 0.01 ms (1.94 %) |
+| nightwish-render | 13.17 ms | ± 0.85 ms (6.42 %) |
+| nightwish-resize (4 widths) | 17.11 ms | ± 1.03 ms (6.03 %, ~4.3 ms/resize) |
+| canon-render | 63.49 ms | ± 1.23 ms (1.93 %) |
+| canon-resize (4 widths) | 75.99 ms | ± 0.38 ms (0.49 %, ~19.0 ms/resize) |
+| fade-to-black-resize | 41.23 ms | ± 0.72 ms (1.74 %) |
+| **canon-resize-drag (12 widths)** | **232.26 ms** | **± 1.67 ms (0.72 %, ~19.4 ms/resize)** |
 
-Baseline: `node dist/run.mjs --trials 5 --save-baseline DR1-final --label DR1-final`
-on `feature/perf` `06658555`. The DR-1 broker-lifecycle landing (`eddf9bc1`)
-moved every scenario; multi-process diff against the pre-DR-1 baseline shows
-canon-resize-drag -17.50 ms (-7.4 %) ★, canon-resize -5.63 ms (-7.3 %) ★, and
-every other scenario directionally faster (none `★` regressing). The σ floor
-on canon-resize-drag tightened from 1.48 % to 0.62 % as a side effect — less
-variance from the formerly-repeated voice-container walk. `canon-resize-drag`
-was added in `dd530e65` to amplify the resize path for analysis — it cycles
-widths in a sustained browser-drag pattern (1400→600→850), driving 12 resizes
-per `driveOnce` so the CPU profile is ~3× more densely sampled per resize
-than canon-resize.
+Baseline: `node dist/run.mjs --trials 5 --save-baseline post-EW11 --label post-EW11`
+on `feature/perf` `323b4133` (post EW-1 / EW-7 / EW-8 / EW-9 Variant B / DR-1
+broker-lifecycle / EW-10 Phase A / EW-3 Option A / EW-11). Cumulative paired
+A/B Δ vs the pre-DR-1 baseline (`fbff8993`-era):
+- DR-1 broker-lifecycle `eddf9bc1`: -6.08 ms
+- EW-10 Phase A `244c8e0b`: -4.14 ms
+- EW-3 Option A `4f89adda`: -4.34 ms
+- EW-11 paint bundle `e01ba2a2`: -2.45 ms (at n=128 paired)
+- **Total: -17.01 ms / -7.2 %** on canon-resize-drag.
+
+Absolute medians above are session-dependent — the post-DR-1 baseline session
+(`DR1-final.json`, 217.80 ms) used a quieter host. Use paired A/B at n=64/128
+as authoritative for sub-5 % shifts; the 5-trial baselines are the σ-floor
+anchor for absolute resolution thresholds.
+
+`canon-resize-drag` was added in `dd530e65` to amplify the resize path for
+analysis — it cycles widths in a sustained browser-drag pattern
+(1400→600→850), driving 12 resizes per `driveOnce` so the CPU profile is
+~3× more densely sampled per resize than canon-resize.
 
 The `1 % σ-floor for candidates` is the smallest delta a scenario can resolve:
-- canon-resize-drag: **2.18 ms** (1 % of 218 ms); σ at 1.34 ms means a ≥ 2σ
-  candidate needs ≥ 2.7 ms. Both thresholds quoted per candidate below.
-- canon-resize: 0.71 ms; ≥ 2σ needs ≥ 2.52 ms.
+- canon-resize-drag: **2.32 ms** (1 % of 232 ms); σ at 1.67 ms means a ≥ 2σ
+  candidate needs ≥ 3.34 ms.
+- canon-resize: **0.76 ms** (1 % of 76 ms); σ at 0.38 ms means ≥ 2σ needs
+  ≥ 0.76 ms — extremely tight.
 
 `median*` is the median of per-trial medians. The cross-trial σ is the noise
 floor for cross-run comparison — a candidate run is only convincingly faster
