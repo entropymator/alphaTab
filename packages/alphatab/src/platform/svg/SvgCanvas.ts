@@ -51,9 +51,30 @@ export abstract class SvgCanvas implements ICanvas {
 
     public fillRect(x: number, y: number, w: number, h: number): void {
         if (w > 0) {
-            this.buffer += `<rect x="${x * this.scale}" y="${y * this.scale}" width="${
-                w * this.scale
-            }" height="${h * this.scale}" fill="${this.color.rgba}" />\n`;
+            // Per Phase 0 §8.1: canon-resize-drag never sets scale!=1 and never
+            // produces integer post-*scale coordinates, so the 4 multiplies are
+            // pure overhead in the bench workload but cannot be elided
+            // unconditionally — at user scale!=1, the coords still must scale.
+            // Short-circuit the scale=1 path with manual `+` concat (a) skipping
+            // the 4 *1 multiplies, (b) avoiding the template literal's number-
+            // formatting overhead in favour of `+`-mediated `Number.prototype.toString`.
+            const s = this.scale;
+            if (s === 1) {
+                this.buffer +=
+                    '<rect x="' +
+                    x +
+                    '" y="' +
+                    y +
+                    '" width="' +
+                    w +
+                    '" height="' +
+                    h +
+                    '" fill="' +
+                    this.color.rgba +
+                    '" />\n';
+            } else {
+                this.buffer += `<rect x="${x * s}" y="${y * s}" width="${w * s}" height="${h * s}" fill="${this.color.rgba}" />\n`;
+            }
         }
     }
 
