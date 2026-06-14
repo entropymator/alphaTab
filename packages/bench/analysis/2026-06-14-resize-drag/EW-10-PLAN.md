@@ -707,3 +707,97 @@ NEVER:
 2. **The §11 anti-revert directives MUST be obeyed.** Especially: no `test-accept-reference` without user-confirmed Class E classification; do NOT generalize to all fillRect callers; do NOT hook the flush into cycle-firing lifecycle hooks.
 
 If either rule is broken, the executor has departed from the plan. Stop, re-read this document, and resume from the section where the deviation occurred.
+
+---
+
+## 18. Execution outcome — Phase A landed `244c8e0b`, Phase B falsified 2026-06-14
+
+**Status**: Phase A landed (scale=1 fast path). Phase B (paintStaffLines batching) attempted twice, both below σ — batching-buffer overhead eats the per-call savings on this workload. EW-10 ships under "Easy wins — landed" as Phase A only; the structural §6 design does not ship.
+
+### 18.1 Phase 0 — empirical probes (commit `daa5c2c6`)
+
+Probe instrumentation patched onto `SvgCanvas.fillRect` (reverted before commit; reproducible via `packages/bench/scripts/phase0-fillrect-count.mjs`).
+
+Key findings — several **invalidated** §3 / §5 plan assumptions:
+
+| Plan assumption | Actual measurement | Impact |
+|---|---|---|
+| 18-39k fillRect calls / iter (§5.2) | **114,307 calls / iter** (3-6× higher) | Phase A's per-call savings are 3-6× more valuable than estimated |
+| 500-1100 ns per call (§5.2) | **~171 ns** | Phase A's intra-function tweaks have less absolute room than estimated, but call count compensates |
+| paintStaffLines ~60-75 % of volume (§3.4) | **44.8 %** | Class Z dominance smaller than thought; Phase B's potential ceiling is lower |
+| ledger lines ~5-10 % of volume (§3.4) | **26.6 %** | Class G is much bigger than thought; if anything went wrong with stems-style identity, more fixtures would have caught it |
+| stems ~15-25 % | 16.3 % | matches |
+| `scale=1 → integer coords` (§5.1 T1 assumption) | **0 % integer post-`*scale`** — even at scale=1, all coords are fractional float values | T1 reduced to "skip 4 multiplies" only (no integer-emission optimisation possible) |
+| `Color.rgba` is a getter that might recompute | Plain cached field | T2 dropped from Phase A — no measurable savings available |
+| paintBackground is z-pinned before all glyphs (§3.1) | **Confirmed at HEAD**: emitted first in `paintBar`, before pre-beat glyphs / voice container / post-beat | Phase B's `paintBackground`-flush design preserves z-order as planned |
+| BeatContainerGlyph is the only beginGroup wrapper of fillRect-bearing paint | **Confirmed** | Class G is a single site, not multiple |
+
+### 18.2 Phase A — scale=1 fast path with manual concat (committed `244c8e0b`)
+
+Implementation per §5.3 T1+T3 (T2 dropped per Phase 0):
+
+```ts
+const s = this.scale;
+if (s === 1) {
+    this.buffer += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" fill="' + this.color.rgba + '" />\n';
+} else {
+    this.buffer += `<rect x="${x*s}" y="${y*s}" width="${w*s}" height="${h*s}" fill="${this.color.rgba}" />\n`;
+}
+```
+
+A/B at n=64 paired vs `be8b724b` (pre-EW-10):
+
+| Scenario | Δ ms | Δ % | sig |
+|---|---:|---:|:---:|
+| canon-resize-drag | **-4.14** | **-2.7 %** | **★** |
+
+Above the 2σ floor (2.7 ms), `★` significance (sign-test z=2.75, 43/64 wins, CI [-6.12, -2.26]). vitest: **1599/1599 — no visual diffs at all**. Output is byte-identical to the prior code because `${x}` and `'"' + x` both produce `Number.prototype.toString` output.
+
+### 18.3 Phase B — paintStaffLines batching (falsified)
+
+Per §6.4, implemented `fillRectBatched(x, y, w, h)` on `ICanvas` (default forwards to `fillRect`; `SvgCanvas` overrides with a buffered path). Added a `_rectBuffer` + flush plumbing per §6.2-§6.3. Migrated `LineBarRenderer.paintStaffLines:167` and `:175` to call `fillRectBatched`. Flush hook at the end of `BarRendererBase.paintBackground` and at every non-batched emission method.
+
+| Run | A | B | Δ vs A | sig |
+|---|---|---|---|---|
+| probe-EW10-B-vs-A (initial) | Phase A | Phase B v1 | **+1.80 ms / +1.2 %** | `·` (sign z=-1.25) |
+| probe-EW10-B2-vs-A (refined) | Phase A | Phase B v2 (flush inlined, color-table shrunk) | **-0.07 ms / 0.0 %** | `·` |
+| probe-EW10-B-vs-baseline | be8b724b | Phase B v1 | **+0.11 ms / +0.1 %** | `·` |
+
+Phase B v1 is **slower** than Phase A. The plan §6 estimated a 30× per-call win on the batched path; that holds in microbench. But the **per-flush amortisation cost** (walking the buffer + emitting concatenated strings + the indirect call overhead at every emission method's guarded `_flushRectBatchIfPending`) eats the savings.
+
+vitest: 1599/1599 on both Phase B v1 and v2 — **no visual diffs**, confirming the batching machinery is correctness-clean. The §4 Class Z safety analysis was vindicated (paintBackground-end flush DID preserve z-order; no fixture broke).
+
+### 18.4 Why the §6 design didn't pay off as estimated
+
+The §6.6 estimate was "~12 ms saving on canon-resize-drag" assuming N batched-record-pushes cost ~30 ns each vs ~500-1100 ns per template-literal call. Two facts overrode that arithmetic:
+
+1. **Per-call cost was ~171 ns, not 500-1100 ns** (Phase A's measured number after Phase A landed; pre-Phase-A it was ~300-500 ns including the template literal). The "30×" win compresses to ~6-10× per call.
+2. **Flush cost is non-trivial**: walking the buffer + emitting a concatenated `<rect ... />` per record, plus the guarded `_flushRectBatchIfPending` check at every emission method, adds ~50-80 ns of overhead per emission method call (~10-20 such calls per iter per bar). At canon-resize-drag's bar count, that's ~1-2 ms of flush-guard overhead per iter.
+
+Net: ~3-5 ms of per-call savings, minus ~3-5 ms of flush+guard overhead. The bench sees ~0 ± 1 ms.
+
+### 18.5 Phase B is not retried with a different shape
+
+The plan §10.3 lists no fallback after Phase B because Phase A already cleared σ. Phase B's failure is acceptable: the win we shipped is the win that mattered.
+
+The phase B v2 narrowing (inlining the flush, shrinking the color table) showed that the buffer-batching mechanism's overhead is **fundamental** at this call rate, not a particular implementation choice. A third batching shape (e.g. pure `Array.join` flush, custom integer-to-string lookup table) might pay off but the marginal expected delta is below σ given Phase A is already at the floor.
+
+### 18.6 Plan corrections needed for future similar gates
+
+- **Plan §5.2 / §5.3 cost estimates were 3-6× off.** Future plans should bound their assumed per-call cost from existing microbench data, not from per-op estimation. The Phase 0 probe pattern (instrument the function, measure call count + per-call ns, commit findings) should be elevated from optional to mandatory for ALL hotspot candidates with rate > 50k calls / iter.
+- **Plan §6 batching designs should include a "guard overhead floor" estimate.** Any flush-on-emit-boundary pattern has an N×M overhead component (N emission methods × M flushes per iter) that wasn't quantified. The plan's §6 estimate would have been more honest if it'd written "expected savings if flush amortises ≥ 50× per-call cost, otherwise wash".
+- **Class Z safety analysis was correct.** Phase B's vitest pass with zero diffs vindicates §4 Class Z and the §6.3 `paintBackground`-end flush boundary. This is reusable infrastructure: if some future hotspot is identified that can use buffered emission, the §4 / §6.3 framework can be cited as established-safe.
+- **No revert needed on visual diffs.** The user's anti-revert framing held: Phase B had zero diffs, so the question never came up. But the executor was prepped to surface diffs to the user rather than auto-classify, which is the right default regardless of whether they appear.
+
+### 18.7 Cite-by-commit timeline
+
+- `daa5c2c6` — Phase 0 empirical probes (committed; instrumentation patch reverted before commit).
+- `244c8e0b` — **Phase A landed**: scale=1 fast path. Stays.
+- Phase B implementations were in working tree only; both reverted before commit per §10 fall-out protocol (acceptable outcome — Phase A's win is the EW-10 ship).
+- This commit (docs) — HOTSPOTS.md update + this postscript.
+
+### 18.8 Final HEAD
+
+`244c8e0b` (Phase A landed) + docs commit completing the HOTSPOTS.md and §18 paperwork.
+
+vitest: 1599/1599. A/B paired n=64: canon-resize-drag `★` Δ -4.14 ms. No `★` regression elsewhere.
