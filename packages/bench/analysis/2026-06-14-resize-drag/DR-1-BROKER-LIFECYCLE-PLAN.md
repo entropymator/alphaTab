@@ -613,7 +613,7 @@ DR-1 broker-lifecycle is shippable when **all four** hold simultaneously:
 
 ## 13. Documented falsification path
 
-If all three options in §4 fail (Phase 5 caps OR Phase 3 perf is `·` on all three attempts):
+If the §4 primary plus the §4.5 fallbacks all fail (Phase 5 caps OR Phase 3 perf is `·` on each):
 
 ### 13.1 What to record in HOTSPOTS.md
 
@@ -631,10 +631,10 @@ If all three options in §4 fail (Phase 5 caps OR Phase 3 perf is `·` on all th
 ### 13.3 Plan postscript
 
 - Add a `§15. Execution outcome` section to THIS plan (same shape as EW-9 plan §15). Record:
-  - Which option was tried first; the perf delta; the visual failure count; the iteration count.
-  - Same for options 2 and 3 if attempted.
-  - The structural reason all three failed (in 2-3 sentences — this is the load-bearing artifact for future DR-1 retries).
-  - Cite the specific source-line hooks that defeated each option.
+  - §4 primary outcome: perf delta, visual failure count, iteration count.
+  - Same for each §4.5 fallback attempted.
+  - The structural reason the slice didn't land (in 2-3 sentences — this is the load-bearing artifact for future DR-1 retries).
+  - Cite the specific source-line hooks that defeated each attempt.
 
 ### 13.4 Acceptable-outcome framing
 
