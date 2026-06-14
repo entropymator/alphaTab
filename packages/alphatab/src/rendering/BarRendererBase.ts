@@ -439,45 +439,17 @@ export class BarRendererBase {
         return !this.bar || this.bar.index === this.scoreRenderer.layout!.lastBarIndex;
     }
 
-    /**
-     * DR-1: gate flag for the expensive voice-container walk inside
-     * {@link _registerLayoutingInfo}. The walk's broker outputs (`springs`,
-     * `_beatSizes`, `_timeSortedSprings`, `allGraceRods`, `_minDuration`,
-     * `postBeatSize`) have no external reset path (see DR-1 plan §2.2) and
-     * are populated once during initial layout, surviving every subsequent
-     * resize cycle untouched. Phase 1 instrumentation verified this
-     * empirically — ~60 000 settled comparisons on canon-resize-drag with
-     * zero mismatches.
-     *
-     * The cheap pair (preBeatSize / postBeatSize max-of writes) keeps
-     * running every cycle because `StaffSystem.addMasterBarRenderers` zeroes
-     * `preBeatSize` at the head of every resize. The walk is skipped after
-     * the first call. Invalidated only by {@link afterReverted} as a
-     * defensive belt-and-braces — the renderer is being put back to a
-     * fresh-staff state; one extra walk is cheap insurance against any
-     * composition mutation we missed.
-     *
-     * NOT invalidated by {@link recreatePreBeatGlyphs}: pre-beat composition
-     * is independent of voice-container state, the walk's outputs do not
-     * depend on `_preBeatGlyphs`, and the cheap pair picks up the new
-     * `_preBeatGlyphs.width` regardless.
-     */
-    private _voiceWalkDone: boolean = false;
-
     public _registerLayoutingInfo(): void {
         const info: BarLayoutingInfo = this.layoutingInfo;
         const preSize: number = this._preBeatGlyphs.width;
         if (info.preBeatSize < preSize) {
             info.preBeatSize = preSize;
         }
-        if (!this._voiceWalkDone) {
-            const container = this.voiceContainer;
-            container.registerLayoutingInfo(info);
+        const container = this.voiceContainer;
+        container.registerLayoutingInfo(info);
 
-            this.topEffects.registerLayoutingInfo(info);
-            this.bottomEffects.registerLayoutingInfo(info);
-            this._voiceWalkDone = true;
-        }
+        this.topEffects.registerLayoutingInfo(info);
+        this.bottomEffects.registerLayoutingInfo(info);
 
         const postSize: number = this._postBeatGlyphs.width;
         if (info.postBeatSize < postSize) {
@@ -494,9 +466,6 @@ export class BarRendererBase {
         // back into the "fresh, awaiting addBarRenderer" state but its
         // bar-local glyph composition, broker contributions, and pre/post
         // skyline emissions are still valid.
-        // DR-1: `_voiceWalkDone` invalidated as belt-and-braces. One
-        // extra walk on re-adoption is cheap insurance.
-        this._voiceWalkDone = false;
     }
 
     public afterStaffBarReverted() {
