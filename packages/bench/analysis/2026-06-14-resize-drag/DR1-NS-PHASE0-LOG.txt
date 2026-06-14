@@ -1,0 +1,384 @@
+[bench] WARN: Turbo Boost is ON (intel_pstate) — first-trial clock differs from sustained. Fix: sudo bash -c 'echo 1 > /sys/devices/system/cpu/intel_pstate/no_turbo' (or amd: echo 0 > /sys/devices/system/cpu/cpufreq/boost)
+[bench] run label: DR1-NS-probe
+[bench] writing to: /home/daniel/dev/alphaTab2/packages/bench/runs/DR1-NS-probe
+[bench] scenarios: canon-resize-drag
+[bench] trials per scenario: 1
+[bench] pinning children to cores: 2,3 (taskset)
+[bench] running scenario 'canon-resize-drag' (mode=resize, warmup=3, iterations=8)
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[AlphaTab][Model] Unsupported bend type detected, fallback to custom null
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=330
+[DR1-NS-cost] maxWidth=1330.00 totalMs=40.413 layoutMs=18.808 paintMs=21.605 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=20.769 layoutMs=10.866 paintMs=9.904 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=28.824 layoutMs=18.554 paintMs=10.269 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=22.652 layoutMs=12.239 paintMs=10.413 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=21.469 layoutMs=9.513 paintMs=11.956 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=23.933 layoutMs=8.789 paintMs=15.143 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=17.868 layoutMs=8.580 paintMs=9.289 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=21.904 layoutMs=9.621 paintMs=12.283 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=20.611 layoutMs=12.707 paintMs=7.905 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=12.943 layoutMs=6.196 paintMs=6.747 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=13.635 layoutMs=6.635 paintMs=7.000 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=24.473 layoutMs=7.262 paintMs=17.210 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=13.091 layoutMs=6.370 paintMs=6.721 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=12.838 layoutMs=6.052 paintMs=6.787 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=14.182 layoutMs=6.426 paintMs=7.756 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=17.732 layoutMs=5.939 paintMs=11.793 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=12.697 layoutMs=6.283 paintMs=6.414 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=12.242 layoutMs=5.911 paintMs=6.330 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=19.680 layoutMs=6.865 paintMs=12.815 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=13.086 layoutMs=6.188 paintMs=6.898 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=12.576 layoutMs=6.128 paintMs=6.449 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=12.718 layoutMs=6.226 paintMs=6.492 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=20.001 layoutMs=6.177 paintMs=13.823 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=12.211 layoutMs=5.997 paintMs=6.214 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=12.426 layoutMs=5.994 paintMs=6.432 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=19.885 layoutMs=6.275 paintMs=13.610 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=11.688 layoutMs=5.822 paintMs=5.866 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=14.445 layoutMs=6.644 paintMs=7.801 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=17.291 layoutMs=7.490 paintMs=9.801 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=30.989 layoutMs=8.874 paintMs=22.115 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=11.453 layoutMs=5.561 paintMs=5.891 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=11.650 layoutMs=5.687 paintMs=5.963 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=11.375 layoutMs=5.564 paintMs=5.811 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=16.511 layoutMs=5.925 paintMs=10.586 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=11.017 layoutMs=5.603 paintMs=5.414 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=10.775 layoutMs=5.262 paintMs=5.513 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=10.995 layoutMs=5.356 paintMs=5.639 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=20.322 layoutMs=5.584 paintMs=14.738 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=10.892 layoutMs=5.461 paintMs=5.430 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=17.195 layoutMs=7.809 paintMs=9.385 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=15.537 layoutMs=6.997 paintMs=8.540 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=16.018 layoutMs=7.101 paintMs=8.917 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=15.534 layoutMs=6.836 paintMs=8.698 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=20.475 layoutMs=6.988 paintMs=13.487 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=16.968 layoutMs=8.722 paintMs=8.246 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=17.132 layoutMs=7.256 paintMs=9.875 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=17.634 layoutMs=7.372 paintMs=10.262 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=24.464 layoutMs=7.147 paintMs=17.317 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=14.936 layoutMs=6.849 paintMs=8.087 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=15.120 layoutMs=6.816 paintMs=8.304 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=23.128 layoutMs=7.009 paintMs=16.119 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=15.122 layoutMs=6.941 paintMs=8.181 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=16.838 layoutMs=6.927 paintMs=9.911 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=17.119 layoutMs=8.014 paintMs=9.105 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=22.961 layoutMs=13.934 paintMs=9.027 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=15.438 layoutMs=7.068 paintMs=8.370 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=15.330 layoutMs=6.912 paintMs=8.417 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=15.719 layoutMs=7.036 paintMs=8.683 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=25.591 layoutMs=7.763 paintMs=17.828 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=16.737 layoutMs=7.896 paintMs=8.841 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=16.452 layoutMs=7.275 paintMs=9.178 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=16.735 layoutMs=7.726 paintMs=9.009 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=24.990 layoutMs=7.162 paintMs=17.828 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=17.738 layoutMs=8.308 paintMs=9.430 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=16.381 layoutMs=7.138 paintMs=9.244 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=17.187 layoutMs=7.606 paintMs=9.581 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=24.401 layoutMs=6.831 paintMs=17.570 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.826 layoutMs=6.451 paintMs=8.375 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=19.924 layoutMs=9.855 paintMs=10.068 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=15.927 layoutMs=6.860 paintMs=9.067 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=26.613 layoutMs=7.792 paintMs=18.820 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=17.197 layoutMs=7.333 paintMs=9.864 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=16.335 layoutMs=6.644 paintMs=9.691 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=25.335 layoutMs=7.220 paintMs=18.115 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=14.624 layoutMs=6.376 paintMs=8.249 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=15.305 layoutMs=6.455 paintMs=8.850 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=17.567 layoutMs=7.867 paintMs=9.700 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=26.518 layoutMs=8.283 paintMs=18.235 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=17.050 layoutMs=7.650 paintMs=9.401 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=15.182 layoutMs=6.599 paintMs=8.583 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.709 layoutMs=6.206 paintMs=8.503 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=25.662 layoutMs=6.882 paintMs=18.781 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=14.592 layoutMs=6.495 paintMs=8.097 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=15.513 layoutMs=6.727 paintMs=8.786 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=16.443 layoutMs=6.790 paintMs=9.653 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=23.733 layoutMs=6.814 paintMs=16.919 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=15.210 layoutMs=6.749 paintMs=8.460 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=16.135 layoutMs=7.574 paintMs=8.561 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=15.067 layoutMs=6.460 paintMs=8.607 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=26.373 layoutMs=7.538 paintMs=18.834 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=17.207 layoutMs=7.008 paintMs=10.198 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=15.182 layoutMs=6.590 paintMs=8.592 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=14.837 layoutMs=6.284 paintMs=8.553 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=15.033 layoutMs=6.711 paintMs=8.322 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=14.822 layoutMs=6.421 paintMs=8.401 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=15.138 layoutMs=6.544 paintMs=8.594 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=15.203 layoutMs=6.543 paintMs=8.661 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=16.494 layoutMs=7.256 paintMs=9.238 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=17.395 layoutMs=8.514 paintMs=8.881 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=15.597 layoutMs=7.229 paintMs=8.368 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=25.212 layoutMs=7.286 paintMs=17.927 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=14.260 layoutMs=6.568 paintMs=7.692 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=14.548 layoutMs=6.509 paintMs=8.039 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=18.999 layoutMs=10.218 paintMs=8.781 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=26.793 layoutMs=6.833 paintMs=19.960 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=14.525 layoutMs=6.509 paintMs=8.016 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.251 layoutMs=6.233 paintMs=8.017 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=14.434 layoutMs=6.344 paintMs=8.089 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=23.008 layoutMs=6.580 paintMs=16.428 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=14.235 layoutMs=6.434 paintMs=7.801 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=14.412 layoutMs=6.422 paintMs=7.990 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=15.065 layoutMs=6.620 paintMs=8.445 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=25.099 layoutMs=7.126 paintMs=17.973 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=14.590 layoutMs=6.493 paintMs=8.097 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=14.746 layoutMs=6.567 paintMs=8.179 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=14.525 layoutMs=6.565 paintMs=7.961 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.518 layoutMs=6.634 paintMs=7.885 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=14.539 layoutMs=6.282 paintMs=8.257 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=14.457 layoutMs=6.201 paintMs=8.257 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=23.763 layoutMs=6.407 paintMs=17.355 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=26.929 layoutMs=8.207 paintMs=18.722 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=19.420 layoutMs=8.027 paintMs=11.393 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=38.090 layoutMs=9.276 paintMs=28.814 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=15.825 layoutMs=7.019 paintMs=8.806 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=16.476 layoutMs=7.753 paintMs=8.724 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=15.339 layoutMs=6.863 paintMs=8.476 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=20.855 layoutMs=6.490 paintMs=14.365 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=13.999 layoutMs=6.427 paintMs=7.573 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=14.684 layoutMs=6.629 paintMs=8.054 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.636 layoutMs=6.512 paintMs=8.124 branch=pack
+[DR1-NS-pack] maxWidth=1330.00 stable=N prevSys=72 currSys=60 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1330.00 totalMs=23.542 layoutMs=6.620 paintMs=16.922 branch=pack
+[DR1-NS-pack] maxWidth=1230.00 stable=N prevSys=60 currSys=67 branch=pack wrapFlips=174
+[DR1-NS-cost] maxWidth=1230.00 totalMs=13.909 layoutMs=6.288 paintMs=7.621 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=67 currSys=72 branch=pack wrapFlips=146
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.410 layoutMs=6.252 paintMs=8.158 branch=pack
+[DR1-NS-pack] maxWidth=1030.00 stable=N prevSys=72 currSys=82 branch=pack wrapFlips=188
+[DR1-NS-cost] maxWidth=1030.00 totalMs=14.456 layoutMs=6.505 paintMs=7.951 branch=pack
+[DR1-NS-pack] maxWidth=930.00 stable=N prevSys=82 currSys=94 branch=pack wrapFlips=168
+[DR1-NS-cost] maxWidth=930.00 totalMs=23.640 layoutMs=7.069 paintMs=16.571 branch=pack
+[DR1-NS-pack] maxWidth=830.00 stable=N prevSys=94 currSys=112 branch=pack wrapFlips=160
+[DR1-NS-cost] maxWidth=830.00 totalMs=14.459 layoutMs=6.729 paintMs=7.730 branch=pack
+[DR1-NS-pack] maxWidth=730.00 stable=N prevSys=112 currSys=122 branch=pack wrapFlips=148
+[DR1-NS-cost] maxWidth=730.00 totalMs=14.225 layoutMs=6.355 paintMs=7.870 branch=pack
+[DR1-NS-pack] maxWidth=630.00 stable=N prevSys=122 currSys=145 branch=pack wrapFlips=138
+[DR1-NS-cost] maxWidth=630.00 totalMs=14.529 layoutMs=6.508 paintMs=8.021 branch=pack
+[DR1-NS-pack] maxWidth=530.00 stable=N prevSys=145 currSys=178 branch=pack wrapFlips=114
+[DR1-NS-cost] maxWidth=530.00 totalMs=23.950 layoutMs=6.622 paintMs=17.328 branch=pack
+[DR1-NS-pack] maxWidth=580.00 stable=N prevSys=178 currSys=167 branch=pack wrapFlips=78
+[DR1-NS-cost] maxWidth=580.00 totalMs=14.179 layoutMs=6.312 paintMs=7.867 branch=pack
+[DR1-NS-pack] maxWidth=680.00 stable=N prevSys=167 currSys=131 branch=pack wrapFlips=140
+[DR1-NS-cost] maxWidth=680.00 totalMs=14.203 layoutMs=6.367 paintMs=7.837 branch=pack
+[DR1-NS-pack] maxWidth=780.00 stable=N prevSys=131 currSys=116 branch=pack wrapFlips=166
+[DR1-NS-cost] maxWidth=780.00 totalMs=14.229 layoutMs=6.375 paintMs=7.854 branch=pack
+[DR1-NS-pack] maxWidth=1130.00 stable=N prevSys=116 currSys=72 branch=pack wrapFlips=204
+[DR1-NS-cost] maxWidth=1130.00 totalMs=14.656 layoutMs=6.909 paintMs=7.747 branch=pack
+[bench] wrote /home/daniel/dev/alphaTab2/packages/bench/runs/DR1-NS-probe/canon-resize-drag/result.json
+[bench] canon-resize-drag: median 240.59 ms ± 4.60 (SE), stddev 10.39 ms, p5 231.63 ms, p95 259.34 ms
+
+[bench] combined report: /home/daniel/dev/alphaTab2/packages/bench/runs/DR1-NS-probe/REPORT.md
+
+# alphaTab bench report — DR1-NS-probe
+
+Generated: 2026-06-14T17:39:00.695Z
+Trials per scenario: 1
+
+## Wall-clock summary
+
+`median ± SE` shows the asymptotic standard error of the median. A delta smaller than 2× SE is below the noise floor. Run `--trials 3+` for cross-run variance.
+
+| Scenario | n | median ± SE | mean | stddev | p5 | p95 | min | max |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| canon-resize-drag | 8 | 240.59 ± 4.60 ms | 243.54 ms | 10.39 ms | 231.63 ms | 259.34 ms | 231.63 ms | 259.34 ms |
+
+Per-iteration durations (ms):
+
+- **canon-resize-drag**: 237.05, 247.18, 259.34, 240.59, 237.35, 236.91, 258.29, 231.63
+
+## Stage breakdown (Profiler) — first trial
+
+### canon-resize-drag
+
+| Stage | calls | total ms | mean us | max ms |
+| --- | --- | --- | --- | --- |
+| resize.total | 104 | 1948.12 | 18731.94 | 38.83 |
+| resize.layoutResize | 104 | 1884.77 | 18122.77 | 38.40 |
+| layout.doResize | 104 | 1884.57 | 18120.83 | 38.39 |
+| layout.finalizeSystem | 11344 | 205.09 | 18.08 | 7.11 |
+| layout.finalizeStaff | 22688 | 198.53 | 8.75 | 7.10 |
+
+Heap delta: used 146588.2 kB, total 162732.0 kB
+
+## CPU hotspots (top 15 self-time, measured-loop only)
+
+### canon-resize-drag
+
+Total sampled: 2016.55 ms across 10,254 samples.
+
+| Self ms | Self % | Function | File:line |
+| ---: | ---: | --- | --- |
+| 280.96 | 13.9% | (garbage collector) | <native> |
+| 69.64 | 3.5% | post | node:inspector:115 |
+| 47.07 | 2.3% | unionShifted3 | packages/bench/dist/runOne.mjs:53380 |
+| 34.96 | 1.7% | buildBoundingsLookup | packages/bench/dist/runOne.mjs:44723 |
+| 25.27 | 1.3% | scaleToWidth | packages/bench/dist/runOne.mjs:55300 |
+| 25.26 | 1.3% | fillRect | packages/bench/dist/runOne.mjs:49856 |
+| 21.55 | 1.1% | _scaleToForce | packages/bench/dist/runOne.mjs:53649 |
+| 21.32 | 1.1% | paintBackground | packages/bench/dist/runOne.mjs:61262 |
+| 20.98 | 1.0% | _raiseRange | packages/bench/dist/runOne.mjs:53549 |
+| 19.11 | 0.9% | fillText | packages/bench/dist/runOne.mjs:49927 |
+| 18.90 | 0.9% | fillText | packages/bench/dist/runOne.mjs:49927 |
+| 18.68 | 0.9% | _resizeAndRenderScore | packages/bench/dist/runOne.mjs:59623 |
+| 18.28 | 0.9% | paint | packages/bench/dist/runOne.mjs:44709 |
+| 18.21 | 0.9% | paintBackground | packages/bench/dist/runOne.mjs:61262 |
+| 17.37 | 0.9% | lineTo | packages/bench/dist/runOne.mjs:49878 |
+
+## Heap allocation hotspots (top 15 bytes, measured-loop only)
+
+### canon-resize-drag
+
+Total sampled: 50926.0 kB.
+
+| Bytes | Count | Function | File:line |
+| ---: | ---: | --- | --- |
+| 41862.2 | 0 | unionShifted3 | packages/bench/dist/runOne.mjs:53380 |
+| 1763.9 | 0 | _raiseRange | packages/bench/dist/runOne.mjs:53549 |
+| 1075.3 | 0 | buildBoundingsLookup | packages/bench/dist/runOne.mjs:44723 |
+| 833.8 | 0 | _initBaseline | packages/bench/dist/runOne.mjs:53525 |
+| 785.7 | 0 | unionShifted3 | packages/bench/dist/runOne.mjs:53380 |
+| 567.3 | 0 | #onMessage | node:inspector:84 |
+| 400.9 | 0 | _raiseRange | packages/bench/dist/runOne.mjs:53549 |
+| 256.1 | 0 | finish | packages/bench/dist/runOne.mjs:34091 |
+| 176.5 | 0 | _buildGapCache | packages/bench/dist/runOne.mjs:66329 |
+| 160.5 | 0 | buildBoundingsLookup | packages/bench/dist/runOne.mjs:55602 |
+| 112.7 | 0 | createEmptyStaffSystem | packages/bench/dist/runOne.mjs:59194 |
+| 112.2 | 0 | _raiseRange | packages/bench/dist/runOne.mjs:53549 |
+| 112.2 | 0 | _raiseRange | packages/bench/dist/runOne.mjs:53549 |
+| 112.2 | 0 | _raiseRange | packages/bench/dist/runOne.mjs:53549 |
+| 102.0 | 0 | applyLayoutingInfo | packages/bench/dist/runOne.mjs:55391 |
