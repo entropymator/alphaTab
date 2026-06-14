@@ -98,12 +98,27 @@ export abstract class SvgCanvas implements ICanvas {
     }
 
     public moveTo(x: number, y: number): void {
-        this._currentPath += ` M${x * this.scale},${y * this.scale}`;
+        // EW-11 — scale=1 fast path. Per Phase 0 probes, canon-resize-drag hits
+        // `scale === 1` 100 % of the time. Skip the 2 *1 multiplies and swap the
+        // template literal for `+` concat; output is byte-identical because
+        // `${x}` and `'' + x` both invoke Number.prototype.toString.
+        const s = this.scale;
+        if (s === 1) {
+            this._currentPath += ' M' + x + ',' + y;
+        } else {
+            this._currentPath += ` M${x * s},${y * s}`;
+        }
     }
 
     public lineTo(x: number, y: number): void {
         this._currentPathIsEmpty = false;
-        this._currentPath += ` L${x * this.scale},${y * this.scale}`;
+        // EW-11 — scale=1 fast path. Mirrors moveTo / fillRect.
+        const s = this.scale;
+        if (s === 1) {
+            this._currentPath += ' L' + x + ',' + y;
+        } else {
+            this._currentPath += ` L${x * s},${y * s}`;
+        }
     }
 
     public quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void {
@@ -173,9 +188,26 @@ export abstract class SvgCanvas implements ICanvas {
         if (text === '') {
             return;
         }
-        let s: string = `<text x="${x * this.scale}" y="${
-            y * this.scale
-        }" style='stroke: none; font:${this.font.toCssString(this.settings.display.scale)}; ${this.getSvgBaseLine()}'`;
+        // EW-11 — scale=1 fast path on the always-emitted main attributes.
+        // Conditional branches (color, text-anchor) keep the template-literal
+        // form: they fire infrequently and per-call savings on a rare branch
+        // are lost in the branch overhead. Per Phase 0: 100 % scale=1 in bench.
+        const sc = this.scale;
+        let s: string;
+        if (sc === 1) {
+            s =
+                '<text x="' +
+                x +
+                '" y="' +
+                y +
+                '" style=\'stroke: none; font:' +
+                this.font.toCssString(this.settings.display.scale) +
+                '; ' +
+                this.getSvgBaseLine() +
+                "'";
+        } else {
+            s = `<text x="${x * sc}" y="${y * sc}" style='stroke: none; font:${this.font.toCssString(this.settings.display.scale)}; ${this.getSvgBaseLine()}'`;
+        }
         if (this.color.rgba !== '#000000') {
             s += ` fill="${this.color.rgba}"`;
         }
