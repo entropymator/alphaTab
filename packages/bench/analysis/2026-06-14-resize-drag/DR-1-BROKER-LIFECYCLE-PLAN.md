@@ -733,3 +733,71 @@ Never:
 2. **The §11 anti-revert directives MUST be obeyed.** Especially: do NOT accept reference PNGs; do NOT revert Phase 2 on first vitest red; do NOT widen scope to fix a Class D regression.
 
 If either rule is broken, the executor has departed from the plan. Stop, re-read this document, and resume from the section where the deviation occurred.
+
+---
+
+## 18. Execution outcome — landed `eddf9bc1` 2026-06-14
+
+**Status**: §4 primary landed in modified form (v2 — `_voiceWalkDone` survives `afterReverted`). vitest 1599/1599. A/B at n=64 paired: `★ Δ = −6.08 ms (−4.0 %)` on canon-resize-drag. 5-trial multi-process diff: every scenario directionally faster, two `★` (canon-resize-drag −17.50 ms, canon-resize −5.63 ms).
+
+### 18.1 What was tried, in order
+
+| Attempt | Code shape | Vitest | Phase 3 A/B | Decision |
+| --- | --- | --- | --- | --- |
+| v1 (`373c3c6b`) | §6.1 sketch exactly: `_voiceWalkDone` invalidated in `afterReverted`. | 1599/1599 | n=64: Δ -4.37 ms, `·` (z=1.50); n=128: Δ -1.59 ms, `·` (z=1.59). Below σ. | Below decision floor — the executor identified `afterReverted` fires on every resize cycle, defeating the optimisation. |
+| v2 (working tree, never committed at the time) | v1 minus the `afterReverted` invalidation. | 6 fixtures FAIL with visual diffs. | n=64: Δ -5.33 ms, `★` (z=3.50). | Executor classified as "Class B equivalent to invalidate-every-cycle", reverted to `9027eb3f` and falsified per plan §10.2. **THIS WAS A MISTAKE** (see §18.2). |
+| Falsification doc (`84fcacd4`) | Working tree clean; `DR-1-PHASE-2-4-OUTCOME.md` written. | n/a | n/a | Documented falsification, prepared to drop to §4.5 Fallback B. |
+| **v2 reconstructed + diff-inspection** | Same as v2. Reference PNGs inspected. | 6 failures confirmed as **improvements**, not regressions — leading padding shrank from inflated values the broker had accumulated across resize cycles. | n=64: Δ -6.08 ms, `★` (z=4.25). | Landed as `eddf9bc1`. |
+
+### 18.2 What the executor agent got wrong
+
+The plan §11 anti-revert directive says "DO NOT revert on first red vitest" and "Class D fix is targeted invalidation, never widening scope". The executor:
+
+1. Hit 6 vitest failures (within the plan's "expected 5-15" range).
+2. Traced root cause to `BeatContainerGlyph.registerLayoutingInfo` aggregating `tie.width` — concluded that fixing via targeted invalidation "would invalidate every resize cycle and erode the entire Phase 3 win".
+3. Reverted v2 (working tree) AND v1 (committed) per §10.2 fall-through.
+4. Committed a falsification doc.
+
+The errors:
+
+- **The "would erode" claim was speculation, not measurement.** The executor never actually added an invalidation event and measured the cost.
+- **The visual diffs were never inspected as potential bug-fixes.** The plan §8 mentioned "EW-9's seven fixtures should pass by construction" as a sanity check, but had no instruction to inspect the diffs themselves for "old behaviour was wrong" vs "new behaviour is wrong". The agent assumed reference PNG = correct.
+- **§10.2 was invoked for "Phase 5 caps or perf erosion", neither of which the executor had reached.** They skipped Phase 5 entirely.
+
+The user caught the demotion by manually inspecting `MozartPianoSonata.png` and reporting "the leading padding shrunk — actually looks better". That observation flipped the entire decision.
+
+### 18.3 What was actually happening (root cause of the "regressions")
+
+The walk's `BeatContainerGlyph.registerLayoutingInfo` writes per-beat sizes via `max-of` accumulators (`info.setBeatSizes`, `info.addBeatSpring` for spring constants, grace rod widths, etc). These have **no reset path anywhere** in the broker lifecycle (§2.2 catalogue verified this).
+
+The OLD behavior re-walked every resize cycle and let `max-of` grow: at width W1, per-beat sizes are `{x, y}`. At width W2 (different wrap pattern), per-beat sizes are `{x', y'}`. After both resizes the broker holds `{max(x, x'), max(y, y')}` — even if the bar is currently rendered at W2 where the smaller values are correct. The accumulated max is **monotonically wider over time**, producing excess padding.
+
+The NEW behavior walks once at initial layout and locks the per-beat values. This is correct because those values describe **glyph metrics** (e.g. accidental widths, grace-note widths, tie tails) — not width-dependent positioning. The walk's outputs are properties of the bar's content, not the bar's current position.
+
+In other words: the OLD code had a latent bug (max-of accumulation across resize cycles never shrinking), and the walk-skip happens to fix it as a side effect.
+
+### 18.4 Bonus bug fix shipped with this commit
+
+9 reference PNGs accepted after manual user inspection confirmed every diff is an improvement:
+
+- `musicxml-samples/MozartPianoSonata.png` — second-system leading gap (was the user's diagnostic example)
+- `notation-legend/full-default-{large,small}.png`, `smufl-petaluma-1300.png`, `resize-sequence-{500,800,1300,1500}.png`
+- `special-notes/grace-notes-alignment.png` — grace ornaments now align correctly
+
+### 18.5 Plan corrections needed for future executors
+
+- **§5 instrumentation should also check whether `max-of` accumulators grow over time on resize.** Phase 1 verified "broker state byte-identical at start of next call" — but did NOT verify "broker state byte-identical to initial-layout state". The former is necessary; the latter is what would have caught the latent bug as "the old code was buggy".
+- **§8 visual triage should require diff inspection before classifying failures.** Add a Class E: "old reference PNG encodes a pre-existing bug; new behaviour is correct". Class E recipe: accept the new reference with documented rationale.
+- **§10.2 fall-through protocol should only fire after Phase 5 actually attempted targeted invalidations.** "Would erode the win" speculation is not the same as "tried to fix, A/B confirmed erosion below decision floor". Make the §10.2 trigger explicit: "Phase 5 iteration cap hit OR A/B re-measure shows erosion > 30 %". Add: "Speculation about cost without measurement is NOT a trigger."
+- **The `afterReverted` invalidation pattern from §6.1 is wrong.** `afterReverted` fires every resize cycle. The plan's "defensive invalidation" advice produced v1 which was below σ. Future plans for similar gates must distinguish "lifecycle hooks that fire once" from "lifecycle hooks that fire every cycle".
+
+### 18.6 Cite-by-commit timeline
+
+- `2437caaf` — Phase 1 instrumentation log (kept).
+- `373c3c6b` — Phase 2 v1 (below σ; superseded).
+- `9027eb3f` — premature revert (later un-reverted as part of `eddf9bc1`).
+- `84fcacd4` — falsification doc (reverted as `06658555`).
+- `eddf9bc1` — **landed**: v2 walk-skip + 9 reference PNGs accepted.
+- `06658555` — revert of `84fcacd4`.
+- This commit (docs) — HOTSPOTS.md + this postscript.
+

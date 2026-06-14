@@ -1,0 +1,1457 @@
+{
+  "label": "DR1-final",
+  "savedAt": "2026-06-14T13:28:02.022Z",
+  "trialsPerScenario": 5,
+  "host": {
+    "hostname": "senku",
+    "platform": "linux",
+    "arch": "x64",
+    "cpuModel": "Intel(R) Core(TM) Ultra 7 258V",
+    "cpuCount": 8,
+    "tasksetCores": "2,3",
+    "cpuGovernors": [
+      "performance"
+    ],
+    "turboBoost": {
+      "engine": "intel_pstate",
+      "on": true
+    }
+  },
+  "scenarios": [
+    {
+      "id": "tiny-render",
+      "trials": [
+        {
+          "summary": {
+            "n": 20,
+            "medianNs": 419218,
+            "meanNs": 497354.95,
+            "minNs": 312562,
+            "maxNs": 991774,
+            "p5Ns": 346148,
+            "p95Ns": 991774,
+            "stddevNs": 207301.55565960452,
+            "medianSeNs": 58095.51460923928
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 40,
+              "totalNs": 748628,
+              "maxNs": 44699
+            },
+            "layout.finalizeSystem": {
+              "count": 20,
+              "totalNs": 816257,
+              "maxNs": 70644
+            },
+            "layout.doLayoutAndRender": {
+              "count": 20,
+              "totalNs": 8309905,
+              "maxNs": 849615
+            },
+            "render.layoutAndRender": {
+              "count": 20,
+              "totalNs": 9670930,
+              "maxNs": 972788
+            },
+            "render.total": {
+              "count": 20,
+              "totalNs": 9878170,
+              "maxNs": 988041
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 20,
+            "medianNs": 448685,
+            "meanNs": 556619.15,
+            "minNs": 380963,
+            "maxNs": 1375952,
+            "p5Ns": 385815,
+            "p95Ns": 1375952,
+            "stddevNs": 276968.5142214344,
+            "medianSeNs": 77619.42891867124
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 40,
+              "totalNs": 771787,
+              "maxNs": 60146
+            },
+            "layout.finalizeSystem": {
+              "count": 20,
+              "totalNs": 832771,
+              "maxNs": 84711
+            },
+            "layout.doLayoutAndRender": {
+              "count": 20,
+              "totalNs": 9193170,
+              "maxNs": 1283335
+            },
+            "render.layoutAndRender": {
+              "count": 20,
+              "totalNs": 10812489,
+              "maxNs": 1358894
+            },
+            "render.total": {
+              "count": 20,
+              "totalNs": 11054574,
+              "maxNs": 1371861
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 20,
+            "medianNs": 418716,
+            "meanNs": 498246.25,
+            "minNs": 342347,
+            "maxNs": 1047832,
+            "p5Ns": 347307,
+            "p95Ns": 1047832,
+            "stddevNs": 204939.21132628445,
+            "medianSeNs": 57433.47611516351
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 40,
+              "totalNs": 895274,
+              "maxNs": 158463
+            },
+            "layout.finalizeSystem": {
+              "count": 20,
+              "totalNs": 965265,
+              "maxNs": 188229
+            },
+            "layout.doLayoutAndRender": {
+              "count": 20,
+              "totalNs": 8627813,
+              "maxNs": 984299
+            },
+            "render.layoutAndRender": {
+              "count": 20,
+              "totalNs": 9675548,
+              "maxNs": 1030849
+            },
+            "render.total": {
+              "count": 20,
+              "totalNs": 9891289,
+              "maxNs": 1044022
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 20,
+            "medianNs": 415591,
+            "meanNs": 515751.8,
+            "minNs": 346238,
+            "maxNs": 1155009,
+            "p5Ns": 350048,
+            "p95Ns": 1155009,
+            "stddevNs": 230794.18324800947,
+            "medianSeNs": 64679.238908504405
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 40,
+              "totalNs": 713200,
+              "maxNs": 55778
+            },
+            "layout.finalizeSystem": {
+              "count": 20,
+              "totalNs": 771689,
+              "maxNs": 79564
+            },
+            "layout.doLayoutAndRender": {
+              "count": 20,
+              "totalNs": 8795824,
+              "maxNs": 995286
+            },
+            "render.layoutAndRender": {
+              "count": 20,
+              "totalNs": 10035849,
+              "maxNs": 1121014
+            },
+            "render.total": {
+              "count": 20,
+              "totalNs": 10244200,
+              "maxNs": 1144066
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 20,
+            "medianNs": 414715,
+            "meanNs": 482161.55,
+            "minNs": 347957,
+            "maxNs": 969162,
+            "p5Ns": 369258,
+            "p95Ns": 969162,
+            "stddevNs": 167423.98197468763,
+            "medianSeNs": 46919.968158458134
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 40,
+              "totalNs": 783389,
+              "maxNs": 48105
+            },
+            "layout.finalizeSystem": {
+              "count": 20,
+              "totalNs": 849905,
+              "maxNs": 61549
+            },
+            "layout.doLayoutAndRender": {
+              "count": 20,
+              "totalNs": 8431440,
+              "maxNs": 829000
+            },
+            "render.layoutAndRender": {
+              "count": 20,
+              "totalNs": 9372311,
+              "maxNs": 939717
+            },
+            "render.total": {
+              "count": 20,
+              "totalNs": 9570653,
+              "maxNs": 958472
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "nightwish-resize",
+      "trials": [
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 15645238,
+            "meanNs": 16046549.3,
+            "minNs": 12373934,
+            "maxNs": 20144067,
+            "p5Ns": 12373934,
+            "p95Ns": 20144067,
+            "stddevNs": 2350626.192136614,
+            "medianSeNs": 931619.586639319
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 950,
+              "totalNs": 21746353,
+              "maxNs": 310888
+            },
+            "layout.finalizeSystem": {
+              "count": 950,
+              "totalNs": 22552957,
+              "maxNs": 311698
+            },
+            "layout.doResize": {
+              "count": 40,
+              "totalNs": 156664291,
+              "maxNs": 7079352
+            },
+            "resize.layoutResize": {
+              "count": 40,
+              "totalNs": 156714371,
+              "maxNs": 7080283
+            },
+            "resize.total": {
+              "count": 40,
+              "totalNs": 160280657,
+              "maxNs": 7137187
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 15518420,
+            "meanNs": 15871327.4,
+            "minNs": 11106462,
+            "maxNs": 21624756,
+            "p5Ns": 11106462,
+            "p95Ns": 21624756,
+            "stddevNs": 2940969.4221565486,
+            "medianSeNs": 1165589.29129346
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 950,
+              "totalNs": 24601589,
+              "maxNs": 2695006
+            },
+            "layout.finalizeSystem": {
+              "count": 950,
+              "totalNs": 25426647,
+              "maxNs": 2697263
+            },
+            "layout.doResize": {
+              "count": 40,
+              "totalNs": 155083960,
+              "maxNs": 6593832
+            },
+            "resize.layoutResize": {
+              "count": 40,
+              "totalNs": 155144765,
+              "maxNs": 6594589
+            },
+            "resize.total": {
+              "count": 40,
+              "totalNs": 157935239,
+              "maxNs": 6652608
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 15741300,
+            "meanNs": 16177243,
+            "minNs": 12849377,
+            "maxNs": 19864812,
+            "p5Ns": 12849377,
+            "p95Ns": 19864812,
+            "stddevNs": 2216469.055907466,
+            "medianSeNs": 878449.3223852185
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 950,
+              "totalNs": 24138288,
+              "maxNs": 2060688
+            },
+            "layout.finalizeSystem": {
+              "count": 950,
+              "totalNs": 24869609,
+              "maxNs": 2062891
+            },
+            "layout.doResize": {
+              "count": 40,
+              "totalNs": 158584654,
+              "maxNs": 6988812
+            },
+            "resize.layoutResize": {
+              "count": 40,
+              "totalNs": 158633313,
+              "maxNs": 6989834
+            },
+            "resize.total": {
+              "count": 40,
+              "totalNs": 161616435,
+              "maxNs": 7040467
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 15726069,
+            "meanNs": 16009531.6,
+            "minNs": 12461271,
+            "maxNs": 19729473,
+            "p5Ns": 12461271,
+            "p95Ns": 19729473,
+            "stddevNs": 2128414.0225205873,
+            "medianSeNs": 843550.6242936983
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 950,
+              "totalNs": 21855598,
+              "maxNs": 351297
+            },
+            "layout.finalizeSystem": {
+              "count": 950,
+              "totalNs": 22602476,
+              "maxNs": 352147
+            },
+            "layout.doResize": {
+              "count": 40,
+              "totalNs": 157245126,
+              "maxNs": 6809327
+            },
+            "resize.layoutResize": {
+              "count": 40,
+              "totalNs": 157294930,
+              "maxNs": 6810147
+            },
+            "resize.total": {
+              "count": 40,
+              "totalNs": 159957740,
+              "maxNs": 6862379
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 15814470,
+            "meanNs": 15703437.2,
+            "minNs": 12132350,
+            "maxNs": 21012661,
+            "p5Ns": 12132350,
+            "p95Ns": 21012661,
+            "stddevNs": 2412035.023226874,
+            "medianSeNs": 955957.6417616907
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 950,
+              "totalNs": 22536811,
+              "maxNs": 1140387
+            },
+            "layout.finalizeSystem": {
+              "count": 950,
+              "totalNs": 23807694,
+              "maxNs": 1141485
+            },
+            "layout.doResize": {
+              "count": 40,
+              "totalNs": 154106258,
+              "maxNs": 7649768
+            },
+            "resize.layoutResize": {
+              "count": 40,
+              "totalNs": 154146806,
+              "maxNs": 7650597
+            },
+            "resize.total": {
+              "count": 40,
+              "totalNs": 156898385,
+              "maxNs": 7709306
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "nightwish-render",
+      "trials": [
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 12789986,
+            "meanNs": 12977480.4,
+            "minNs": 9026295,
+            "maxNs": 17342405,
+            "p5Ns": 9026295,
+            "p95Ns": 17342405,
+            "stddevNs": 3235718.0543796252,
+            "medianSeNs": 1282406.5035889524
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 200,
+              "totalNs": 9925278,
+              "maxNs": 436966
+            },
+            "layout.finalizeSystem": {
+              "count": 200,
+              "totalNs": 10490356,
+              "maxNs": 439526
+            },
+            "layout.doLayoutAndRender": {
+              "count": 10,
+              "totalNs": 127864628,
+              "maxNs": 17118272
+            },
+            "render.layoutAndRender": {
+              "count": 10,
+              "totalNs": 128495394,
+              "maxNs": 17177973
+            },
+            "render.total": {
+              "count": 10,
+              "totalNs": 129663947,
+              "maxNs": 17329355
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 12720891,
+            "meanNs": 12672167.1,
+            "minNs": 8110661,
+            "maxNs": 17538243,
+            "p5Ns": 8110661,
+            "p95Ns": 17538243,
+            "stddevNs": 3363241.636614772,
+            "medianSeNs": 1332947.7029366398
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 200,
+              "totalNs": 9629270,
+              "maxNs": 169104
+            },
+            "layout.finalizeSystem": {
+              "count": 200,
+              "totalNs": 10262466,
+              "maxNs": 175713
+            },
+            "layout.doLayoutAndRender": {
+              "count": 10,
+              "totalNs": 124719124,
+              "maxNs": 17379774
+            },
+            "render.layoutAndRender": {
+              "count": 10,
+              "totalNs": 125352055,
+              "maxNs": 17429624
+            },
+            "render.total": {
+              "count": 10,
+              "totalNs": 126608661,
+              "maxNs": 17525303
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 12855632,
+            "meanNs": 12387433.6,
+            "minNs": 8637425,
+            "maxNs": 17405312,
+            "p5Ns": 8637425,
+            "p95Ns": 17405312,
+            "stddevNs": 3119283.018604835,
+            "medianSeNs": 1236260.0085563895
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 200,
+              "totalNs": 10098357,
+              "maxNs": 225835
+            },
+            "layout.finalizeSystem": {
+              "count": 200,
+              "totalNs": 10663042,
+              "maxNs": 228486
+            },
+            "layout.doLayoutAndRender": {
+              "count": 10,
+              "totalNs": 122147020,
+              "maxNs": 17245273
+            },
+            "render.layoutAndRender": {
+              "count": 10,
+              "totalNs": 122682452,
+              "maxNs": 17295800
+            },
+            "render.total": {
+              "count": 10,
+              "totalNs": 123765073,
+              "maxNs": 17395345
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 12258601,
+            "meanNs": 12239236.6,
+            "minNs": 8268161,
+            "maxNs": 16501240,
+            "p5Ns": 8268161,
+            "p95Ns": 16501240,
+            "stddevNs": 3071017.0816866443,
+            "medianSeNs": 1217130.853801412
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 200,
+              "totalNs": 9233374,
+              "maxNs": 167036
+            },
+            "layout.finalizeSystem": {
+              "count": 200,
+              "totalNs": 9771596,
+              "maxNs": 169866
+            },
+            "layout.doLayoutAndRender": {
+              "count": 10,
+              "totalNs": 120736957,
+              "maxNs": 16329657
+            },
+            "render.layoutAndRender": {
+              "count": 10,
+              "totalNs": 121297454,
+              "maxNs": 16377004
+            },
+            "render.total": {
+              "count": 10,
+              "totalNs": 122288543,
+              "maxNs": 16486499
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 10,
+            "medianNs": 12576005,
+            "meanNs": 14180528.9,
+            "minNs": 8373109,
+            "maxNs": 22230427,
+            "p5Ns": 8373109,
+            "p95Ns": 22230427,
+            "stddevNs": 4574012.819923891,
+            "medianSeNs": 1812810.5382452004
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 200,
+              "totalNs": 9920633,
+              "maxNs": 230705
+            },
+            "layout.finalizeSystem": {
+              "count": 200,
+              "totalNs": 10450426,
+              "maxNs": 233755
+            },
+            "layout.doLayoutAndRender": {
+              "count": 10,
+              "totalNs": 139364925,
+              "maxNs": 22111630
+            },
+            "render.layoutAndRender": {
+              "count": 10,
+              "totalNs": 140751572,
+              "maxNs": 22156624
+            },
+            "render.total": {
+              "count": 10,
+              "totalNs": 141696535,
+              "maxNs": 22222603
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "canon-resize",
+      "trials": [
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 71289552,
+            "meanNs": 71747491.875,
+            "minNs": 67797523,
+            "maxNs": 79371043,
+            "p5Ns": 67797523,
+            "p95Ns": 79371043,
+            "stddevNs": 3481532.805478867,
+            "medianSeNs": 1542696.6553003257
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 5600,
+              "totalNs": 65064045,
+              "maxNs": 8258861
+            },
+            "layout.finalizeSystem": {
+              "count": 2800,
+              "totalNs": 67606115,
+              "maxNs": 8275975
+            },
+            "layout.doResize": {
+              "count": 32,
+              "totalNs": 564710718,
+              "maxNs": 29466257
+            },
+            "resize.layoutResize": {
+              "count": 32,
+              "totalNs": 564750513,
+              "maxNs": 29467500
+            },
+            "resize.total": {
+              "count": 32,
+              "totalNs": 573843418,
+              "maxNs": 29704743
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 73608372,
+            "meanNs": 73645994.5,
+            "minNs": 71547967,
+            "maxNs": 76036896,
+            "p5Ns": 71547967,
+            "p95Ns": 76036896,
+            "stddevNs": 1571944.5784300775,
+            "medianSeNs": 696541.9483180799
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 5600,
+              "totalNs": 60093371,
+              "maxNs": 713791
+            },
+            "layout.finalizeSystem": {
+              "count": 2800,
+              "totalNs": 63054886,
+              "maxNs": 734685
+            },
+            "layout.doResize": {
+              "count": 32,
+              "totalNs": 579330895,
+              "maxNs": 24844555
+            },
+            "resize.layoutResize": {
+              "count": 32,
+              "totalNs": 579377591,
+              "maxNs": 24845894
+            },
+            "resize.total": {
+              "count": 32,
+              "totalNs": 589030698,
+              "maxNs": 25088410
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 70613149,
+            "meanNs": 71573440.875,
+            "minNs": 69496651,
+            "maxNs": 76465162,
+            "p5Ns": 69496651,
+            "p95Ns": 76465162,
+            "stddevNs": 2417617.1147228205,
+            "medianSeNs": 1071266.6072858458
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 5600,
+              "totalNs": 64882525,
+              "maxNs": 6504277
+            },
+            "layout.finalizeSystem": {
+              "count": 2800,
+              "totalNs": 67432496,
+              "maxNs": 6523461
+            },
+            "layout.doResize": {
+              "count": 32,
+              "totalNs": 562642719,
+              "maxNs": 28261804
+            },
+            "resize.layoutResize": {
+              "count": 32,
+              "totalNs": 562697472,
+              "maxNs": 28262713
+            },
+            "resize.total": {
+              "count": 32,
+              "totalNs": 572449514,
+              "maxNs": 28523741
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 71007399,
+            "meanNs": 71075604.875,
+            "minNs": 67684774,
+            "maxNs": 77792530,
+            "p5Ns": 67684774,
+            "p95Ns": 77792530,
+            "stddevNs": 3003453.7843065863,
+            "medianSeNs": 1330855.7943522157
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 5600,
+              "totalNs": 71637571,
+              "maxNs": 7593706
+            },
+            "layout.finalizeSystem": {
+              "count": 2800,
+              "totalNs": 74221113,
+              "maxNs": 7608558
+            },
+            "layout.doResize": {
+              "count": 32,
+              "totalNs": 558812999,
+              "maxNs": 28644217
+            },
+            "resize.layoutResize": {
+              "count": 32,
+              "totalNs": 558865214,
+              "maxNs": 28645592
+            },
+            "resize.total": {
+              "count": 32,
+              "totalNs": 568472501,
+              "maxNs": 28884426
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 72699244,
+            "meanNs": 72468607,
+            "minNs": 69427166,
+            "maxNs": 77744473,
+            "p5Ns": 69427166,
+            "p95Ns": 77744473,
+            "stddevNs": 2647147.910174485,
+            "medianSeNs": 1172973.6455979554
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 5600,
+              "totalNs": 58909416,
+              "maxNs": 674468
+            },
+            "layout.finalizeSystem": {
+              "count": 2800,
+              "totalNs": 61375837,
+              "maxNs": 686418
+            },
+            "layout.doResize": {
+              "count": 32,
+              "totalNs": 569948613,
+              "maxNs": 29169840
+            },
+            "resize.layoutResize": {
+              "count": 32,
+              "totalNs": 570004750,
+              "maxNs": 29171294
+            },
+            "resize.total": {
+              "count": 32,
+              "totalNs": 579616325,
+              "maxNs": 29417574
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "canon-render",
+      "trials": [
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 55777531,
+            "meanNs": 56084564.625,
+            "minNs": 36326956,
+            "maxNs": 70824128,
+            "p5Ns": 36326956,
+            "p95Ns": 70824128,
+            "stddevNs": 10777543.819876889,
+            "medianSeNs": 4775620.892358612
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1152,
+              "totalNs": 21936509,
+              "maxNs": 303529
+            },
+            "layout.finalizeSystem": {
+              "count": 576,
+              "totalNs": 23064760,
+              "maxNs": 315824
+            },
+            "layout.doLayoutAndRender": {
+              "count": 8,
+              "totalNs": 444632794,
+              "maxNs": 70412950
+            },
+            "render.layoutAndRender": {
+              "count": 8,
+              "totalNs": 445074367,
+              "maxNs": 70450646
+            },
+            "render.total": {
+              "count": 8,
+              "totalNs": 448571396,
+              "maxNs": 70803551
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 57616184,
+            "meanNs": 59362894.375,
+            "minNs": 50765842,
+            "maxNs": 69009844,
+            "p5Ns": 50765842,
+            "p95Ns": 69009844,
+            "stddevNs": 7526691.492913354,
+            "medianSeNs": 3335140.7096673204
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1152,
+              "totalNs": 23064957,
+              "maxNs": 961880
+            },
+            "layout.finalizeSystem": {
+              "count": 576,
+              "totalNs": 24222604,
+              "maxNs": 994283
+            },
+            "layout.doLayoutAndRender": {
+              "count": 8,
+              "totalNs": 458397216,
+              "maxNs": 68569284
+            },
+            "render.layoutAndRender": {
+              "count": 8,
+              "totalNs": 458827328,
+              "maxNs": 68614958
+            },
+            "render.total": {
+              "count": 8,
+              "totalNs": 474784734,
+              "maxNs": 68998510
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 61275606,
+            "meanNs": 57851872,
+            "minNs": 39154542,
+            "maxNs": 69671036,
+            "p5Ns": 39154542,
+            "p95Ns": 69671036,
+            "stddevNs": 9383993.877694279,
+            "medianSeNs": 4158127.1173707945
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1152,
+              "totalNs": 21879346,
+              "maxNs": 345798
+            },
+            "layout.finalizeSystem": {
+              "count": 576,
+              "totalNs": 22986367,
+              "maxNs": 379103
+            },
+            "layout.doLayoutAndRender": {
+              "count": 8,
+              "totalNs": 459223892,
+              "maxNs": 69270931
+            },
+            "render.layoutAndRender": {
+              "count": 8,
+              "totalNs": 459638942,
+              "maxNs": 69308402
+            },
+            "render.total": {
+              "count": 8,
+              "totalNs": 462703017,
+              "maxNs": 69650841
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 57181151,
+            "meanNs": 57062270.75,
+            "minNs": 37123315,
+            "maxNs": 69427827,
+            "p5Ns": 37123315,
+            "p95Ns": 69427827,
+            "stddevNs": 10593550.889347466,
+            "medianSeNs": 4694092.067445643
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1152,
+              "totalNs": 21762932,
+              "maxNs": 345460
+            },
+            "layout.finalizeSystem": {
+              "count": 576,
+              "totalNs": 22923414,
+              "maxNs": 361120
+            },
+            "layout.doLayoutAndRender": {
+              "count": 8,
+              "totalNs": 452851789,
+              "maxNs": 68970282
+            },
+            "render.layoutAndRender": {
+              "count": 8,
+              "totalNs": 453286161,
+              "maxNs": 69010138
+            },
+            "render.total": {
+              "count": 8,
+              "totalNs": 456394036,
+              "maxNs": 69408477
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 60292254,
+            "meanNs": 58359042.875,
+            "minNs": 37740395,
+            "maxNs": 75709251,
+            "p5Ns": 37740395,
+            "p95Ns": 75709251,
+            "stddevNs": 11957514.338263359,
+            "medianSeNs": 5298475.816834162
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1152,
+              "totalNs": 49092298,
+              "maxNs": 13309096
+            },
+            "layout.finalizeSystem": {
+              "count": 576,
+              "totalNs": 50344121,
+              "maxNs": 13324968
+            },
+            "layout.doLayoutAndRender": {
+              "count": 8,
+              "totalNs": 462910137,
+              "maxNs": 75205419
+            },
+            "render.layoutAndRender": {
+              "count": 8,
+              "totalNs": 463341124,
+              "maxNs": 75265551
+            },
+            "render.total": {
+              "count": 8,
+              "totalNs": 466756655,
+              "maxNs": 75701933
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "fade-to-black-resize",
+      "trials": [
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 36988597,
+            "meanNs": 34773824.125,
+            "minNs": 25465193,
+            "maxNs": 38423892,
+            "p5Ns": 25465193,
+            "p95Ns": 38423892,
+            "stddevNs": 4232894.812802242,
+            "medianSeNs": 1875631.520596842
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1952,
+              "totalNs": 44894203,
+              "maxNs": 5689824
+            },
+            "layout.finalizeSystem": {
+              "count": 976,
+              "totalNs": 45941411,
+              "maxNs": 5775510
+            },
+            "layout.doResize": {
+              "count": 24,
+              "totalNs": 272426350,
+              "maxNs": 17146097
+            },
+            "resize.layoutResize": {
+              "count": 24,
+              "totalNs": 272456837,
+              "maxNs": 17149298
+            },
+            "resize.total": {
+              "count": 24,
+              "totalNs": 278054801,
+              "maxNs": 17336137
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 38125722,
+            "meanNs": 35781206.375,
+            "minNs": 24984584,
+            "maxNs": 42932281,
+            "p5Ns": 24984584,
+            "p95Ns": 42932281,
+            "stddevNs": 5271433.5229303595,
+            "medianSeNs": 2335816.8136933963
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1952,
+              "totalNs": 44519787,
+              "maxNs": 5159797
+            },
+            "layout.finalizeSystem": {
+              "count": 976,
+              "totalNs": 45839660,
+              "maxNs": 5188435
+            },
+            "layout.doResize": {
+              "count": 24,
+              "totalNs": 280849300,
+              "maxNs": 18981470
+            },
+            "resize.layoutResize": {
+              "count": 24,
+              "totalNs": 280920337,
+              "maxNs": 18982429
+            },
+            "resize.total": {
+              "count": 24,
+              "totalNs": 286081127,
+              "maxNs": 19270804
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 38520180,
+            "meanNs": 36885881.75,
+            "minNs": 26090734,
+            "maxNs": 42404457,
+            "p5Ns": 26090734,
+            "p95Ns": 42404457,
+            "stddevNs": 5260103.710372849,
+            "medianSeNs": 2330796.4778487515
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1952,
+              "totalNs": 43319234,
+              "maxNs": 3185493
+            },
+            "layout.finalizeSystem": {
+              "count": 976,
+              "totalNs": 44455117,
+              "maxNs": 3204820
+            },
+            "layout.doResize": {
+              "count": 24,
+              "totalNs": 289465234,
+              "maxNs": 18202323
+            },
+            "resize.layoutResize": {
+              "count": 24,
+              "totalNs": 289495958,
+              "maxNs": 18203443
+            },
+            "resize.total": {
+              "count": 24,
+              "totalNs": 294953273,
+              "maxNs": 18398948
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 40434312,
+            "meanNs": 44633161.125,
+            "minNs": 37276427,
+            "maxNs": 66517158,
+            "p5Ns": 37276427,
+            "p95Ns": 66517158,
+            "stddevNs": 10409512.684895229,
+            "medianSeNs": 4612543.181274257
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1952,
+              "totalNs": 67264371,
+              "maxNs": 3844163
+            },
+            "layout.finalizeSystem": {
+              "count": 976,
+              "totalNs": 71497397,
+              "maxNs": 3927615
+            },
+            "layout.doResize": {
+              "count": 24,
+              "totalNs": 348268368,
+              "maxNs": 22857993
+            },
+            "resize.layoutResize": {
+              "count": 24,
+              "totalNs": 348300390,
+              "maxNs": 22859099
+            },
+            "resize.total": {
+              "count": 24,
+              "totalNs": 356915103,
+              "maxNs": 23203407
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 39283146,
+            "meanNs": 56787140.5,
+            "minNs": 26924764,
+            "maxNs": 105316491,
+            "p5Ns": 26924764,
+            "p95Ns": 105316491,
+            "stddevNs": 32377936.648563873,
+            "medianSeNs": 14346937.789774766
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 1952,
+              "totalNs": 68505402,
+              "maxNs": 8265614
+            },
+            "layout.finalizeSystem": {
+              "count": 976,
+              "totalNs": 69760137,
+              "maxNs": 8282913
+            },
+            "layout.doResize": {
+              "count": 24,
+              "totalNs": 448337445,
+              "maxNs": 37974222
+            },
+            "resize.layoutResize": {
+              "count": 24,
+              "totalNs": 448389996,
+              "maxNs": 37975986
+            },
+            "resize.total": {
+              "count": 24,
+              "totalNs": 454137805,
+              "maxNs": 38184083
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "canon-resize-drag",
+      "trials": [
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 216161826,
+            "meanNs": 216450577.125,
+            "minNs": 208568791,
+            "maxNs": 226503604,
+            "p5Ns": 208568791,
+            "p95Ns": 226503604,
+            "stddevNs": 5331367.768256082,
+            "medianSeNs": 2362374.185106481
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 22688,
+              "totalNs": 181254796,
+              "maxNs": 7586160
+            },
+            "layout.finalizeSystem": {
+              "count": 11344,
+              "totalNs": 186816874,
+              "maxNs": 7602113
+            },
+            "layout.doResize": {
+              "count": 104,
+              "totalNs": 1678314873,
+              "maxNs": 26764178
+            },
+            "resize.layoutResize": {
+              "count": 104,
+              "totalNs": 1678455987,
+              "maxNs": 26765385
+            },
+            "resize.total": {
+              "count": 104,
+              "totalNs": 1731356361,
+              "maxNs": 27447668
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 218814012,
+            "meanNs": 219875730.125,
+            "minNs": 206383295,
+            "maxNs": 243185335,
+            "p5Ns": 206383295,
+            "p95Ns": 243185335,
+            "stddevNs": 10555203.108733753,
+            "medianSeNs": 4677099.841263581
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 22688,
+              "totalNs": 199399481,
+              "maxNs": 8033666
+            },
+            "layout.finalizeSystem": {
+              "count": 11344,
+              "totalNs": 205146119,
+              "maxNs": 8049587
+            },
+            "layout.doResize": {
+              "count": 104,
+              "totalNs": 1703897435,
+              "maxNs": 37568669
+            },
+            "resize.layoutResize": {
+              "count": 104,
+              "totalNs": 1704038271,
+              "maxNs": 37570086
+            },
+            "resize.total": {
+              "count": 104,
+              "totalNs": 1758782030,
+              "maxNs": 37951823
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 218656872,
+            "meanNs": 222982484.75,
+            "minNs": 211793416,
+            "maxNs": 261729736,
+            "p5Ns": 211793416,
+            "p95Ns": 261729736,
+            "stddevNs": 15964850.853353284,
+            "medianSeNs": 7074160.54649213
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 22688,
+              "totalNs": 194709570,
+              "maxNs": 7702342
+            },
+            "layout.finalizeSystem": {
+              "count": 11344,
+              "totalNs": 200788709,
+              "maxNs": 7756861
+            },
+            "layout.doResize": {
+              "count": 104,
+              "totalNs": 1733839543,
+              "maxNs": 51914751
+            },
+            "resize.layoutResize": {
+              "count": 104,
+              "totalNs": 1734000122,
+              "maxNs": 51916241
+            },
+            "resize.total": {
+              "count": 104,
+              "totalNs": 1783617129,
+              "maxNs": 52336755
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 216004621,
+            "meanNs": 217856965,
+            "minNs": 208571171,
+            "maxNs": 235750068,
+            "p5Ns": 208571171,
+            "p95Ns": 235750068,
+            "stddevNs": 8261353.736405018,
+            "medianSeNs": 3660675.768256014
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 22688,
+              "totalNs": 201500031,
+              "maxNs": 7572546
+            },
+            "layout.finalizeSystem": {
+              "count": 11344,
+              "totalNs": 207448440,
+              "maxNs": 7619708
+            },
+            "layout.doResize": {
+              "count": 104,
+              "totalNs": 1688191298,
+              "maxNs": 39650127
+            },
+            "resize.layoutResize": {
+              "count": 104,
+              "totalNs": 1688342713,
+              "maxNs": 39651989
+            },
+            "resize.total": {
+              "count": 104,
+              "totalNs": 1742597857,
+              "maxNs": 40046465
+            }
+          }
+        },
+        {
+          "summary": {
+            "n": 8,
+            "medianNs": 217801727,
+            "meanNs": 218986402.875,
+            "minNs": 201769523,
+            "maxNs": 242019441,
+            "p5Ns": 201769523,
+            "p95Ns": 242019441,
+            "stddevNs": 11385923.28986379,
+            "medianSeNs": 5045198.98509558
+          },
+          "profilerStages": {
+            "layout.finalizeStaff": {
+              "count": 22688,
+              "totalNs": 204422209,
+              "maxNs": 8498210
+            },
+            "layout.finalizeSystem": {
+              "count": 11344,
+              "totalNs": 210128923,
+              "maxNs": 8504861
+            },
+            "layout.doResize": {
+              "count": 104,
+              "totalNs": 1666479299,
+              "maxNs": 34452462
+            },
+            "resize.layoutResize": {
+              "count": 104,
+              "totalNs": 1666625154,
+              "maxNs": 34453853
+            },
+            "resize.total": {
+              "count": 104,
+              "totalNs": 1751632217,
+              "maxNs": 34814390
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
