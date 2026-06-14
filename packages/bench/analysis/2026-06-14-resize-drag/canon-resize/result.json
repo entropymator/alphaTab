@@ -1,0 +1,76 @@
+{
+  "scenarioId": "canon-resize",
+  "iterations": [
+    {
+      "durationNs": 76403515
+    },
+    {
+      "durationNs": 76918713
+    },
+    {
+      "durationNs": 79356299
+    },
+    {
+      "durationNs": 74444773
+    },
+    {
+      "durationNs": 77303293
+    },
+    {
+      "durationNs": 75250587
+    },
+    {
+      "durationNs": 74220854
+    },
+    {
+      "durationNs": 79807432
+    }
+  ],
+  "profiler": {
+    "stages": {
+      "layout.finalizeStaff": {
+        "count": 5600,
+        "totalNs": 75056567,
+        "maxNs": 10849906
+      },
+      "layout.finalizeSystem": {
+        "count": 2800,
+        "totalNs": 78200086,
+        "maxNs": 10860457
+      },
+      "layout.doResize": {
+        "count": 32,
+        "totalNs": 603922570,
+        "maxNs": 28800730
+      },
+      "resize.layoutResize": {
+        "count": 32,
+        "totalNs": 603968731,
+        "maxNs": 28801952
+      },
+      "resize.total": {
+        "count": 32,
+        "totalNs": 613571315,
+        "maxNs": 29026852
+      }
+    },
+    "counters": {}
+  },
+  "heap": {
+    "usedHeapBefore": 59482456,
+    "usedHeapAfter": 168904680,
+    "totalHeapBefore": 211066880,
+    "totalHeapAfter": 290922496
+  },
+  "summary": {
+    "n": 8,
+    "medianNs": 76918713,
+    "meanNs": 76713183.25,
+    "minNs": 74220854,
+    "maxNs": 79807432,
+    "p5Ns": 74220854,
+    "p95Ns": 79807432,
+    "stddevNs": 2088860.9527080099,
+    "medianSeNs": 925591.969163382
+  }
+}
