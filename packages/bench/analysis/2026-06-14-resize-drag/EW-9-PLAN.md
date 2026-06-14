@@ -655,3 +655,49 @@ Never:
   - git revert the Phase 1 commit
   - widen the skip to "fix" a Class D
 ```
+
+---
+
+## 15. Execution outcome — 2026-06-14
+
+**Result**: shipped as **Variant B** (calculateOverflows-only skip). Commits
+`63e1afef` (Phase 1 naive max-skip, kept as bisect anchor) +
+`bfcd943f` (Variant B narrowing).
+
+**A/B at n=64 (probe-EW9-phase1 vs probe-EW9-variantB)**:
+- Phase 1 max-skip: `★` Δ=-10.46 ms CI [-13.50, -6.13] z=5.25 — **but
+  7 visual regressions** (`sustain-pedal`, `sustain-pedal-alphatex`,
+  `multi-system-slur-scale-down`, `multi-system-slur-scale-up`,
+  `resize-sequence`, `grace-resize`, `whammy-resize-wrap`).
+- Variant B (calculateOverflows-only): `★` Δ=-9.69 ms CI [-12.06, -4.91]
+  z=6.50, 58/64 wins. **vitest 1599/1599.** Multi-process diff at 5/5
+  trials vs `bb8ad4fb`: no `★` regression on any other scenario.
+
+**Falsified assumption (plan §3.4)**: "broker state persists across
+resize cycles". `StaffSystem.addMasterBarRenderers:293` explicitly
+resets `renderers.layoutingInfo.preBeatSize = 0` at the head of every
+resize cycle. With Phase 1 skipping `_registerLayoutingInfo`, the
+broker read 0 and the bar collapsed (most dramatic: 23 bars stacked
+at x=0 in `multi-system-slur-scale-up`). The reset is invisible from
+`BarRendererBase` — it lives one layer up in the system entry path.
+
+**Why Variant B works**: leaving `_registerLayoutingInfo` always-on
+re-populates `preBeatSize` after the reset, costing the 7 ms broker
+write back. The remaining ~5.5-9.7 ms win comes from gating
+`calculateOverflows` + the beam-overflow chain via
+`ScoreBarRenderer.calculateOverflows`. The cache holds across resize
+cycles because the overflow accumulators (`_contentTopOverflow`,
+`_contentBottomOverflow`) and the pre/postBeatLocalSkylines are
+monotonic max-of and were already correct across cycles pre-EW-9.
+
+**Remaining DR-1 slice**: the 7 ms `MultiVoiceContainerGlyph
+.registerLayoutingInfo` hotspot is still un-captured. Capturing it
+requires either lifting the `preBeatSize = 0` reset out of
+`addMasterBarRenderers` (per-MasterBarsRenderers invalidation gate)
+or restructuring the broker lifecycle. Documented in HOTSPOTS.md
+DR-1 as the remaining open sub-task.
+
+**Plan critique**: the catalogue in §3 missed `addMasterBarRenderers`
+:293 as an invalidation event. Future EW-style plans against this
+codebase should grep for explicit `<broker>.field = 0` resets at
+system-level entry points before assuming broker persistence.

@@ -21,11 +21,14 @@ load or score-importer noise.
 | canon-render | 60.77 ms | ± 3.01 ms (4.96 %) |
 | canon-resize (4 widths) | 76.92 ms | ± 1.97 ms (2.56 %, ~19.2 ms/resize) |
 | fade-to-black-resize | 41.16 ms | ± 3.04 ms (7.39 %) |
-| **canon-resize-drag (12 widths)** | **235.30 ms** | **± 3.48 ms (1.48 %, ~19.6 ms/resize)** |
+| **canon-resize-drag (12 widths)** | **230.77 ms** (was 235.30 pre-EW-9) | **± 5.08 ms (2.2 %, ~19.2 ms/resize)** |
 
-Baseline: `node dist/run.mjs --trials 5 --save-baseline resize-drag --label
-resize-drag-1781434957` on `feature/perf` `39e5232e`. `canon-resize-drag` was added
-in this commit to amplify the resize path for analysis — it cycles widths in a
+Baseline: `node dist/run.mjs --trials 5 --save-baseline EW9-post --label EW9-post`
+on `feature/perf` `bfcd943f`. The pre-EW-9 reference at `39e5232e` was 235.30 ±
+3.48 ms; the multi-process diff against the pre-EW-9 baseline shows Δ -4.53 ms
+`·` (the paired A/B at n=64 resolves this as `★` -9.69 ms — multi-process
+loses to within-trial noise on a sub-5 % shift). `canon-resize-drag` was added
+in `dd530e65` to amplify the resize path for analysis — it cycles widths in a
 sustained browser-drag pattern (1400→600→850), driving 12 resizes per `driveOnce`
 so the CPU profile is ~3× more densely sampled per resize than canon-resize.
 
@@ -50,19 +53,6 @@ Candidates that look like single-file, no-API-change patches. Verify by
 running the relevant scenario with the bench, applying the patch, and
 re-running to confirm ≥ 1 % improvement on the target metric with no
 visual-test regressions.
-
-### EW-9. Skip bar-local `reLayout` work on width-only resize
-- **Where**: [BarRendererBase.reLayout](packages/alphatab/src/rendering/BarRendererBase.ts) (`_registerLayoutingInfo` + `calculateOverflows` + `_emitGroupOverflows` body); the gate goes on the `BarRendererBase` itself.
-- **Signal (canon-resize-drag, 2026-06-14 5-trial baseline)**:
-  - `MultiVoiceContainerGlyph.registerLayoutingInfo` — 2.99 % CPU (~7.0 ms/iter)
-  - `BarRendererBase.calculateOverflows` — 1.33 % (~3.1 ms/iter)
-  - `_emitGroupOverflows` — 1.00 % (~2.4 ms/iter)
-  - **`LineBarRenderer._computeBeamingBounds`** — 1.22 % (~2.9 ms/iter) — invariant in stem-local coords, only post-spring X resolves differently
-  - Combined upper bound on canon-resize-drag: **~12-16 ms / iter (5-7 %, clears σ at ≥3×)**.
-- **Hypothesis**: the bar-local broker state (`BarLayoutingInfo` pre/postBeatSize/onTimeX) and the pre/post-beat local skylines are functions of bar content only — they don't change when system width changes. `reLayout` re-emits both every width change. Add a `_layoutVersion`-style guard on `BarRendererBase`: when bar content hasn't changed since last `reLayout`, skip the `_registerLayoutingInfo()` + `calculateOverflows()` rebuild and only run `updateSizes()` + the downstream `_scaleToWidth` chain (which IS width-dependent and must re-run). Beam endpoint computation (`_computeBeamingBounds`) folds into the same gate because beam-group composition is model-derived.
-- **Risk**: medium. The `BarLayoutingInfo` broker is shared across staves of the same `MasterBarsRenderers`; cross-stave invalidation needs verification. `applyLayoutingInfo` post-layout mutates child `.y` (see DR-5 lifecycle note) so the cache must invalidate on tie-finalize / voice-merge events.
-- **First slice of DR-1**: this is the smallest patch shape that materialises DR-1's "width-only resize re-walking" thesis with a single guard. Larger sliver (skip `_scaleToForce` when `actualBarWidth` collides via `force` bucketing) is documented under DR-1.
-- **Investigated 2026-06-14**: 5-trial baseline + 6-subagent profile cross-check (layout-walk + beam agents converged on identical width-invariance verdict). No patch attempted. ≥ 2σ requires ≥ 7 ms improvement on canon-resize-drag — comfortably inside the 12-16 ms upper bound.
 
 ### EW-10. Batched-fillRect typed buffer in SvgCanvas
 - **Where**: [SvgCanvas.fillRect](packages/alphatab/src/platform/svg/SvgCanvas.ts#L52) — sole emission site for all rect output.
@@ -224,6 +214,7 @@ visual-test regressions.
 | EW-6 | `74c133ea` | (harness) | n/a | 2026-06-13 | Heap profile scoped to the measured loop via `node:inspector` Heap Profiler API; ships as `feat(bench)`, not `perf`. |
 | EW-7 | `ac8606e7` | canon-resize | -2.92 ms (-5.4 % ★); fade-to-black-resize -2.10 ms (-9.8 % `·`); nightwish-resize -0.20 ms (-2.4 % `·`); canon-render -0.40 ms (-1.4 % `·`); nightwish-render -0.12 ms (-2.7 % `·`) | 2026-06-14 | Extend `elementStyleUsingPlugin` matcher to also lower `using x = cond ? ElementStyleHelper.X(...) : undefined` (and chained variants) to the cheap `const x = ...; try { ... } finally { x?.[Symbol.dispose]?.(); }` form. Three ternary sites — `BeatGlyphBase._paintEffects` (hot path), `NumberedNoteHeadGlyph.paint`, `SlashNoteHeadGlyph.paint` — previously fell through the matcher's `CallExpression`-only check and got OXC's stock `_usingCtx()` runtime (5+ allocations per call). Bundle `_usingCtx()` references: 5 → 2 (only `SkiaCanvas.measureText` remains, intentionally out of plugin scope). A/B at n=64 (`probe-EW-7`): canon-resize `★` CI [-3.41, -2.65] z=6.75; every other scenario directionally faster, no `★` regressions. vitest 1599/1599. |
 | EW-8 | `2251590d` | canon-resize | microbench: -90.9 % (107.0 → 9.7 ns/call); scenario: directional only (`·` at 5/5 trials) | 2026-06-14 | Short-circuit `SvgCanvas._escapeText` with a single character-class `test()` when the input has no `& < > " '`. Bench corpus is mostly numeric text → V8 returns the input ref on no-match. **Note on the ship decision** (see `scripts/escape-microbench.mjs` + `scripts/escape-matrix.mjs` for the full evidence): the original ship was based on a single n=64 paired A/B that landed `★ -0.69 ms`. A subsequent 11-variant × 7-trial microbench confirmed the function-level win is real and large (V1 = current shipped is 11× faster than V0 = pre-EW-8 in isolation, 9.7 vs 107 ns/call). But the scenario-level effect is below the multi-process diff's σ floor at 5 trials — repeated 3× n=64 A/B trials showed sign-flipping with `★` significance, and the 5/5 multi-process diff against the V0 baseline showed canon-resize -5.7 % / canon-render -8.5 % / fade-to-black -7.8 % but all `·` (no scenario clears `★`). V1 is kept because the change is microbench-justified, directionally positive on the heavy scenarios, simpler than V7 (charCodeAt single-pass — microbench fastest at 7.6 ns/call but scenario-indistinguishable from V1), and free of regressions. Faithful application of AGENT_WORKFLOW.md's `★ required` rule at single-trial n=64 was the wrong methodology here — at this Δ-ms range the bench needs cross-trial sampling. vitest 1599/1599. |
+| EW-9 (Variant B) | `63e1afef` + `bfcd943f` | canon-resize-drag | -9.69 ms (-5.9 % ★) at n=64 paired A/B | 2026-06-14 | Gate `calculateOverflows` (+ its `_emitGroupOverflows` + `ScoreBarRenderer.calculateBeamingOverflows` chain) behind a per-renderer `_layoutInvariantCached` flag set at the tail of `doLayout`. The plan (`packages/bench/analysis/2026-06-14-resize-drag/EW-9-PLAN.md`) opened with a max-skip that ALSO short-circuited `_registerLayoutingInfo` — Phase 3 vitest exposed 7 visual regressions, all explained by `StaffSystem.addMasterBarRenderers:293` explicitly resetting `renderers.layoutingInfo.preBeatSize = 0` at the head of every resize. With the broker reset un-mitigated, the skipped `_registerLayoutingInfo` left `preBeatSize=0` and bars stacked at x=0 (visible diff: multi-system-slur-scale-up 23 bars on top of each other). The plan §3.4 broker-persistence assumption is falsified by this reset; Variant B (per §8.2) demotes the gate to `calculateOverflows`-only and keeps `_registerLayoutingInfo` always-on. Cache invalidated by `recreatePreBeatGlyphs` and `invalidateLayoutCache` (Phase 4 hook); survives `afterReverted` (the whole point of the optimisation). A/B paired at n=64 against `bb8ad4fb`: canon-resize-drag `★` Δ=-9.69 ms CI [-12.06, -4.91] z=6.50 58/64 wins. Multi-process diff at 5/5 trials shows -4.53 ms on canon-resize-drag (`·` — the paired A/B is the authoritative measurement for sub-5 % shifts). No `★` regression on any other scenario. vitest 1599/1599. The naive max-skip (`63e1afef`) is the first commit, kept as a bisect anchor; the narrowing (`bfcd943f`) is the shipped form. |
 
 ## Major refactors — deferred
 
@@ -236,9 +227,14 @@ below remain the principal structural levers, with quantified upper bounds:
 - **DR-1** is the largest single lever — width-only re-walking on
   canon-resize-drag costs ~14 ms / iter truly invariant
   (`registerLayoutingInfo` 7.0 + `calculateOverflows` 3.1 +
-  `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9). `EW-9` is
-  the smallest patch shape that captures this slice; full
-  content-version cache is 12-30 ms total.
+  `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9). `EW-9`
+  Variant B (landed `bfcd943f`) captured the `calculateOverflows` +
+  beam-overflow slice (~5.5-9.7 ms paired). The `registerLayoutingInfo`
+  half remains open because `addMasterBarRenderers` resets the broker
+  `preBeatSize=0` every cycle — capturing that slice requires lifting
+  the reset out of the resize-entry hot path (per-MasterBarsRenderers
+  invalidation gate or restructured broker lifecycle). Full content-
+  version cache remaining is ~7-15 ms total.
 - **DR-2**'s GC pressure (canon-render 18.2 %, nightwish-resize
   13.6 %, canon-resize-drag 5.1 %) is dominated by `unionShifted3`'s
   5.4 MB / iter footprint (84 % of canon-resize-drag heap). EW-2(b)
@@ -279,8 +275,11 @@ below remain the principal structural levers, with quantified upper bounds:
 - **Quantified 2026-06-14 (drag baseline + 4 subagent cross-check)**:
   - **Truly width-invariant** (re-runs every resize for no reason): ~14 ms /
     iter (`registerLayoutingInfo` 7.0 + `calculateOverflows` 3.1 +
-    `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9 — `EW-9`
-    captures this).
+    `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9). `EW-9`
+    Variant B captures the overflow slice (~5.5-9.7 ms); the
+    `registerLayoutingInfo` 7.0 ms portion is blocked on
+    `StaffSystem.addMasterBarRenderers:293`'s broker reset and remains
+    open as a "lift the reset" sub-task.
   - **Width-bucket-memoisable** (`force`-keyed): `_scaleToForce` (34 ms /
     iter); `force = spaceToForce(width)` bucketing may collide across
     nearby drag widths, lifting 20-30 % hit-rate × 34 ms ≈ 3-5 ms / iter.
@@ -290,8 +289,12 @@ below remain the principal structural levers, with quantified upper bounds:
     fraction across 12 drag widths.
   - **Genuinely width-dependent (intrinsic)**: Skyline union shift,
     `_scaleToWidth` body, paint markup generation — ~85 % of wall-clock.
-- **EW-9 is the smallest patch shape** that delivers a slice of DR-1; the
-  full content-version cache is the structural endgame.
+- **EW-9 Variant B** (landed `bfcd943f`) is the smallest patch shape that
+  delivered a slice of DR-1. The naive max-skip (`63e1afef`) bundled
+  `registerLayoutingInfo` into the gate and broke 7 visuals because
+  `addMasterBarRenderers` resets `preBeatSize=0`; Variant B narrows to
+  `calculateOverflows`-only and keeps the broker write always-on. Full
+  content-version cache is the structural endgame.
 
 ### DR-2. GC pressure 8-10 % of CPU across resize scenarios
 - **Observation**: GC is consistently the top self-time entry across all
