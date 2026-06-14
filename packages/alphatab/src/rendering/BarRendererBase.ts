@@ -917,13 +917,18 @@ export class BarRendererBase {
             this.recreatePreBeatGlyphs();
         }
 
-        // EW-9: bar-local invariant work — broker registration and the
-        // pre/post-beat overflow walk — only needs to re-run when the
-        // cache was invalidated. The width-dependent path
-        // (`scaleToWidth`, system union, effect placement, tie finalize)
-        // continues to run unconditionally outside this method.
+        // EW-9 (Variant B): `_registerLayoutingInfo` MUST run every cycle
+        // because `StaffSystem.addMasterBarRenderers` explicitly resets
+        // `layoutingInfo.preBeatSize = 0` at the head of every resize.
+        // Without re-registration the broker reads 0 and bars collapse
+        // (verified empirically: 7 visual regressions on the naive max
+        // skip, all explained by this reset path).
+        //
+        // The overflow walk (`calculateOverflows` + `_emitGroupOverflows`)
+        // is bar-local and width-invariant, so it can be skipped when
+        // the cache flag holds.
+        this._registerLayoutingInfo();
         if (!this._layoutInvariantCached) {
-            this._registerLayoutingInfo();
             this.calculateOverflows(0, this.height);
             this._layoutInvariantCached = true;
         }
