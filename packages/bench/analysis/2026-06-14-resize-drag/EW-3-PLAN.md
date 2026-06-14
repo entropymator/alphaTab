@@ -1089,3 +1089,119 @@ foundation of Option A.
 - HOTSPOTS EW-5 retry-shape green-light: `packages/bench/HOTSPOTS.md:189-194`
 - DR-1 §18.5 anti-revert precedent: `packages/bench/analysis/2026-06-14-resize-drag/DR-1-BROKER-LIFECYCLE-PLAN.md` §15
 - EW-10 §18 batching-failure precedent: `packages/bench/analysis/2026-06-14-resize-drag/EW-10-PLAN.md` §18
+
+---
+
+## 13. Execution outcome — Option A landed 2026-06-14
+
+**Status**: Option A (layout-time gap cache + projection at paint) landed.
+vitest 1599/1599. A/B at n=64 paired: `★ Δ = -4.09 ms (-2.5 %)` on
+canon-resize-drag. n=128 confirmation: `★ Δ = -4.34 ms (-2.7 %)`,
+CI [-5.37, -3.02], z=4.95. 5-trial session-paired multi-process diff:
+canon-resize-drag -2.94 ms (-1.3 % `·`), no `★` regression on any
+scenario. Within the plan §10 σ floor (≥ 1 % / 2.21 ms) and clears `★`;
+below the 2σ stretch (7.36 ms) — consistent with Phase 0's measured
+4-7 ms ceiling for the collectSpaces + sort surface.
+
+### 13.1 Phase order
+
+| Phase | Outcome | Commit |
+|---|---|---|
+| Phase 0 — probes | Outcome B confirmed, ceiling ~4-7 ms / iter | `927201c9` (docs-only, instrumentation reverted) |
+| Phase 1 — cache built, projection through legacy spaces[][] | Built; A/B Δ -0.44 ms `·` (the per-gap Float32Array(2) alloc was preserved, defeating half the win) | not committed — superseded by Phase 2 |
+| Phase 2 — paint-time direct emit from cache | Skips `Float32Array[][]` outer alloc, per-gap `Float32Array(2)` alloc, and the per-line sort | landed |
+| Phase 3 — n=64 / n=128 A/B vs `05ec1dbb` | `★` at both n | — |
+| Phase 4 — vitest | 1599/1599, no visual diffs | — |
+| Phase 5 — 5-trial multi-process diff | session-paired: no `★` regression | — |
+| Phase 6 — HOTSPOTS + this postscript | landed | this commit |
+
+### 13.2 Phase 0 findings vs plan assumptions
+
+Phase 0 measured outcomes vs the plan's §4 assumptions:
+
+| Plan assumption | Phase 0 finding | Adjustment |
+|---|---|---|
+| Dispatch is 4-way polymorphic | 2-way in canon-resize-drag (Score + Tab) | Option G short-circuit is even cheaper than estimated; bundled inside A. |
+| Outcome B (relative-stable) is the default expected outcome | **CONFIRMED** — widths byte-stable, x-positions shift with `bg.x` | Projection cache is the correct shape. |
+| collectSpaces ~5.65 ms / iter (HOTSPOTS) | 3.96 ms / iter (probe estimate; includes timing overhead) | Authority unchanged. |
+| paintStaffLines win ceiling 4-6 ms | Phase 0 §6.4: emit is 92.5 %; collectSpaces+sort are 14.8 %+7.5 % | Ceiling at ~4-5 ms (collectSpaces + sort + alloc). |
+| afterReverted-pattern invalidation defeats the cache (DR-1 §18.2) | Confirmed — followed `_voiceWalkDone` precedent (survives `afterReverted`) | Cache invalidated only by `recreatePreBeatGlyphs` + `invalidateLayoutCache`. |
+
+### 13.3 The "Phase 1 trap" — why the first implementation didn't clear σ
+
+The plan §8 Phase 1 described "build the cache, verify byte-identity, no
+skip yet". This executor's first cut implemented that literally:
+
+- `_buildGapCache()` populated parallel arrays at layout.
+- `collectSpaces` was rewritten to project the cache into the legacy
+  `spaces[][]` shape — preserving the per-gap `Float32Array(2)`
+  allocation.
+- vitest passed 1599/1599.
+- A/B at n=64: **Δ = -0.44 ms, `·`** (below σ).
+- A/B re-run: **Δ = -2.76 ms, `·`** (CI [-4.35, +2.04] — wide because of
+  one GC outlier).
+
+The win was below σ. Diagnosis: the per-gap `Float32Array(2)` allocation
+was the cost the cache was meant to eliminate, but Phase 1 kept it. Map
+iteration was eliminated (the cache walk is a typed-array loop), but the
+alloc share survived.
+
+Phase 2 rewrote `paintStaffLines` to read directly from the cache and
+emit `fillRect` without ever building `spaces[][]`. This is the actual
+Option A shape per the plan §4 "Even better — skip the spaces[][]
+intermediate entirely". With the alloc share gone:
+
+- A/B at n=64: **`★ Δ = -4.09 ms (-2.5 %)`**, z=2.50, CI [-5.93, -1.37].
+- A/B at n=128: **`★ Δ = -4.34 ms (-2.7 %)`**, z=4.95, CI [-5.37, -3.02].
+
+### 13.4 What was NOT done
+
+- **Option E (stroked path) was NOT attempted.** Option A cleared σ
+  cleanly at `★` n=128; the §8 conditional fallback E only fires if A
+  is `~` or `·`. The plan's bundled-secondary suggestion (§7.4) for
+  emit-dominant cases is left as a future round.
+- **The browser cost was not measured.** Options C and D remain
+  deferred per plan §4 and §5.4.
+- **No `npm run test-accept-reference`** — vitest had zero visual diffs.
+
+### 13.5 Cache invariants verified
+
+Per-line bucket layout is built in beat-iteration order, which is
+left-to-right at layout time. The paint-time fast path walks each
+bucket linearly and emits fillRects between consecutive gaps. A
+slow-path insertion-sort kicks in if any inversion is detected (rare
+grace-beat ordering edge case). vitest with 1599 fixtures including
+grace-note alignment exercises this path; all pass with no diffs.
+
+Padding (`smuflMetrics.staffLineThickness`) is captured at cache-build
+time. The cache survives `afterReverted` and `reLayout`. The cache is
+re-built lazily on first read if `_gapBucketEnd === null`.
+
+### 13.6 Cite-by-commit timeline
+
+- `927201c9` — Phase 0 empirical probes (docs-only, instrumentation reverted).
+- Phase 1 superseded by Phase 2 (not committed — single-step develop).
+- (this commit) — Phase 2 source change + HOTSPOTS + this postscript.
+
+### 13.7 Plan corrections for future executors
+
+- **Plan §8 Phase 1's "cache built but not consumed" verification step
+  is a trap if read literally.** The cache's value comes from eliminating
+  ALL of (a) Map iteration, (b) per-gap `Float32Array(2)` alloc,
+  (c) per-line sort. Keeping the legacy `spaces[][]` consumer shape
+  (which forces (b)) cuts the expected win roughly in half, often
+  pushing it below σ. Either skip Phase 1's intermediate verification
+  and go straight to direct-emit, OR explicitly note that Phase 1's
+  expected Δ is sub-σ and Phase 2 is mandatory.
+
+- **The "Outcome B = projection cache" foundation held.** Plan §6.2
+  / §7.2 / §4 Appendix A are reusable templates for future projection-cache
+  candidates (they share the same algebraic separation: layout-invariant
+  payload + per-resize scalar projection).
+
+- **Phase 0 §6.4 emit-dominance flag is load-bearing.** When emit cost
+  dominates a surface, the cache-eliminate options are bounded by the
+  pre-emit share. The plan correctly flagged Option E as a bundled
+  secondary in this case; the executor's call to defer E until A
+  clears σ standalone was conservative (A landed `★` without it).
+

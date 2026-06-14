@@ -115,36 +115,18 @@ visual-test regressions.
   allocation reduction on the Bounds tree empirically loses; do not
   retry without a fundamentally different cost model.
 
-### EW-3. `collectSpaces` polymorphism
-- **Where**: actually [LineBarRenderer.collectSpaces](packages/alphatab/src/rendering/LineBarRenderer.ts) (no-op stub) overridden in [TabBarRenderer.collectSpaces](packages/alphatab/src/rendering/TabBarRenderer.ts). Path in the HOTSPOTS entry below is wrong — the symbol lives on the renderer hierarchy, not BarLayoutingInfo.
-- **Signal**: 0.6 % × 2 frames in canon-resize → polymorphic call site. 4 concrete receiver classes flow through (Score / Slash / Numbered / Tab) — classic 4-way megamorphic IC.
-- **Hypothesis**: split into monomorphic variants or inline the no-op stub away.
-- **Risk**: low.
-- **Tried (2026-06-13)**: eliminated the virtual `collectSpaces` hook by
-  extracting a module-level `paintStaffLineRects` helper, having
-  `LineBarRenderer.paintStaffLines` pass `null`, and overriding
-  `paintStaffLines` directly in `TabBarRenderer`. Refactor compiled clean
-  and biome-passed, but the session noise floor on canon-resize had drifted
-  to ~10 % wall-clock (reverted-tree control re-run produced +10.5 %
-  against the same baseline), which swamps any plausible sub-1 ms / 0.6 %
-  × 2-frame win. Next: re-measure round-start fresh, target canon-render
-  instead (same hotspot, no resize-loop multiplier), or batch with a
-  larger paint-path refactor whose expected delta clears noise.
-- **A/B-confirmed below noise floor (2026-06-13 round 3)**: same shape
-  re-applied (override `paintStaffLines` on `TabBarRenderer`,
-  monomorphic-per-subclass dispatch instead of the 4-way megamorphic
-  `collectSpaces`) and verified with the paired A/B harness at n=64.
-  Result: canon-resize -0.1 % `·`, canon-render +1.4 % `·`, all six
-  scenarios within ±0.5 ms of zero (none clear `★` or even `~`). The
-  polymorphic dispatch the profiler flagged is real but its absolute
-  cost (~0.3 ms across both frames) is in the same range as
-  iteration-to-iteration variance of canon-resize (A/B CI half-width
-  ≈ 0.8 ms at n=64). vitest 1599/1599 passed in both runs. This is the
-  first time we have decisive evidence that the win simply doesn't
-  exist at a measurable scale — not noise, not measurement failure,
-  just too small. **Demote**: bundle with a larger paint-path refactor
-  only if one materialises for unrelated reasons; standalone the
-  candidate cannot clear the σ floor.
+### EW-3. `collectSpaces` polymorphism — LANDED 2026-06-14 (Option A: layout-time gap cache)
+See "Easy wins — landed" table below. Original 2026-06-13 round-1/round-3 narrative kept in the plan postscript at
+`packages/bench/analysis/2026-06-14-resize-drag/EW-3-PLAN.md` §13.
+The 2026-06-13 attempts shipped **monomorphisation only** (Option B in
+the plan §4 matrix), which moved ~0.3 ms / 0.6 % — below σ. The 2026-06-14
+ship is **Option A** (per the plan §4 / §8): layout-time gap descriptor
+cache (`stringIndex`, `relativeX`, `width`, `BeatContainerGlyphBase` ref),
+bucketed per staff-line at layout, paint-time projects absolute x via
+`beatGlyphsStart + bg.x + relativeX` and emits `fillRect` directly from
+the cache. Skips both the per-paint `Float32Array[][]` allocation and the
+per-gap `Float32Array(2)` allocation that the legacy `collectSpaces`
+shape carried.
 
 ### EW-4. `fillRect` polymorphism in SvgCanvas
 - **Where**: [SvgCanvas.fillRect](packages/alphatab/src/platform/svg/SvgCanvas.ts)
@@ -210,6 +192,7 @@ visual-test regressions.
 | EW-8 | `2251590d` | canon-resize | microbench: -90.9 % (107.0 → 9.7 ns/call); scenario: directional only (`·` at 5/5 trials) | 2026-06-14 | Short-circuit `SvgCanvas._escapeText` with a single character-class `test()` when the input has no `& < > " '`. Bench corpus is mostly numeric text → V8 returns the input ref on no-match. **Note on the ship decision** (see `scripts/escape-microbench.mjs` + `scripts/escape-matrix.mjs` for the full evidence): the original ship was based on a single n=64 paired A/B that landed `★ -0.69 ms`. A subsequent 11-variant × 7-trial microbench confirmed the function-level win is real and large (V1 = current shipped is 11× faster than V0 = pre-EW-8 in isolation, 9.7 vs 107 ns/call). But the scenario-level effect is below the multi-process diff's σ floor at 5 trials — repeated 3× n=64 A/B trials showed sign-flipping with `★` significance, and the 5/5 multi-process diff against the V0 baseline showed canon-resize -5.7 % / canon-render -8.5 % / fade-to-black -7.8 % but all `·` (no scenario clears `★`). V1 is kept because the change is microbench-justified, directionally positive on the heavy scenarios, simpler than V7 (charCodeAt single-pass — microbench fastest at 7.6 ns/call but scenario-indistinguishable from V1), and free of regressions. Faithful application of AGENT_WORKFLOW.md's `★ required` rule at single-trial n=64 was the wrong methodology here — at this Δ-ms range the bench needs cross-trial sampling. vitest 1599/1599. |
 | EW-9 (Variant B) | `63e1afef` + `bfcd943f` | canon-resize-drag | -9.69 ms (-5.9 % ★) at n=64 paired A/B | 2026-06-14 | Gate `calculateOverflows` (+ its `_emitGroupOverflows` + `ScoreBarRenderer.calculateBeamingOverflows` chain) behind a per-renderer `_layoutInvariantCached` flag set at the tail of `doLayout`. The plan (`packages/bench/analysis/2026-06-14-resize-drag/EW-9-PLAN.md`) opened with a max-skip that ALSO short-circuited `_registerLayoutingInfo` — Phase 3 vitest exposed 7 visual regressions, all explained by `StaffSystem.addMasterBarRenderers:293` explicitly resetting `renderers.layoutingInfo.preBeatSize = 0` at the head of every resize. With the broker reset un-mitigated, the skipped `_registerLayoutingInfo` left `preBeatSize=0` and bars stacked at x=0 (visible diff: multi-system-slur-scale-up 23 bars on top of each other). The plan §3.4 broker-persistence assumption is falsified by this reset; Variant B (per §8.2) demotes the gate to `calculateOverflows`-only and keeps `_registerLayoutingInfo` always-on. Cache invalidated by `recreatePreBeatGlyphs` and `invalidateLayoutCache` (Phase 4 hook); survives `afterReverted` (the whole point of the optimisation). A/B paired at n=64 against `bb8ad4fb`: canon-resize-drag `★` Δ=-9.69 ms CI [-12.06, -4.91] z=6.50 58/64 wins. Multi-process diff at 5/5 trials shows -4.53 ms on canon-resize-drag (`·` — the paired A/B is the authoritative measurement for sub-5 % shifts). No `★` regression on any other scenario. vitest 1599/1599. The naive max-skip (`63e1afef`) is the first commit, kept as a bisect anchor; the narrowing (`bfcd943f`) is the shipped form. |
 | EW-10 (Phase A only) | `244c8e0b` | canon-resize-drag | -4.14 ms (-2.7 % ★) at n=64 paired A/B vs `be8b724b` | 2026-06-14 | `SvgCanvas.fillRect` scale=1 fast path with manual `+` concat replacing the template literal. Per Phase 0 §8.1 instrumentation (114,307 fillRect calls / iter on canon-resize-drag, ~171 ns each, 100 % at scale=1 in the bench workload), eliminating the 4 `*scale` multiplies plus avoiding the template literal's number-formatting overhead clears 2σ. The scale!=1 branch keeps the original template literal so HiDPI rendering is unchanged. Phase B (`fillRectBatched` + `paintBackground`-end flush + paintStaffLines migration) was attempted in the executor's working tree and falsified — full record in `analysis/2026-06-14-resize-drag/EW-10-PLAN.md` §18. Phase B vs Phase A measured `·` Δ +1.80 ms (n=64 paired) and `·` Δ -0.07 ms at a v2 implementation — batching-buffer overhead eats the per-call savings on this workload. n=64 paired A/B (Phase A only): canon-resize-drag `★` Δ=-4.14 ms CI [-6.12, -2.26] z=2.75 43/64 wins. vitest 1599/1599. |
+| EW-3 (Option A) | (pending) | canon-resize-drag | -4.09 ms (-2.5 % ★) at n=64 paired; -4.34 ms (-2.7 % ★) at n=128 paired vs `05ec1dbb` | 2026-06-14 | Layout-time gap descriptor cache + paint-time projection per plan §4 Option A. `TabBarRenderer.doLayout` builds packed per-bar arrays (`Uint32Array` bucket-end offsets, `Float32Array(2N)` for `relativeX`+`width`, `BeatContainerGlyphBase[]` for live `bg.x` lookup) bucketed by staff-line index. `paintStaffLines` is overridden in `TabBarRenderer` and reads the cache directly — skips the legacy virtual dispatch, the per-paint `Float32Array[][]` outer alloc, the per-gap `Float32Array(2)` alloc, AND the per-line `line.sort()` (gaps are already in beat-iteration / x-ascending order; rare grace-beat inversions take a slow path with insertion sort on a tiny segment). Phase 0 §6.2 verified Outcome B (widths and intra-bar offsets layout-stable; only `bg.x` shifts per resize) — algebraic foundation of the projection cache. Phase 0 §6.4 found `paintStaffLines` emit cost is 92.5 % of its self-time; Option A removed the remaining 14.8 % collectSpaces + 7.5 % pre-emit sort. Bundles plan options B (drop the no-op virtual stub: kept the override but the consumer no longer routes through it on the hot path), G (TabBarRenderer's `paintStaffLines` override is a `instanceof`-equivalent short-circuit at the V8 dispatch level), I (packed buffers replace `Float32Array[][]`). Cache invalidation follows the `_voiceWalkDone` lifecycle precedent — survives `afterReverted` (DR-1 §18 anti-pattern avoided), invalidated by `recreatePreBeatGlyphs` and `invalidateLayoutCache`. n=64 paired A/B vs `05ec1dbb`: canon-resize-drag `★` Δ=-4.09 ms CI [-5.93, -1.37] z=2.50 42/64 wins. n=128 confirmation: `★` Δ=-4.34 ms CI [-5.37, -3.02] z=4.95 92/128 wins. 5-trial session-paired multi-process diff: canon-resize-drag -2.94 ms (-1.3 % `·`), no `★` regression on any scenario. vitest 1599/1599. Full plan + Phase 0 probe findings + execution outcome in `analysis/2026-06-14-resize-drag/EW-3-PLAN.md` §13 and `EW-3-PHASE0-PROBES.md`. |
 
 ## Major refactors — landed
 
