@@ -25,11 +25,17 @@ The broker reset at `addMasterBarRenderers:293` **is load-bearing**, not defensi
 
 Post-beat composition has no analogue of "the clef disappears when the bar wraps" — that's why `postBeatSize` has no corresponding reset. The asymmetry is real and meaningful.
 
-So the design question is **not** "can we drop the reset?" The answer is no. The design question is:
+But that fact doesn't tell us "drop the reset." The reset stays. The interesting observation is what's *inside* `_registerLayoutingInfo`:
 
-> The reset only matters when at least one stave's `(wasFirstOfStaff, isFirstOfStaff)` flipped. The vast majority of resize iterations on canon-resize-drag don't flip any bar's wrap state. Can we make the reset (and the subsequent `registerLayoutingInfo` work) skip those iterations?
+> `BarRendererBase._registerLayoutingInfo` does two things back-to-back. The first is cheap: `info.preBeatSize = max(..., _preBeatGlyphs.width)` and the symmetric `postBeatSize` write. ~0.2 ms total across all renderers. The second is expensive: it delegates to `MultiVoiceContainerGlyph.registerLayoutingInfo`, which walks every voice container and every beat container to publish springs and per-beat sizes. ~6.8 ms total — this is where the ~7 ms hotspot lives.
+>
+> Per §2.3, the expensive walk's outputs (`springs`, `_beatSizes`, `_timeSortedSprings`, `allGraceRods`, `_minDuration`, `postBeatSize`) have **no reset path anywhere**. They are max-of-monotonic, populated once in initial layout, and survive every resize cycle. Only `preBeatSize` is reset.
 
-The three options in §4 are three different answers to that question.
+So the design question is **not** "can we skip the reset?" but:
+
+> Can we always run the cheap `preBeatSize` re-write (which the reset demands) and skip the expensive voice-container walk (whose outputs are already in the broker from initial layout)?
+
+§4 says yes, with a single-file single-flag patch.
 
 ### 1.3 What this is in HOTSPOTS taxonomy
 
@@ -172,110 +178,79 @@ a15680687 src/rendering/staves/StaveGroup.ts (Daniel Kuschny 2020-07-16 19:07:29
 
 ### 3.4 The empirical question Phase 1 must answer
 
-Given the reset is load-bearing, the new design question is **how often does the wrap-flip actually happen during canon-resize-drag?** If wrap-flips are rare (most resize iterations don't flip any bar's wrap state), Option 1 (conditional reset gated on `recreatePreBeatGlyphs`) wins because the skip applies on most iterations. If wrap-flips are common (e.g. every system re-pack as widths change), the conditional reset fires too often to win — Option 2 / Option 3 (which work renderer-locally and don't care about the broker reset) become the right primaries.
-
-Phase 1 instrumentation (§5) now has a sharpened pass criterion: in addition to byte-identity of broker writes on stable bars, **count the number of iterations in which ≥ 1 renderer's `wasFirstOfStaff !== isFirstOfStaff`** across the 8 drag iterations × 12 widths. This is the deciding measurement for the option primary pick.
+§2.3's catalogue claims `_beatSizes`, `springs`, `_timeSortedSprings`, `allGraceRods`, `_minDuration`, and `postBeatSize` are never reset and survive resize cycles untouched. The plan's primary option (§4) depends on this being true: if any of those fields *does* get reset somewhere we haven't traced, the broker would silently corrupt and the primary option breaks. Phase 1 instrumentation (§5) verifies the claim empirically — read after the expensive walk on first layout, compare against the broker state at the start of every subsequent resize iteration.
 
 ---
 
-## 4. Option matrix
+## 4. The surgical option — split the registration
 
-Three options. Each is a different answer to §3.4's question. The primary pick (§4.4) depends on the wrap-flip frequency Phase 1 measures.
+`BarRendererBase._registerLayoutingInfo` does two things back-to-back:
 
-### 4.1 Option 1 — Conditional reset (gated on wrap-flips)
+| Slice | What it writes | Cost | Reset path? |
+| --- | --- | ---: | --- |
+| **Cheap** | `info.preBeatSize = max(info.preBeatSize, _preBeatGlyphs.width)`<br>`info.postBeatSize = max(info.postBeatSize, _postBeatGlyphs.width)` | ~0.2 ms total | `preBeatSize` reset every cycle; `postBeatSize` never |
+| **Expensive** | Voice-container walk → per-beat `addBeatSpring`, `setBeatSizes`; populates `springs`, `_beatSizes`, `_timeSortedSprings`, `allGraceRods`, `_minDuration` | ~6.8 ms total | **None of these fields is ever reset** (§2.2 catalogue) |
 
-**Shape sketch (no code)**:
+The expensive slice's outputs survive every resize cycle by construction. Re-running the walk just re-writes the same values via max-of accumulators. That's the ~7 ms hotspot in resize, and 100 % of its computation is redundant after the first layout.
 
-1. Add a `brokerNeedsReset` flag to `MasterBarsRenderers` (default `true`).
-2. After `BarLayoutingInfo` is constructed and the initial layout's `finish()` has run, set the flag `false`.
-3. Modify `BarRendererBase.reLayout` so that **whenever the `(wasFirstOfStaff !== isFirstOfStaff)` branch fires** (the same branch that already calls `recreatePreBeatGlyphs`), it sets `this.masterBarsRenderers.brokerNeedsReset = true`. This is the one place pre-beat composition is allowed to change.
-4. Modify `StaffSystem.addMasterBarRenderers:293` to make the reset conditional: `if (renderers.brokerNeedsReset) { renderers.layoutingInfo.preBeatSize = 0; }` — else: leave it.
-5. Modify `BarRendererBase._registerLayoutingInfo` so that when the flag is false, the body is a no-op for the `preBeatSize` write site (the renderer's `preBeatSize` contribution hasn't changed; max-of of the existing broker value with itself is a no-op).
-6. After the resize-cycle's loop over staves, set the flag back to false so subsequent iterations get the skip again.
+The fix is a one-bit gate on the expensive slice. Keep the cheap slice running every cycle (the reset makes it necessary). Skip the walk if it has already run.
 
-**The architectural fact this option is exploiting**: pre-beat composition can only change when `recreatePreBeatGlyphs` fires. Every other resize cycle leaves it untouched. So the broker's `preBeatSize` is stable IFF no bar in the masterbar flipped its wrap state this cycle.
+### 4.1 Shape sketch (single file)
 
-**Risk profile**:
+In `BarRendererBase.ts`:
 
-- **Wrap-flip case**: handled by the §3.1 invariant. When ANY stave's bar flips wrap state, the broker is fully reset and all renderers re-register. Correct by construction.
-- **Cross-stave coverage**: when no wrap-flip occurred, every stave skips its `_registerLayoutingInfo` write together. The broker holds the prior cycle's max — which is correct because the prior cycle's max came from the same staves with the same pre-beat composition.
-- **Single-stave wrap-flip**: if stave A flips but stave B does not, the flag goes true, ALL staves re-register (B's contribution is re-pushed; max-of is idempotent so this is safe), and the broker is correctly re-maxed.
+1. Add a private boolean `_voiceWalkDone: boolean = false;` to `BarRendererBase`.
+2. Refactor `_registerLayoutingInfo` to split into two halves:
+   - **Always run**: the `preBeatSize` and `postBeatSize` writes (two lines, both `max-of`).
+   - **Run only when `!_voiceWalkDone`**: the `voiceContainer.registerLayoutingInfo(info)` call (the ~6.8 ms walk). After it returns, set `_voiceWalkDone = true`.
+3. Reset `_voiceWalkDone = false` in the same place EW-9's `_layoutInvariantCached` is reset — `recreatePreBeatGlyphs` and (for safety / clarity) `afterReverted`. Wrap-flip does NOT reset it: composition of voices / post-beat is independent of pre-beat composition.
 
-**Blast radius**: 3 files (`StaffSystem.ts`, `MasterBarsRenderers.ts`, `BarRendererBase.ts`).
+Pseudocode (NOT to commit):
 
-**Dependency on EW-9**: independent. Coexists with the EW-9 `_layoutInvariantCached` flag (which gates `calculateOverflows`). The new flag is broker-side; the EW-9 flag is overflow-side. Document the two-flag separation.
+```
+public _registerLayoutingInfo() {
+    const info = this.layoutingInfo;
+    if (!this._voiceWalkDone) {
+        this._voiceContainer.registerLayoutingInfo(info);
+        this._voiceWalkDone = true;
+    }
+    info.preBeatSize  = Math.max(info.preBeatSize,  this._preBeatGlyphs.width);
+    info.postBeatSize = Math.max(info.postBeatSize, this._postBeatGlyphs.width);
+}
+```
 
-**Expected payoff**: ranges from 0 ms (every iteration flips at least one wrap → reset always fires) to ~7 ms (no iteration flips a wrap → reset never fires). **Phase 1 instrumentation must measure wrap-flip frequency to size this.** A canon-resize-drag where ~60-80 % of iterations have zero wrap-flips would give ~4-6 ms expected — borderline `★`.
+(The exact ordering of the cheap pair vs the walk depends on whether the walk reads `info.preBeatSize` — verify during implementation. If the walk's per-beat writes don't depend on `preBeatSize`, ordering doesn't matter; if they do, put the cheap pair first.)
 
-**Fallback**: if wrap-flips happen on most iterations during canon-resize-drag, Option 1 collapses to "the reset still fires often" and the perf win disappears. → Option 2.
+### 4.2 Why this is correct
 
-**Anti-pattern (do NOT do this)**: lifting the reset *unconditionally*. That's exactly the EW-9 Phase 1 shape, and it broke 7 visual fixtures. The conditional gate is what makes Option 1 different.
+- **Reset stays load-bearing.** `addMasterBarRenderers:293` still zeroes `preBeatSize` every cycle. Our cheap re-write puts it back, picking up the current `_preBeatGlyphs.width` (which is up-to-date even after wrap-flip's `recreatePreBeatGlyphs`).
+- **Walk outputs survive the reset.** Per §2.2 the walk's outputs (`springs`, `_beatSizes`, `_timeSortedSprings`, `allGraceRods`, `_minDuration`) have no reset path. After initial layout populates them, every resize cycle re-runs the walk for no observable reason. We skip the re-runs.
+- **Wrap-flip case handled.** When `(wasFirstOfStaff !== isFirstOfStaff)` flips:
+  - `recreatePreBeatGlyphs` rebuilds `_preBeatGlyphs` and the cheap pair picks up the new `_preBeatGlyphs.width` on the next cycle. ✓
+  - Voice containers are untouched. The walk's cached state is still correct. ✓
+  - `_voiceWalkDone` stays true. We continue to skip the walk. ✓
+- **Cross-stave broker accumulation works.** Every stave runs the cheap pair every cycle. The broker sees `max-of(_preBeatGlyphs.width across all staves)`, same as before. The walk's broker writes (springs, beatSizes, etc.) are still there from initial layout — they don't depend on which staves have written this cycle.
+- **Model mutation safe.** `ScoreRenderer.updateForBars` triggers a fresh `doLayout` chain that constructs new renderer instances. `_voiceWalkDone` defaults to false → walk runs once on the new instance → correct.
 
-### 4.2 Option 2 — Cache + replay
+### 4.3 Risk profile
 
-**Shape sketch (no code)**:
+- **Blast radius**: 1 file (`BarRendererBase.ts`). Adds ~10 lines.
+- **Dependency on EW-9**: independent. Coexists with `_layoutInvariantCached`. Could share that flag if invalidation semantics line up — verify during implementation.
+- **Hidden write path**: the only correctness threat. If some code path mutates `springs` / `_beatSizes` / `postBeatSize` between resizes in a way we haven't traced, the cached walk goes stale. Phase 1 instrumentation (§5) verifies absence of such a path empirically.
+- **Per-beat caching not needed.** Options 2/3 from the previous version of this plan proposed elaborate per-beat caches. Those are answering a question we don't have — the walk's outputs are already cached *in the broker*, where the walk wrote them.
 
-1. The first `_registerLayoutingInfo` call on a renderer records the (key, value) writes it produces into a per-renderer `_brokerWriteCache: { preBeatSize: number, postBeatSize: number, beatSizes: Map<...>, springs: ... }`.
-2. Subsequent `_registerLayoutingInfo` calls become: "is `_brokerWriteCache` populated? Then replay the cached writes into the broker (cheap loop of max-of) and return."
-3. Replay happens AFTER the `:293` reset. The broker is repopulated to the same state it would have been.
+### 4.4 Expected payoff
 
-**Risk profile**:
+Full ~6.8 ms of the `MultiVoiceContainerGlyph.registerLayoutingInfo` walk on every resize cycle. Clears the ≥ 5 ms `★` floor (§1.6) decisively if the §5 instrumentation passes.
 
-- **Cross-stave coverage**: each stave has its own cache; replay is per-stave; broker still sees max-of from all staves.
-- **Smaller blast radius than Option 1**: changes `BarRendererBase._registerLayoutingInfo` only (~1 file). No changes to `StaffSystem.ts` or `MasterBarsRenderers.ts`.
-- **Memory cost**: each renderer stores its own broker contribution as data. Modest — already in the same memory order as `_preBeatGlyphs.width` etc.
-- **Performance subtlety**: replay loop itself has cost. If replay walks all springs + grace rods + beat sizes per renderer, the saving over a fresh `_registerLayoutingInfo` walk may be small. The win comes from skipping the **glyph-walk** in `MultiVoiceContainerGlyph.registerLayoutingInfo` (which iterates `beatGlyphs.values()` and calls `b.registerLayoutingInfo(info)` per beat — that's where the ~7 ms / iter lives).
+### 4.5 Fallbacks if the primary doesn't pass
 
-**Blast radius**: 1-2 files (`BarRendererBase.ts`, possibly `MultiVoiceContainerGlyph.ts` if cache lives on the container).
+If Phase 1 surfaces a hidden mutation path, or Phase 3 A/B shows < 5 ms (suggesting something in the walk we missed is actually width-dependent), drop to one of the heavier options below. Each is documented as a brief sketch only; the primary is the surgical split above.
 
-**Dependency on EW-9**: independent; can coexist with the EW-9 cache flag (in fact the same flag could gate both — replay when `_layoutInvariantCached`, full walk otherwise).
-
-**Expected payoff**: 4-6 ms / iter (some replay overhead). Borderline `★`.
-
-**Fallback**: if replay overhead eats the win → Option 3.
-
-### 4.3 Option 3 — Record-on-first-call, no-op on subsequent
-
-**Shape sketch (no code)**:
-
-1. Each `MultiVoiceContainerGlyph.registerLayoutingInfo` (and its delegates `BeatContainerGlyph.registerLayoutingInfo`) short-circuits when its inputs (the bar's beat composition) haven't changed.
-2. The detection: a content-version field on the bar/renderer; bumped only when `Bar.voices` mutates. Resize doesn't bump it.
-3. Each `_registerLayoutingInfo` cycle still runs the broker-side max-of writes — but with cheap values pulled from a per-renderer-cached struct.
-
-**Difference from Option 2**: Option 2 caches the *writes*. Option 3 caches the *intermediate computation* (the iteration over beat glyphs, the bbox queries, the tie-width additions) and reuses the resulting values.
-
-**Risk profile**:
-
-- **Broker reset still fires** (`:293`). Cache replays into the reset broker. Same correctness profile as Option 2.
-- **Most surgical**: each `registerLayoutingInfo` becomes O(1) for the cache-hit case, vs Option 2's O(beats) replay.
-- **Per-beat caching cost**: a `Map<beatId, {preBeatStretch, postBeatStretch}>` on each `MultiVoiceContainerGlyph` or `BeatContainerGlyph`.
-
-**Blast radius**: 2-3 files (`MultiVoiceContainerGlyph.ts`, `BeatContainerGlyph.ts`, possibly `EffectBand.ts`).
-
-**Dependency on EW-9**: independent.
-
-**Expected payoff**: 5-7 ms / iter (best of the cache options because cache hit is O(1) not O(beats)).
-
-**Fallback**: if all three fail → documented falsification (§13).
-
-### 4.4 Primary pick — chosen AFTER Phase 1 instrumentation
-
-**Do not commit to an option before Phase 1 measures wrap-flip frequency.** The previous version of this section recommended Option 1 unconditionally on the assumption the reset was defensive — that assumption is wrong (see §3). The correct primary depends on what Phase 1 finds:
-
-| Wrap-flips per iteration (canon-resize-drag) | Primary | Rationale |
-| --- | --- | --- |
-| 0 most of the time (≤ 20 % of iterations have any flip) | **Option 1** | Conditional reset skips on ≥ 80 % of iterations; expected ≥ 5 ms. |
-| Mixed (~20-60 % of iterations flip ≥ 1 bar) | **Option 3** | Bypasses the reset entirely; per-renderer short-circuit doesn't care how often the wrap-flips fire. Each non-flipping renderer is O(1). |
-| Almost every iteration flips ≥ 1 bar | **Option 3** preferred, fallback to "stay with EW-9 Variant B; document falsification" | The broker reset fires too often for Option 1; cache+replay (Option 2) loses to a glyph-walk in this scenario; Option 3's O(1) cache hit is the only thing that can win. |
-
-Option 2 is the **structural fallback for any branch where Option 3 has correctness issues** (e.g. if the per-`MultiVoiceContainerGlyph` cache turns out to interact badly with `applyLayoutingInfo`'s post-layout `.y` mutations).
-
-**Phase 5 fallback order** is now Phase-1-dependent:
-
-- If Option 1 primary: Option 1 → Option 3 → Option 2 → falsification.
-- If Option 3 primary: Option 3 → Option 2 → Option 1 (conditional) → falsification.
-
-**Why this matters**: EW-9 Phase 1 burned hours on the wrong primary because the architectural model was wrong. The new Phase 1 (§5) is specifically designed to prevent that by measuring the deciding fact first.
+- **Fallback A — Conditional reset on wrap-flips.** Add a `brokerNeedsReset` flag on `MasterBarsRenderers`; only fire the `addMasterBarRenderers:293` reset when wrap-flips happened. Still runs the full walk; saves the cheap reset + cheap re-write on stable iterations. Expected payoff: small (the walk dominates). Touches 3 files.
+- **Fallback B — Cache + replay broker writes.** Each renderer caches the (key, value) tuples its walk would have written; subsequent cycles replay them after the reset instead of re-walking. Touches `BarRendererBase.ts` only. Slower than the primary (replay is still O(beats)) but doesn't depend on the broker fields being reset-free.
+- **Fallback C — Record-on-first-call inside the walk.** Push the gate down into `MultiVoiceContainerGlyph.registerLayoutingInfo` and `BeatContainerGlyph.registerLayoutingInfo`, short-circuiting per-container. More surface area than the primary; only useful if the per-bar `_voiceWalkDone` flag isn't precise enough (e.g. if part of the walk legitimately needs to re-run).
+- **Falsification** — see §13.
 
 ---
 
@@ -285,18 +260,23 @@ Option 2 is the **structural fallback for any branch where Option 3 has correctn
 
 ### 5.1 Goal
 
-Two measurements, both required before any code change:
+One measurement: confirm the broker fields the §4 primary skips re-writing — `springs`, `_beatSizes`, `_timeSortedSprings`, `allGraceRods`, `_minDuration`, `postBeatSize` — are **byte-identical** at the start of every resize iteration to what the previous iteration's walk wrote.
 
-1. **Stability**: confirm `_registerLayoutingInfo` writes are byte-identical across resize iterations *on bars whose wrap state did NOT flip this iteration*. If they aren't, there's a hidden write path beyond `recreatePreBeatGlyphs` and §3.1's invariant is incomplete.
-2. **Wrap-flip frequency**: count, per iteration of canon-resize-drag, how many bars had `(wasFirstOfStaff !== isFirstOfStaff)`. This is the deciding fact for §4.4's primary pick.
+If they are: the §4 primary is safe; the walk is provably idempotent on stable bars and can be skipped.
+
+If they aren't: there's a hidden write path that the §2.2 catalogue missed. Trace it and decide whether the §4 primary is salvageable (via a tighter invalidation event) or whether we need to drop to a §4.5 fallback.
 
 ### 5.2 Instrumentation sketch
 
 In a temporary `BarRendererBase` patch (do NOT commit to feature/perf):
 
-1. In `_registerLayoutingInfo`, after the broker write, capture a tuple `(masterBarIdx, staffIdx, _preBeatGlyphs.width, _postBeatGlyphs.width, iteration, width)`. Compare against the prior-cycle tuple stored on the renderer; on mismatch, record `(stable | flipped-wrap | mystery-mismatch)`.
-2. In `reLayout`, on the `wasFirstOfStaff !== isFirstOfStaff` branch, increment a per-iteration wrap-flip counter on `ScoreRenderer` (or a module-global). Tag the bar's mismatch report with "flipped-wrap" so the categorisation in §5.5 can be automated.
-3. After each `driveOnce` (one iteration of 12 widths), emit a summary line: `[DR1] iter N: wrap-flips per width = [...], stable bars = K, mystery-mismatches = M`.
+1. At the END of the first `_registerLayoutingInfo` call per renderer (after the voice walk completes), snapshot a tuple per masterbar:
+   - `info.postBeatSize`
+   - `info._beatSizes` summed sizes
+   - `info.springs.size` and a checksum (e.g. sum of `spring.smallestDuration` across map)
+   - `info._minDuration`
+2. At the START of every subsequent `_registerLayoutingInfo` call (BEFORE the cheap pair, BEFORE the walk skip), capture the same tuple from the broker. Compare; on mismatch, log `[DR1-mismatch] mb=… stave=… field=… expected=… actual=…`.
+3. Limit log spam: cap at 50 mismatches.
 
 ### 5.3 Bench protocol
 
@@ -306,26 +286,22 @@ cd packages/bench
 npx vite build
 # run one trial of canon-resize-drag (8 iterations × 12 widths)
 node dist/run.mjs --only canon-resize-drag --trials 1 --label DR1-instrument-2026XXXX 2>&1 | tee runs/DR1-instrument-*.log
-# grep for the summary lines
-grep '^\[DR1\]' runs/DR1-instrument-*.log
+grep '^\[DR1-mismatch\]' runs/DR1-instrument-*.log
 ```
 
 ### 5.4 Pass criterion
 
-- **Stability**: across the 8 iterations × 12 widths × ≥ 3 sampled bars, **mystery-mismatches must be 0**. Bars with "flipped-wrap" mismatches are expected and OK.
-- **Wrap-flip frequency**: categorise the 96 (iteration × width) cells by "did any bar in the score flip wrap state":
-  - **Low-flip regime**: ≤ 20 % of cells have any flip. → Option 1 primary.
-  - **Mixed regime**: 20-60 %. → Option 3 primary.
-  - **High-flip regime**: > 60 %. → Option 3 primary; consider declaring `registerLayoutingInfo` slice structurally blocked if even Option 3 doesn't clear σ.
+- **Zero mismatch log lines** across the run.
 
 ### 5.5 Decision rule
 
 | Phase 1 result | Action |
 | --- | --- |
-| Stable + low-flip | **Option 1** (conditional reset) — proceed to §6 with Option 1's sketch. |
-| Stable + mixed/high-flip | **Option 3** (record-on-first-call cache) — proceed to §6 swapping in Option 3's sketch. |
-| Mystery-mismatch (≥ 1) | §3.1 invariant incomplete; trace the hidden write path before choosing an option. Document the new mutation source; revise §2.3 / §3 / §4 accordingly. |
-| Per-beat sizes (`_beatSizes`) vary across cycles on a non-flipping bar | Add Option-2-style per-beat cache to whichever primary is chosen. |
+| Zero mismatches | **§4 primary viable.** Proceed to §6. |
+| Mismatches on `postBeatSize` | A hidden post-beat width path exists. Likely a glyph mutation; trace it; if invariant under width, add a targeted invalidator. |
+| Mismatches on `_beatSizes` / springs / grace rods | Bar's per-beat composition isn't as stable as §2.3 claims. Drop to §4.5 Fallback B (cache + replay) — it's robust to this case because each replay re-writes the cached values. |
+| Mismatches on `_minDuration` | Cross-bar effect from a later masterbar's smaller duration overwriting via min-of. Re-walk on `_minDuration` change events is cheap; add an invalidator. |
+| Pattern doesn't fit any row above | Stop. Document the new mutation source in §3.1; revise §2.3 / §4 before choosing any option. |
 
 ### 5.6 Phase 1 exit checklist
 
@@ -337,47 +313,63 @@ grep '^\[DR1\]' runs/DR1-instrument-*.log
 
 ---
 
-## 6. Phase 2 — implement the Phase-1-selected primary
+## 6. Phase 2 — implement the §4 primary
 
-(Phase 1's §5.5 decision row determines which option's sketch §6.1 implements. The sketch below is **Option 1's** because that's the highest-impact path; if Phase 1 selected Option 3, replace §6.1 with the Option 3 sketch from §4.3 before proceeding.)
+Assumes Phase 1 (§5) passed with zero mismatches. If Phase 1 surfaced a hidden mutation path, follow the §5.5 row first; the sketch below assumes the §4 primary is viable.
 
-### 6.1 Concrete sketch — Option 1 lifting
+### 6.1 Concrete sketch — split the registration
 
-1. **Add to `MasterBarsRenderers`** (likely `packages/alphatab/src/rendering/staves/MasterBarsRenderers.ts`):
-   - Field `public brokerNeedsReset: boolean = true;` (defaults to true so initial layout always resets — the broker is fresh anyway, so reset is a no-op there).
+Single file: `packages/alphatab/src/rendering/BarRendererBase.ts`.
 
-2. **Modify `StaffSystem.addBars:354`**:
-   - After `result.layoutingInfo = new BarLayoutingInfo();`, set `result.brokerNeedsReset = true;` (explicit; matches initial-layout state).
-   - After `barLayoutingInfo.finish()` at line 413, set `result.brokerNeedsReset = false;` — the broker is now populated correctly, no further reset needed unless something invalidates.
+1. **Add a private field** on `BarRendererBase`:
+   ```
+   private _voiceWalkDone: boolean = false;
+   ```
+   Place it next to EW-9's `_layoutInvariantCached` so the two-flag separation is visible. Add a short docstring naming the slice it gates ("expensive voice-container walk inside `_registerLayoutingInfo`").
 
-3. **Modify `StaffSystem.addMasterBarRenderers:293`**:
-   - Replace `renderers.layoutingInfo.preBeatSize = 0;` with a conditional:
-     - `if (renderers.brokerNeedsReset) { renderers.layoutingInfo.preBeatSize = 0; ... }`
-   - The else branch: leave `preBeatSize` as-is from the previous layout pass.
+2. **Split `_registerLayoutingInfo`** so the voice-container walk runs only on the first call. Current shape (approximate, verify in source):
+   ```
+   protected _registerLayoutingInfo() {
+       const info = this.layoutingInfo;
+       this._voiceContainer.registerLayoutingInfo(info);
+       info.preBeatSize  = Math.max(info.preBeatSize,  this._preBeatGlyphs.width);
+       info.postBeatSize = Math.max(info.postBeatSize, this._postBeatGlyphs.width);
+   }
+   ```
+   New shape:
+   ```
+   protected _registerLayoutingInfo() {
+       const info = this.layoutingInfo;
+       if (!this._voiceWalkDone) {
+           this._voiceContainer.registerLayoutingInfo(info);
+           this._voiceWalkDone = true;
+       }
+       info.preBeatSize  = Math.max(info.preBeatSize,  this._preBeatGlyphs.width);
+       info.postBeatSize = Math.max(info.postBeatSize, this._postBeatGlyphs.width);
+   }
+   ```
 
-4. **Modify `BarRendererBase.reLayout` (lines 908-935)**:
-   - Inside the `wasFirstOfStaff !== isFirstOfStaff` branch (line 915), set `this.masterBarsRenderers.brokerNeedsReset = true;` — recreating pre-beat glyphs changes a stave's `preBeatSize` contribution, so the broker must re-accumulate from scratch.
-   - The renderer reaching its `MasterBarsRenderers` parent: needs a back-pointer or pass-through. Most likely available via existing `renderer.staff.layout?` chain — verify during execution.
+3. **Invalidate the flag** in the places that legitimately change voice-container contributions to the broker:
+   - **`afterReverted`**: defensive reset. The renderer is being put back to a fresh-staff state; clearing this flag costs us one walk and protects against any composition mutation we missed.
+   - **NOT in `recreatePreBeatGlyphs`**: pre-beat composition is independent of voice / post-beat state. The walk's outputs don't depend on `_preBeatGlyphs`. The cheap pair picks up the new `_preBeatGlyphs.width` regardless.
 
-5. **Modify `BarRendererBase._registerLayoutingInfo` (lines 442-458)**:
-   - Wrap the body in `if (this.masterBarsRenderers.brokerNeedsReset) { /* full walk */ }`.
-   - The else branch: no-op (the broker already holds correct values).
-
-6. **The EW-9 cache flag interaction**: `_layoutInvariantCached` in `BarRendererBase` currently gates `calculateOverflows`. It should continue to. The new `brokerNeedsReset` flag gates the broker-write side. Both can be set false simultaneously after a full layout; both invalidate independently. Document the two-flag separation with an inline comment.
+4. **Document the two-flag separation**:
+   - `_layoutInvariantCached` (EW-9): gates `calculateOverflows`. Invalidated by `recreatePreBeatGlyphs`.
+   - `_voiceWalkDone` (this slice): gates the voice-container walk inside `_registerLayoutingInfo`. NOT invalidated by `recreatePreBeatGlyphs`.
 
 ### 6.2 Pitfalls to verify during execution
 
-- **`StaffSystem.revertLastBar`** (line ~550): when a bar is reverted out of a system, does the broker need invalidation? The `_barsFromPreviousSystem` mechanism re-adds the bar to a different system on the next iteration. The broker is per-`MasterBarsRenderers`, not per-system — so it follows the bar. The reverted bar's broker survives the revert. No invalidation needed. **Verify**.
-- **`StaffSystem._trackSystemMinDuration` / `reconcileMinDurationIfDirty`**: these mutate spring constants via `recomputeSpringConstants` (§2.2). They do NOT touch `preBeatSize`/`postBeatSize`/`_beatSizes`. Safe.
-- **`ScoreRenderer.updateForBars`**: model-mutation entry path. This triggers a fresh `doLayout` pass which rebuilds `MasterBarsRenderers` from scratch — `brokerNeedsReset` defaults to true. Safe.
-- **Empty / multibar-rest bars**: these have a different `MultiVoiceContainerGlyph` shape. `MultiBarRestBeatContainerGlyph.registerLayoutingInfo` (line 125) may have different semantics. Verify it's idempotent on the broker too.
+- **Walk ordering vs cheap pair.** If `voiceContainer.registerLayoutingInfo(info)` reads `info.preBeatSize` (e.g. to compute a per-beat stretch), reordering changes semantics. Read the call site before committing to the order. The pseudocode above puts the walk first to match the original ordering.
+- **MultiBarRest path.** `MultiBarRestBeatContainerGlyph.registerLayoutingInfo` (line ~125) may have different semantics; verify its outputs are also reset-free (§2.2 says yes, but a sanity-grep is cheap).
+- **`StaffSystem.revertLastBar`.** When a bar moves from one system to another via `_barsFromPreviousSystem`, the same `BarRendererBase` instance is reused. The broker (per-`MasterBarsRenderers`) follows the bar; broker contents survive. `_voiceWalkDone` survives on the renderer. Correct by construction.
+- **`ScoreRenderer.updateForBars`** (model mutation). Triggers a fresh `doLayout` chain that constructs new renderer instances. `_voiceWalkDone` defaults to false on new instances — walk runs once on each.
 
 ### 6.3 Phase 2 exit checklist
 
-- [ ] Diff is ≤ 60 lines across 2-3 files.
-- [ ] `npx vite build` in `packages/bench` succeeds.
+- [ ] Diff is ≤ 25 lines in a single file.
+- [ ] `cd packages/bench && npx vite build` succeeds.
 - [ ] `cd packages/alphatab && npx tsc --noEmit` clean.
-- [ ] WIP commit: `perf(layout): DR-1 broker-lifecycle — lift addMasterBarRenderers preBeatSize reset (WIP, visuals may be red)`.
+- [ ] WIP commit: `perf(layout): DR-1 split _registerLayoutingInfo — skip voice walk after first (WIP, visual sanity pending)`.
 
 ---
 
@@ -394,20 +386,20 @@ node dist/runAB.mjs --a dist/ab/A/runOneCore.mjs \
                     --b dist/ab/B/runOneCore.mjs \
                     --only canon-resize-drag \
                     --iterations 64 \
-                    --label probe-DR1-lift
+                    --label probe-DR1-split
 ```
 
 ### 7.2 Decision rule
 
-Read `runs/probe-DR1-lift/REPORT.md` and check the `canon-resize-drag` row.
+Read `runs/probe-DR1-split/REPORT.md` and check the `canon-resize-drag` row.
 
 | Condition                                       | Action                                                                                  |
 |-------------------------------------------------|----------------------------------------------------------------------------------------|
 | **`★` AND median Δ ≤ -5.0 ms**                 | PROCEED to Phase 4 visual triage.                                                       |
-| `★` but median Δ in `(-5.0, -3.0)` ms           | Marginal. Re-run at `--iterations 96`; if still marginal, fall through to Option 2.    |
-| `~` (CI overlaps 0 or `\|z\| < 2`)              | Re-run at `--iterations 128`. If still `~`, fall through to Option 2.                  |
-| `·`                                              | Lifting is structurally correct but doesn't capture the slice; falsify lifting, fall through to Option 2. |
-| `★` regression in any OTHER scenario            | The lift broke another path. Investigate (likely `nightwish-resize` or `fade-to-black-resize`'s broker handling). |
+| `★` but median Δ in `(-5.0, -3.0)` ms           | Marginal. Re-run at `--iterations 96`; if still marginal, fall through to §4.5 Fallback B. |
+| `~` (CI overlaps 0 or `\|z\| < 2`)              | Re-run at `--iterations 128`. If still `~`, fall through to §4.5 Fallback B.            |
+| `·`                                              | The split is structurally correct but doesn't capture enough; falsify and fall through to §4.5 Fallback B. |
+| `★` regression in any OTHER scenario            | The split broke another path. Investigate (likely `nightwish-resize` or `fade-to-black-resize`'s broker handling). |
 
 ### 7.3 Anti-revert moment #1
 
@@ -415,7 +407,7 @@ If A/B shows `★` ≤ -5 ms, the win is real **and is not erased by visual fail
 
 ### 7.4 Phase 3 exit checklist
 
-- [ ] A/B report saved at `runs/probe-DR1-lift/REPORT.md`.
+- [ ] A/B report saved at `runs/probe-DR1-split/REPORT.md`.
 - [ ] Median delta on canon-resize-drag documented.
 - [ ] No other scenario showed `★` regression (run `--only canon-resize-drag --only canon-resize --only nightwish-resize --only fade-to-black-resize` if uncertain).
 - [ ] Decision recorded in the Phase 2 WIP commit message via `git commit --amend` OR follow-up note commit.
@@ -424,65 +416,63 @@ If A/B shows `★` ≤ -5 ms, the win is real **and is not erased by visual fail
 
 ## 8. Phase 4 — visual triage
 
-### 8.1 Run vitest
+### 8.1 Expected baseline: very few failures
+
+Unlike EW-9's Phase 1 max-skip (which broke 7 fixtures by skipping the cheap `preBeatSize` re-write), the §4 primary keeps the cheap pair running every cycle. EW-9's seven failure fixtures should pass by construction — their broker reads the current `_preBeatGlyphs.width` exactly as they did pre-EW-9.
+
+Any failure under the §4 primary therefore points to a **hidden write path** the §2.2 catalogue missed — a broker field that *does* get reset or mutated somewhere we didn't trace, causing the cached walk to leak stale state.
+
+### 8.2 Run vitest
 
 ```bash
 cd packages/alphatab && npx vitest run
 ```
 
-Expect 5-15 failing tests. Each failing test produces a diff PNG. Open it before assuming a class.
+If Phase 1 instrumentation (§5) passed cleanly, expect 0-3 failures. Each failing test produces a diff PNG. Open it before classifying.
 
 **Do not run `npm run test-accept-reference`.** Hard rule. See §11.
 
-### 8.2 Cross-reference EW-9's seven fixtures first
+### 8.3 Cross-reference EW-9's seven fixtures (sanity)
 
-EW-9 Phase 3 hit:
+If any of the following fail, the §4 primary is broken in a way Phase 1 didn't catch — STOP and debug before classifying further:
+
 - `sustain-pedal`, `sustain-pedal-alphatex`
 - `multi-system-slur-scale-down`, `multi-system-slur-scale-up`
 - `resize-sequence`, `grace-resize`, `whammy-resize-wrap`
 
-All seven were caused by `preBeatSize = 0` leaking into `applyLayoutingInfo`. The lift directly fixes this. **These seven should pass under Option 1.** If any of them fail, the lift logic is wrong (probably the `brokerNeedsReset` invalidation isn't firing on `recreatePreBeatGlyphs`).
+These pass when `preBeatSize` is correctly re-written each cycle. The split keeps that re-write. If they fail anyway, the cheap pair isn't running on the right code path — verify the split's control flow.
 
-### 8.3 Spot-check first
+### 8.4 Class taxonomy (for the small number of failures we expect)
 
-- `multi-system-slur-scale-up` — was the most dramatic EW-9 failure (23 bars stacked at x=0). If this passes, the broker is being correctly maintained across resize cycles.
-- Any `multivoice/` fixture (Class B-shaped failures from EW-9 plan §6).
-- Any `grace-notes/` fixture (touches `allGraceRods`).
+#### Class A — `postBeatSize` stale on some bar
 
-### 8.4 Class taxonomy
+**Symptoms**: notes at wrong x after a specific resize sequence; only on bars whose post-beat composition changed (e.g. a tie-out appearing/disappearing on wrap).
+**Root cause**: a hidden mutation of `_postBeatGlyphs.width` post-initial-layout. The cheap pair re-writes from the current `_postBeatGlyphs.width` so this is actually safe — verify the cheap pair runs unconditionally.
 
-(Identical shape to EW-9 plan §6 — re-cite for the executor's convenience.)
+#### Class B — beat-level broker field stale
 
-#### Class A — overflow/skyline miscompute (tie-shaped)
+**Symptoms**: per-beat positions off; springs computing wrong stretch.
+**Root cause**: an unidentified write path mutates `_beatSizes` / springs / grace rods between resizes.
+**Fix**: identify the mutation; either add invalidation of `_voiceWalkDone` at that site, or drop to §4.5 Fallback B (cache+replay) which is robust to per-call re-writing.
+
+#### Class C — Layout/Spring overflow miscompute (EW-9 territory)
 
 **Symptoms**: vertical whitespace above/below staves; tie arcs at wrong y.
-**Root cause this time**: same as EW-9 plan §6.1 — `_contentTopOverflow` monotonic max-of holding stale values.
-**Fix**: as EW-9 plan — `_contentTopOverflow = 0` at reLayout head. **Note**: EW-9 Variant B kept `calculateOverflows` always-running, so this class should NOT appear under DR-1 broker-lifecycle (the overflow walk still runs). If it does, something is interacting unexpectedly.
-
-#### Class B — cross-stave broker miscompute
-
-**Symptoms**: stave A's notes at different x positions than reference; stave B looks fine. Visible only in multi-stave systems (Score+Tab, multi-staff piano).
-**Root cause likely**: the lifted gate let a `recreatePreBeatGlyphs` event slip through without setting `brokerNeedsReset = true`. The broker holds stale `preBeatSize` reflecting old `_preBeatGlyphs.width`.
-**Fix**: trace every `recreatePreBeatGlyphs` call site (BarRendererBase.ts:937 and LineBarRenderer override at line ~641 — verify). All must set `brokerNeedsReset = true` before mutating `_preBeatGlyphs`.
-
-#### Class C — beam endpoint y-coords drift
-
-**Symptoms**: beams tilted slightly wrong; tuplet brackets overlapping unexpectedly.
-**Root cause**: EW-9 plan §6.3 — `calculateBeamingOverflows` skipped. Under DR-1 broker-lifecycle, `calculateOverflows` is still gated by `_layoutInvariantCached`, so this class CAN still appear. Same fix as EW-9.
+**Root cause**: most likely an EW-9-Variant-B-era regression resurfacing. The §4 primary doesn't touch the `calculateOverflows` gate, so this is unlikely; but if it appears, follow EW-9 plan §6.1's fix.
 
 #### Class D — anything else
 
 **Process**:
-1. Identify which broker field is stale (instrument the broker reader paths).
-2. Find the mutation hook that should have set `brokerNeedsReset = true` but didn't.
-3. Add the missing invalidation.
-4. NEVER widen the lift's scope; NEVER accept the diff PNG; NEVER revert Phase 2.
+1. Read the diff PNG; identify which broker-derived value is wrong (`_preBeatGlyphs.width` for x-position, `postBeatSize` for trailing space, beat positions for spring distribution, etc.).
+2. Trace upstream: which broker field's value led to that pixel.
+3. Determine whether the field is reset-free (per §2.2) — if not, §2.2 is incomplete; revise.
+4. Add the targeted invalidation OR drop to §4.5 fallback.
+5. NEVER accept the diff PNG; NEVER revert Phase 2.
 
 ### 8.5 Phase 4 exit checklist
 
-- [ ] Every red test classified A/B/C/D in `runs/DR1-phase4-classifications.md`.
-- [ ] Class breakdown counted.
-- [ ] First fix attempt sketched per class.
+- [ ] Every red test classified in `runs/DR1-phase4-classifications.md`.
+- [ ] If the count is high (> 3 failures), pause and re-check whether Phase 1 actually ran cleanly — chances are it missed a write path.
 
 ---
 
@@ -495,7 +485,7 @@ All seven were caused by `preBeatSize = 0` leaking into `applyLayoutingInfo`. Th
 For each red test:
 
 1. Classify per §8.4.
-2. Add the targeted `brokerNeedsReset = true` event (Class B) OR pull a calculation out of the gate (Class C) OR add an invalidation event (Class D).
+2. Apply the class's fix: add a targeted `_voiceWalkDone = false` invalidation at the mutation site (Class A/B/D), OR pull a calculation out of the gate (Class C, EW-9 shape).
 3. Re-run that single failing test:
    ```bash
    cd packages/alphatab && npx vitest run -t "<test name fragment>"
@@ -538,25 +528,26 @@ If after **10 iterations** vitest is still red OR A/B has fallen below σ on can
 
 ---
 
-## 10. Phase 6 — fall through to next option
+## 10. Phase 6 — fall through to a §4.5 fallback
 
 If Phase 5 hits the iteration cap or the perf erosion threshold:
 
-1. **Revert the Option 1 commits** (lifting the reset).
-2. Switch to **Option 2** (cache + replay). Re-do Phase 2 with the cache+replay sketch.
-3. If Option 2 also fails: switch to **Option 3** (record-on-first-call). Re-do Phase 2 with the per-beat caching sketch.
-4. If all three fail: **documented falsification** (§13).
+1. **Revert the §4 primary commits** (the `_voiceWalkDone` split).
+2. Switch to **§4.5 Fallback B** (cache + replay broker writes). Re-do Phase 2 with that sketch.
+3. If Fallback B also fails: switch to **§4.5 Fallback C** (record-on-first-call inside `MultiVoiceContainerGlyph.registerLayoutingInfo`).
+4. If all fallbacks fail: **documented falsification** (§13).
 
-### 10.1 Why three options instead of two
+§4.5 Fallback A (conditional broker reset) is not in this fall-through path because its expected payoff is small — only useful if Phase 1 reveals the walk *is* width-dependent in a way we hadn't traced AND the cheap pair turns out to be the bottleneck.
 
-EW-9 had one option (Variant B) and demoted to "falsify if it fails". This plan has three because the broker-lifecycle slice is the *next* DR-1 slice — its failure is more expensive to recover from (DR-1 then formally retires with a partial-shipment status). Three options give three independent shots at the same hotspot before declaring structural defeat.
+### 10.1 Why a fallback chain at all
 
-### 10.2 Option N → Option N+1 protocol
+The §4 primary is small and surgical. If it doesn't work, the explanation is almost certainly "the walk's outputs are not actually reset-free as §2.2 claimed" — a structural fact we have to design around. Fallbacks B and C are progressively more robust to that case (B replays writes after the reset; C caches at finer per-container granularity).
 
-- Branch off feature/perf at the post-EW-9 baseline (`022d8c9a`).
-- Discard the Option N commits cleanly (`git reset --hard 022d8c9a` on the working branch).
-- Implement Option N+1 from scratch (do not try to retain partial Option N infrastructure — it adds drift risk).
-- Re-run Phases 1-5 in full for Option N+1. Phase 1 instrumentation values are reusable; don't re-instrument.
+### 10.2 Option N → fallback protocol
+
+- Discard the §4 primary commits cleanly (`git reset --hard <pre-DR1 SHA>` on the working branch).
+- Implement the fallback from scratch (do not try to retain partial primary infrastructure — it adds drift risk).
+- Re-run Phases 1-5 in full. Phase 1 instrumentation values are reusable; don't re-instrument.
 
 ---
 
@@ -568,11 +559,11 @@ These rules exist because the natural reaction to a red vitest after Phase 2 is 
 
 > **DO NOT** revert the Phase 2 patch on the first red vitest. Expect 5-15 visual failures initially. They are diagnostic information.
 
-> **DO NOT** abandon DR-1 broker-lifecycle on the first failed option. Move through the §4 matrix in order. All three options can plausibly capture the slice.
+> **DO NOT** abandon DR-1 broker-lifecycle on the first failed attempt. The §4 primary is the small bet; the §4.5 fallbacks are the bigger ones.
 
-> **DO NOT** widen the lift's scope to "fix" a Class D failure. Class D's recipe is *add a targeted invalidation event*, never *expand the lifted region*.
+> **DO NOT** widen the gate's scope to "fix" a Class D failure. Class D's recipe is *add a targeted `_voiceWalkDone = false` invalidation event at the mutation site*, never *expand what the gate covers*.
 
-> **DO NOT** mix Option 1 and Option 2 infrastructure in the same commit series. If Option 1 fails and you switch to Option 2, reset cleanly per §10.2.
+> **DO NOT** mix the §4 primary and a §4.5 fallback's infrastructure in the same commit series. If the primary fails and you switch to a fallback, reset cleanly per §10.2.
 
 > **DO NOT** accept "the reset is defensive and the test is testing nothing real" reasoning. Visual tests are the reference. Diffs are diagnostic.
 
@@ -628,7 +619,7 @@ If all three options in §4 fail (Phase 5 caps OR Phase 3 perf is `·` on all th
 
 - Demote DR-1 broker-lifecycle slice to **"Demoted at this site"** table (the same section EW-2(b), EW-3 micro-devirt, EW-5 live in).
 - Falsification entry shape:
-  > **DR-1 broker-lifecycle slice** — attempted via Option 1 (lift reset, `★` Δ=...), Option 2 (cache+replay, `★` Δ=...), Option 3 (record-on-first-call, `★` Δ=...) at SHAs ..., .... All three either failed perf threshold OR introduced visual regressions Phase 5 couldn't resolve within the iteration cap. The `_registerLayoutingInfo` ~7 ms slice is structurally blocked at this codebase shape: [reason X traced]. Capturing it would require [Y structural change — e.g. a content-version cache spanning Bar.voices, or a re-architecture of MasterBarsRenderers to own the layout cache instead of distributing it across renderers].
+  > **DR-1 broker-lifecycle slice** — attempted via §4 primary (split `_registerLayoutingInfo`, `★` Δ=...), §4.5 Fallback B (cache+replay, `★` Δ=...), §4.5 Fallback C (record-on-first-call, `★` Δ=...) at SHAs ..., .... All either failed perf threshold OR introduced visual regressions Phase 5 couldn't resolve within the iteration cap. The `_registerLayoutingInfo` ~7 ms slice is structurally blocked at this codebase shape: [reason X traced]. Capturing it would require [Y structural change — e.g. a content-version cache spanning Bar.voices, or a re-architecture of MasterBarsRenderers to own the layout cache instead of distributing it across renderers].
 
 ### 13.2 Update DR-1 in HOTSPOTS.md
 
@@ -657,42 +648,45 @@ For the executor mid-Phase-5 who needs the decision tree in one screen:
 
 ```
 Phase 1 instrumentation:
-  preBeatSize/postBeatSize/_beatSizes byte-identical across cycles?
-  YES → Option 1 viable, proceed to Phase 2
-  PARTIAL (only on wasFirstOfStaff flip) → Option 1 still viable, gate the flip
-  NO → Option 2 (cache+replay) or Option 3
+  walk outputs (springs, _beatSizes, postBeatSize, etc.) byte-identical
+  across resize cycles?
+  YES → §4 primary viable, proceed to Phase 2
+  NO  → trace the hidden write path; revise §2.2 or drop to §4.5 fallback
 
-Phase 2-3 (Option 1 lift):
-  Add brokerNeedsReset to MasterBarsRenderers; gate :293 reset on the flag;
-  wrap _registerLayoutingInfo body in same flag; flip true on recreatePreBeatGlyphs.
+Phase 2 (§4 primary — single file, ~25 lines in BarRendererBase.ts):
+  Add `_voiceWalkDone: boolean = false` next to `_layoutInvariantCached`.
+  In `_registerLayoutingInfo`:
+    - cheap pair (preBeatSize, postBeatSize writes) ALWAYS runs
+    - voice-container walk runs only if !_voiceWalkDone; sets flag after
+  Invalidate the flag in `afterReverted`. NOT in `recreatePreBeatGlyphs`.
 
 Phase 3 A/B at n=64:
   ★ ≤ -5 ms? → Phase 4
   ★ in (-5, -3)? → re-run n=96
-  ~ → re-run n=128, then drop to Option 2
-  · → Option 2
+  ~ → re-run n=128, then §4.5 Fallback B
+  · → §4.5 Fallback B
 
 Phase 4 visual triage:
-  Spot-check: multi-system-slur-scale-up first (EW-9's worst regression).
-  Each red test: A/B/C/D classify per §8.4.
+  EW-9's seven fixtures should pass by construction (cheap pair runs).
+  If any of them fails → STOP, control flow is wrong.
+  Otherwise expect 0-3 failures. Classify A/B/C/D per §8.4.
 
 Phase 5 fix loop:
-  Class B (cross-stave): find missing brokerNeedsReset=true site
-  Class C (beam): lift calculateBeamingOverflows out of gate (EW-9 fix shape)
-  Class D (other): trace mutation, add targeted invalidation
+  Class A/B/D: add targeted `_voiceWalkDone = false` at the mutation site
+  Class C (beam): EW-9 fix shape (lift calculateBeamingOverflows out)
   After every 3-5 fixes: re-run A/B; budget ≤ 30 % erosion
   10 iterations cap → Phase 6
 
 Phase 6:
-  Option 1 failed → Option 2 (cache+replay), reset to 022d8c9a, redo Phases 2-5
-  Option 2 failed → Option 3 (record-on-first-call), reset, redo
-  Option 3 failed → §13 falsification path
+  §4 primary failed → §4.5 Fallback B (cache+replay)
+  Fallback B failed → §4.5 Fallback C (record-on-first-call)
+  All failed → §13 falsification path
 
 Never:
   - npm run test-accept-reference
   - git revert Phase 2 on first red vitest
-  - widen the lifted region to "fix" a Class D
-  - mix Option N and Option N+1 in the same commit series
+  - widen the gate's scope to "fix" a Class D
+  - mix primary and fallback infrastructure in the same commit series
 ```
 
 ---
@@ -723,18 +717,18 @@ Never:
 | Phase | Wall-clock estimate | Notes                                                                                     |
 |-------|---------------------|-------------------------------------------------------------------------------------------|
 | 1     | 30-60 min           | Instrumentation patch + one bench trial + comparison.                                     |
-| 2     | 30-60 min           | Option 1 multi-file diff. More careful than EW-9's single-file delta.                     |
+| 2     | 15-30 min           | Single-file ~25-line diff in `BarRendererBase.ts`.                                        |
 | 3     | 10-15 min build + 5-8 min A/B run | Same shape as EW-9 §5.                                                          |
-| 4     | 30-60 min           | Visual triage. Expect EW-9's seven fixtures to be the spot-check set.                     |
-| 5     | 90-240 min          | Per-class fix loop. Iteration cap 10 × ~10-15 min each.                                    |
-| 6     | 0 or +90-240 min per fallback option | Only if Phase 5 caps. Reset + re-do Phases 2-5 for Options 2 / 3.                   |
-| Total | **3-8 hours** if Option 1 lands; up to **15-20 hours** if all three options + falsification | Multi-session work. Session boundaries: end of Phase 1, end of Phase 4, end of each option attempt. |
+| 4     | 15-45 min           | Visual triage. Expected baseline: 0-3 failures; EW-9's seven should pass by construction. |
+| 5     | 0 or 30-150 min     | Per-class fix loop. Only if §4 surfaced any failures.                                     |
+| 6     | 0 or +90-240 min per fallback | Only if Phase 5 caps. Reset + re-do Phases 2-5 for §4.5 Fallback B / C.            |
+| Total | **2-4 hours** if §4 primary lands; up to **12-18 hours** if all fallbacks + falsification | Single session viable for the primary; multi-session if fallbacks kick in. |
 
 ---
 
 ## 17. The two non-negotiable rules
 
-1. **Phase 1 instrumentation MUST run before any source change.** Its outcome determines whether Option 1 is even possible. EW-9 plan §3.4's falsification is the reason — assumptions about broker persistence MUST be empirically verified, not reasoned from the diff.
+1. **Phase 1 instrumentation MUST run before any source change.** Its outcome confirms whether the §4 primary's correctness premise holds. EW-9 plan §3.4's falsification is the reason — assumptions about broker persistence MUST be empirically verified, not reasoned from the diff.
 
 2. **The §11 anti-revert directives MUST be obeyed.** Especially: do NOT accept reference PNGs; do NOT revert Phase 2 on first vitest red; do NOT widen scope to fix a Class D regression.
 
