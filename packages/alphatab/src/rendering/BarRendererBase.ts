@@ -461,6 +461,11 @@ export class BarRendererBase {
         this.staff = undefined;
         this.registerMultiSystemSlurs(undefined);
         this.isFinalized = false;
+        // EW-9: `_layoutInvariantCached` survives `afterReverted` — that's
+        // the entire point of the optimisation. The renderer is being put
+        // back into the "fresh, awaiting addBarRenderer" state but its
+        // bar-local glyph composition, broker contributions, and pre/post
+        // skyline emissions are still valid.
     }
 
     public afterStaffBarReverted() {
@@ -497,6 +502,31 @@ export class BarRendererBase {
     }
 
     public isFinalized: boolean = false;
+
+    /**
+     * EW-9 gate: once {@link doLayout} (or a full re-layout pass) has
+     * populated bar-local invariant state — `_preBeatGlyphs.width`,
+     * `_postBeatGlyphs.width`, per-beat sizes brokered through
+     * {@link BarLayoutingInfo}, and the pre/post-beat local skylines
+     * emitted by {@link calculateOverflows} — this flag is `true` and
+     * {@link reLayout} short-circuits the bar-local re-walk on the next
+     * width change. The state is width-invariant; resize cycles only
+     * mutate the cross-bar broker outputs (positions, system skylines)
+     * which run unconditionally inside {@link scaleToWidth} and
+     * {@link StaffSystem.finalizeSystem}.
+     *
+     * Invalidated by {@link invalidateLayoutCache}, the
+     * `wasFirstOfStaff`-flip branch in {@link reLayout}, and explicitly
+     * by {@link recreatePreBeatGlyphs} (which mutates `_preBeatGlyphs`
+     * composition). Notably NOT invalidated by {@link afterReverted} —
+     * that's the entire point of the optimisation.
+     */
+    private _layoutInvariantCached: boolean = false;
+
+    /** Externally-callable hook for Phase 4 invalidation events. */
+    public invalidateLayoutCache(): void {
+        this._layoutInvariantCached = false;
+    }
 
     public registerMultiSystemSlurs(startedTies: Generator<TieGlyph> | undefined) {
         if (!startedTies) {
@@ -638,6 +668,10 @@ export class BarRendererBase {
         this.computedWidth = this.width;
 
         this.calculateOverflows(0, this.height);
+
+        // EW-9: full layout complete. Bar-local invariant state is now
+        // populated and the next reLayout can short-circuit.
+        this._layoutInvariantCached = true;
     }
 
     protected calculateOverflows(_rendererTop: number, rendererBottom: number) {
@@ -879,14 +913,27 @@ export class BarRendererBase {
         // there are some glyphs which are shown only for renderers at the line start, so we simply recreate them
         // but we only need to recreate them for the renderers that were the first of the line or are now the first of the line
         if ((this.wasFirstOfStaff && !this.isFirstOfStaff) || (!this.wasFirstOfStaff && this.isFirstOfStaff)) {
+            // recreatePreBeatGlyphs sets _layoutInvariantCached=false defensively.
             this.recreatePreBeatGlyphs();
         }
 
-        this._registerLayoutingInfo();
-        this.calculateOverflows(0, this.height);
+        // EW-9: bar-local invariant work — broker registration and the
+        // pre/post-beat overflow walk — only needs to re-run when the
+        // cache was invalidated. The width-dependent path
+        // (`scaleToWidth`, system union, effect placement, tie finalize)
+        // continues to run unconditionally outside this method.
+        if (!this._layoutInvariantCached) {
+            this._registerLayoutingInfo();
+            this.calculateOverflows(0, this.height);
+            this._layoutInvariantCached = true;
+        }
     }
 
     protected recreatePreBeatGlyphs() {
+        // Composition of the pre-beat group is changing, so all cached
+        // bar-local invariant state (preBeatSize in broker, pre/post
+        // local skylines) becomes stale.
+        this._layoutInvariantCached = false;
         this._preBeatGlyphs = new LeftToRightLayoutingGlyphGroup();
         this._preBeatGlyphs.renderer = this;
         this.createPreBeatGlyphs();
