@@ -95,6 +95,21 @@ export const SCENARIOS: Scenario[] = [
         resizeWidths: [970, 1400],
         warmup: 3,
         iterations: 8
+    },
+    // Sustained browser-drag pattern: many small width steps wide → narrow →
+    // partial-back. canon-resize at 4 widths is ~90 ms/iter, which leaves the
+    // CPU profile thinly sampled per resize. This scenario drives 12 widths
+    // per driveOnce (~3× canon-resize sample density) so the resize path
+    // dominates wall-clock and per-frame analysis has enough samples to
+    // resolve sub-percent hotspots.
+    {
+        id: 'canon-resize-drag',
+        scorePath: path.join(DATA, 'guitarpro5/canon.gp5'),
+        mode: 'resize',
+        width: 1200,
+        resizeWidths: [1400, 1300, 1200, 1100, 1000, 900, 800, 700, 600, 650, 750, 850],
+        warmup: 3,
+        iterations: 8
     }
 ];
 

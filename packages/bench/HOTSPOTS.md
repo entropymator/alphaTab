@@ -11,28 +11,38 @@ in the web version of alphaTab. CPU and heap profiles are scoped to the
 measured loop only (via `node:inspector`), so they do not contain module
 load or score-importer noise.
 
-## Headline numbers (SVG baseline, 5 trials × N iterations — 2026-06-14 post-EW-1)
+## Headline numbers (SVG baseline, 5 trials × N iterations — 2026-06-14 post-EW-8 + resize-drag)
 
 | Scenario | median* | ± cross-trial σ |
 | --- | --- | --- |
-| tiny-render | 0.49 ms | ± 0.02 ms |
-| nightwish-render | 16.58 ms | ± 1.74 ms |
-| nightwish-resize (4 widths) | 20.34 ms | ± 0.47 ms (~5.1 ms/resize) |
-| canon-render | 67.01 ms | ± 3.45 ms |
-| canon-resize (4 widths) | 90.69 ms | ± 1.29 ms (~22.7 ms/resize) |
-| fade-to-black-resize | 46.17 ms | ± 1.04 ms |
+| tiny-render | 0.44 ms | ± 0.01 ms (1.43 %) |
+| nightwish-render | 13.70 ms | ± 1.20 ms (8.79 %) |
+| nightwish-resize (4 widths) | 18.41 ms | ± 1.45 ms (7.86 %, ~4.6 ms/resize) |
+| canon-render | 60.77 ms | ± 3.01 ms (4.96 %) |
+| canon-resize (4 widths) | 76.92 ms | ± 1.97 ms (2.56 %, ~19.2 ms/resize) |
+| fade-to-black-resize | 41.16 ms | ± 3.04 ms (7.39 %) |
+| **canon-resize-drag (12 widths)** | **235.30 ms** | **± 3.48 ms (1.48 %, ~19.6 ms/resize)** |
 
-Baseline: `node dist/run.mjs --trials 5 --save-baseline analysis-start --label
-analysis-start-1781388785` on `feature/perf` `fbff8993`.
+Baseline: `node dist/run.mjs --trials 5 --save-baseline resize-drag --label
+resize-drag-1781434957` on `feature/perf` `39e5232e`. `canon-resize-drag` was added
+in this commit to amplify the resize path for analysis — it cycles widths in a
+sustained browser-drag pattern (1400→600→850), driving 12 resizes per `driveOnce`
+so the CPU profile is ~3× more densely sampled per resize than canon-resize.
+
+The `1 % σ-floor for candidates` is the smallest delta a scenario can resolve:
+- canon-resize-drag: **2.35 ms** (1 % of 235 ms); σ at 3.48 ms means a ≥ 2σ
+  candidate needs ≥ 7 ms. Both thresholds quoted per candidate below.
+- canon-resize: 0.77 ms; ≥ 2σ needs ≥ 3.94 ms.
 
 `median*` is the median of per-trial medians. The cross-trial σ is the noise
 floor for cross-run comparison — a candidate run is only convincingly faster
 when its median is ≥ 2σ below the baseline median.
 
-The prior table (canon-resize 130 ms, nightwish-resize 31 ms, etc.) was
-captured before EW-1 `f2a44866` landed; the four-way Skyline merge dropped
-canon-resize by ~30 % and the σ floor tightened in tandem. Use the table
-above for sizing new candidates.
+The pre-EW-1 table (canon-resize 130 ms, nightwish-resize 31 ms, etc.) was
+captured before `f2a44866` landed; the four-way Skyline merge dropped
+canon-resize by ~30 % and the σ floor tightened in tandem. The numbers above
+reflect HEAD with EW-1, EW-7, EW-8 landed. Use this table for sizing new
+candidates.
 
 ## Easy wins — open
 
@@ -40,6 +50,28 @@ Candidates that look like single-file, no-API-change patches. Verify by
 running the relevant scenario with the bench, applying the patch, and
 re-running to confirm ≥ 1 % improvement on the target metric with no
 visual-test regressions.
+
+### EW-9. Skip bar-local `reLayout` work on width-only resize
+- **Where**: [BarRendererBase.reLayout](packages/alphatab/src/rendering/BarRendererBase.ts) (`_registerLayoutingInfo` + `calculateOverflows` + `_emitGroupOverflows` body); the gate goes on the `BarRendererBase` itself.
+- **Signal (canon-resize-drag, 2026-06-14 5-trial baseline)**:
+  - `MultiVoiceContainerGlyph.registerLayoutingInfo` — 2.99 % CPU (~7.0 ms/iter)
+  - `BarRendererBase.calculateOverflows` — 1.33 % (~3.1 ms/iter)
+  - `_emitGroupOverflows` — 1.00 % (~2.4 ms/iter)
+  - **`LineBarRenderer._computeBeamingBounds`** — 1.22 % (~2.9 ms/iter) — invariant in stem-local coords, only post-spring X resolves differently
+  - Combined upper bound on canon-resize-drag: **~12-16 ms / iter (5-7 %, clears σ at ≥3×)**.
+- **Hypothesis**: the bar-local broker state (`BarLayoutingInfo` pre/postBeatSize/onTimeX) and the pre/post-beat local skylines are functions of bar content only — they don't change when system width changes. `reLayout` re-emits both every width change. Add a `_layoutVersion`-style guard on `BarRendererBase`: when bar content hasn't changed since last `reLayout`, skip the `_registerLayoutingInfo()` + `calculateOverflows()` rebuild and only run `updateSizes()` + the downstream `_scaleToWidth` chain (which IS width-dependent and must re-run). Beam endpoint computation (`_computeBeamingBounds`) folds into the same gate because beam-group composition is model-derived.
+- **Risk**: medium. The `BarLayoutingInfo` broker is shared across staves of the same `MasterBarsRenderers`; cross-stave invalidation needs verification. `applyLayoutingInfo` post-layout mutates child `.y` (see DR-5 lifecycle note) so the cache must invalidate on tie-finalize / voice-merge events.
+- **First slice of DR-1**: this is the smallest patch shape that materialises DR-1's "width-only resize re-walking" thesis with a single guard. Larger sliver (skip `_scaleToForce` when `actualBarWidth` collides via `force` bucketing) is documented under DR-1.
+- **Investigated 2026-06-14**: 5-trial baseline + 6-subagent profile cross-check (layout-walk + beam agents converged on identical width-invariance verdict). No patch attempted. ≥ 2σ requires ≥ 7 ms improvement on canon-resize-drag — comfortably inside the 12-16 ms upper bound.
+
+### EW-10. Batched-fillRect typed buffer in SvgCanvas
+- **Where**: [SvgCanvas.fillRect](packages/alphatab/src/platform/svg/SvgCanvas.ts#L52) — sole emission site for all rect output.
+- **Signal (canon-resize-drag)**: `fillRect` is the **#1 CPU hotspot at 7.80 % (18.2 ms/iter)**; dominant caller is `paintStaffLines` (~5 rects × N bars × M segments per system). Per-call cost is template-literal serialisation (5 number-to-strings + 1 color getter + buffer concat).
+- **Hypothesis**: defer string serialisation. Push `(x, y, w, h, colorHash)` into a flat numeric buffer per call; flush the buffer to a `<rect>`-per-record string in `endRender`. Keeps the `<rect>` element kind (avoids EW-5's general-rasteriser trap), but removes the per-call template-literal cost — typed-array store dominates over interpolation when call count > ~10k/iter.
+- **Estimated payoff**: **2-4 ms / iter on canon-resize-drag**; >σ floor (3.48 ms 2σ ≈ 7 ms requires a stretch).
+- **Risk**: medium. SvgCanvas API contract change (deferred flush); needs to maintain ordering when interleaved with other primitives (`fillText`, `stroke`). One-area refactor; doesn't touch alphatab callers.
+- **Fundamentally-different shape vs demoted**: EW-4 was intra-function tweaks (5 number-to-strings are still present per call); EW-5 swapped `<rect>` for rectangular `<path>` (different element kind, lost to rasteriser). EW-10 keeps `<rect>` and removes per-call interpolation by deferring serialisation. New shape.
+- **Investigated 2026-06-14**: paint subagent identified call-volume (10k+ calls/iter from `paintStaffLines` + chord/stem/sustain glyphs) and emission shape (single function body, no polymorphic fan-out). No patch attempted.
 
 ### EW-2. `StaffSystem.buildBoundingsLookup` per-system paint-time work
 - **Where**: [packages/alphatab/src/rendering/staves/StaffSystem.ts:1118](packages/alphatab/src/rendering/staves/StaffSystem.ts#L1118) — invoked from `VerticalLayoutBase._paintSystem:383` and `HorizontalScreenLayout:139` once per system during every layout / resize paint.
@@ -198,70 +230,126 @@ visual-test regressions.
 Candidates too large for a single iteration. Each entry: hypothesis,
 expected payoff, blast radius, sketch.
 
-**2026-06-14 analysis-start re-confirms** that the five DR entries
-below remain the principal structural levers. Specifically:
+**2026-06-14 canon-resize-drag baseline re-confirms** that the DR entries
+below remain the principal structural levers, with quantified upper bounds:
 
-- **DR-1** is the largest single lever — the fresh profile shows
-  `registerLayoutingInfo` (18.76 ms canon-resize, across two IC
-  buckets), `_scaleToForce` (12.92 ms), `scaleToWidth` (6.67 ms), and
-  `_emitGroupOverflows` (4.48 ms fade-to-black-resize) all re-running
-  per width change despite being bar-local invariant.
+- **DR-1** is the largest single lever — width-only re-walking on
+  canon-resize-drag costs ~14 ms / iter truly invariant
+  (`registerLayoutingInfo` 7.0 + `calculateOverflows` 3.1 +
+  `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9). `EW-9` is
+  the smallest patch shape that captures this slice; full
+  content-version cache is 12-30 ms total.
 - **DR-2**'s GC pressure (canon-render 18.2 %, nightwish-resize
-  13.6 %) is now dominated by `unionShifted3`'s 10.6 MB / iter
-  allocation footprint (canon-resize), not the Bounds tree. EW-2(b)
-  established that pool-style allocation reduction loses against V8's
-  young-gen bump allocator, so the next-action under DR-2 is
-  **algorithmic call-count reduction** of `unionShifted3` (already
-  fused 6→2 by EW-1; further reduction would require either skipping
-  union work when offsets unchanged, which folds back into DR-1, or
-  reducing the segment list size per union, which requires a
-  structural change in how bar-local skylines are emitted).
-- **DR-3**'s SvgCanvas paint surface (`_escapeText`, `fillRect`,
-  `fillText`, `_fillMusicFontSymbolText`) jointly accounts for
-  ~10–12 % of canon-resize CPU. EW-8 attacks the smallest sub-piece
-  (`_escapeText`) with a per-call early-return; the rest of the
-  surface still sits under DR-3's path-batching banner.
-- **DR-4** has been narrowed by three negative results (EW-3, EW-5
-  rectangular-path, DR-5 micro-devirt) into a "system-wide refactor
-  only" deferred slot — single-symbol devirtualisation is empirically
-  below the σ floor.
-- **DR-5** still holds; `calculateOverflows` (7.30 ms canon-resize)
-  and `getBoundingBoxTop` (6.88 ms canon-resize, multiple frames) are
-  still the same chained virtual-call surface, blocked on a layout-
-  lifecycle hook.
+  13.6 %, canon-resize-drag 5.1 %) is dominated by `unionShifted3`'s
+  5.4 MB / iter footprint (84 % of canon-resize-drag heap). EW-2(b)
+  established pool-style replacement regresses; 2026-06-14 GC subagent
+  established `newSegs[]` write-cursor reduction is also sub-σ wall
+  (V8 young-gen amortises near-zero). Path forward is **structural
+  reduction of the union-call count** (DR-1 folds union skips into
+  itself), not single-site alloc surgery.
+- **DR-3**'s SvgCanvas paint surface jointly accounts for ~13.7 % of
+  canon-resize-drag CPU (32.2 ms / iter). EW-8 attacks the smallest
+  sub-piece; `EW-10` (batched-fillRect typed buffer) is the next
+  concrete shape — fundamentally different from demoted EW-4/EW-5 by
+  deferring serialisation while keeping `<rect>` element kind.
+- **DR-4** narrowed by three negative results (EW-3, EW-5 rect-path,
+  DR-5 micro-devirt) to a "system-wide refactor only" deferred slot —
+  single-symbol devirtualisation is empirically below the σ floor.
+- **DR-5** re-scoped — `getBoundingBoxTop` now totals 3.77 % CPU /
+  9 ms / iter across ≥ 8 frames on canon-resize-drag, called from a
+  third caller class (`_emitTies`); a unified end-of-finalize
+  lifecycle hook now pays back across overflows + tie-emit + the
+  bounds tree (with DR-6).
+- **DR-6 (new)** push-based bounds tree — analogue of DR-5's
+  push-skyline for `buildBoundingsLookup` (7.4 % CPU / 17.4 ms / iter
+  across three call sites). Eliminates the *pull-shaped* per-bar
+  allocation pattern that pool-style EW-2(b) lost to. 5-8 ms / iter
+  payoff, ~1.18 MB / iter heap drop.
 
 ### DR-1. Resize re-walks every bar even when only the viewport width changed
-- **Observation**: canon-resize is 36 ms per width change. `layout.doResize`
-  dominates `resize.total`. Bar-local sizing is invariant under a width
-  change; only system packing + paint should re-run.
+- **Observation**: canon-resize-drag is 19.6 ms per width change × 12 widths.
+  `layout.doResize` dominates `resize.total`. Bar-local sizing is invariant
+  under a width change; only system packing + paint should re-run.
 - **Hypothesis**: cache the per-bar layout result, re-pack systems only.
-  Could collapse 36 ms → ~5-10 ms per resize.
+  Could collapse 19.6 ms → ~10-12 ms per resize.
 - **Risk**: high — touches the layout pipeline's central invariants.
-- **Estimated payoff**: 3-5x improvement on resize. Largest single lever.
+- **Estimated payoff**: ~40 % of canon-resize-drag wall-clock is in the
+  layout pipeline; DR-1 with full bar-content-version caching could
+  realistically save 12-30 ms / iter (5-13 %). Largest single lever.
+- **Quantified 2026-06-14 (drag baseline + 4 subagent cross-check)**:
+  - **Truly width-invariant** (re-runs every resize for no reason): ~14 ms /
+    iter (`registerLayoutingInfo` 7.0 + `calculateOverflows` 3.1 +
+    `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9 — `EW-9`
+    captures this).
+  - **Width-bucket-memoisable** (`force`-keyed): `_scaleToForce` (34 ms /
+    iter); `force = spaceToForce(width)` bucketing may collide across
+    nearby drag widths, lifting 20-30 % hit-rate × 34 ms ≈ 3-5 ms / iter.
+  - **System-packing-stable cases** (drag widths that pack identically):
+    skip `_systems = []; createEmptyStaffSystem(...); addBarRenderer(...)`
+    rebuild — 5-10 ms / iter when membership stable, indeterminate
+    fraction across 12 drag widths.
+  - **Genuinely width-dependent (intrinsic)**: Skyline union shift,
+    `_scaleToWidth` body, paint markup generation — ~85 % of wall-clock.
+- **EW-9 is the smallest patch shape** that delivers a slice of DR-1; the
+  full content-version cache is the structural endgame.
 
 ### DR-2. GC pressure 8-10 % of CPU across resize scenarios
 - **Observation**: GC is consistently the top self-time entry across all
-  resize scenarios (9.9 % nightwish-resize, 8.9 % canon-resize). Six prior
-  T-series perf commits attacked individual allocation sites; the pattern
-  persists.
+  resize scenarios (9.9 % nightwish-resize, 8.9 % canon-resize, 5.1 %
+  canon-resize-drag). Six prior T-series perf commits attacked individual
+  allocation sites; the pattern persists.
 - **Hypothesis**: not one site — death by a thousand short-lived objects
   (closures, Maps, sort keys, segment objects). Needs a systematic
   allocation audit, not ad-hoc patches.
 - **Risk**: low per individual fix; the project needs sustained focus.
 - **Estimated payoff**: each well-targeted alloc fix is 0.3-0.8 % global;
   compounding across 20 sites: 6-15 %.
+- **2026-06-14 audit findings (drag baseline + GC subagent)**: heap on
+  canon-resize-drag is 6.4 MB / iter; **`unionShifted3` is 84 %** of it
+  (5.4 MB / iter, ~5,672 calls), dominated by the per-call `newSegs:
+  SkylineSegment[] = []` scratch array + its push-grown backing store +
+  the final transfer into `this._segments`. The only algorithmically-
+  distinct shape is a **write-cursor refactor** (write directly into
+  `this._segments` with `.length = newLen` truncation, eliminating
+  `newSegs` entirely) — pool-style is empirically demoted by EW-2(b).
+  Cost-honest upper bound: **0-2 ms / iter (0-0.85 %, below σ)** because
+  V8 young-gen amortises short-lived alloc near-zero, as EW-2(b)
+  established. **Conclusion**: the GC self-time on this codebase is
+  *not* recoverable by reducing the alloc share of any single site —
+  pool-style and write-cursor approaches both lose to V8's bump
+  allocator. The remaining DR-2 lever is **structural reduction of the
+  union-call count itself** (DR-1's "skip union work when offsets
+  unchanged" angle), not single-site alloc surgery.
+- **Demoted at this site (do not retry standalone)**: `unionShifted3`
+  `newSegs[]` write-cursor (≤ 0.85 % wall); `_raiseRange` splice-array
+  trim (~0.6 ms cap); `Skyline.reset()` keep-sentinels (sub-σ on CPU);
+  staff-level `unionShiftedAll` fuse (0.5-1 ms upside, (S) with medium
+  risk). Bundle these with a DR-1 layout-cache landing only — none are
+  worth the risk alone.
 
 ### DR-3. SvgCanvas string-concat paint API
 - **Observation**: with the SVG engine, paint cost is no longer dominated
   by native calls (as it was with skia). Instead the cost is JS-side
   markup generation: string concatenation per glyph, attribute formatting,
-  etc.
-- **Hypothesis**: a Path-batching SvgCanvas (group N similar primitives
-  into one `<path d="...">` element) could halve markup size and
-  generation cost.
+  etc. **canon-resize-drag profile**: paint surface (`fillRect` 7.80 % +
+  `_fillMusicFontSymbolText` 2.49 % + `fillText` 2.02 % + `lineTo` 1.39 %)
+  = **13.7 % CPU / 32.2 ms / iter**.
+- **Concrete sketches** (2026-06-14 paint subagent):
+  1. **Batched-fillRect typed buffer** — push `(x, y, w, h, color)` to a
+     flat array, serialise once in `endRender`. Removes per-call
+     template-literal cost while keeping `<rect>` element kind (avoids
+     EW-5 trap). 2-4 ms / iter on canon-resize-drag. Captured as `EW-10`.
+  2. **Beam-bar path coalescing** — `paintBar` already emits `<path>`s
+     for beam segments (N×3 paths per bar collapsing to one `<path>`).
+     ~1.6 ms / iter (below σ standalone; bundles with the above).
+  3. **Vertical-broadcast `paintStaffLines`** — single primitive emits
+     5 rects at the same x,w with different y values; ~1.2 ms saved.
+     Below σ standalone.
 - **Risk**: medium — API contract change for SvgCanvas, affects every
-  glyph paint method.
-- **Estimated payoff**: 10-20 % on paint-bound scenarios.
+  glyph paint method that participates.
+- **Estimated payoff**: 3-5 ms / iter on canon-resize-drag (1.3-2.1 %) for
+  the buffer-batched fillRect alone; 10-20 % is plausible only if the
+  paint API moves entirely to deferred-flush across rect + path + text.
 
 ### DR-4. Polymorphic call sites everywhere
 - **Observation**: across the new SVG baseline, four separate functions
@@ -326,3 +414,42 @@ below remain the principal structural levers. Specifically:
   one at a time will not move the needle on this hotspot — the win has
   to come from restructuring (push-based skyline, full lifecycle hook)
   or from DR-4-shape system-wide polymorphism collapse. Reverted.
+- **Surface broadened (2026-06-14 drag baseline)**: `getBoundingBoxTop`
+  now aggregates **3.77 % CPU self / 9 ms / iter** across ≥ 8 distinct
+  frames in canon-resize-drag, and it's called from a **third caller
+  class** beyond `calculateOverflows`/`_finalizeTies` — namely
+  `BarRendererBase._emitTies` (the on-resize tie cleanup path). A unified
+  end-of-finalize lifecycle hook now pays back across three caller
+  classes (overflows, tie emission, and — if combined with DR-6 — the
+  bounds tree), keeping the 12-15 ms payoff estimate consistent.
+  Recommend re-scope DR-5 from "calculateOverflows + getBoundingBoxTop"
+  to "all glyph-tree min/max-y walks (overflows + tie emit + bounds
+  tree)".
+
+### DR-6. Push-based bounds tree (analogue of DR-5's push-skyline)
+- **Where**: [BarRendererBase.buildBoundingsLookup](packages/alphatab/src/rendering/BarRendererBase.ts#L784), [RenderStaff.buildBoundingsLookup](packages/alphatab/src/rendering/staves/RenderStaff.ts), [StaffSystem.buildBoundingsLookup](packages/alphatab/src/rendering/staves/StaffSystem.ts#L1200), + downstream `BarBounds`/`BeatBounds`/`NoteBounds` constructors.
+- **Signal (canon-resize-drag)**: three call sites sum to **7.4 % CPU
+  (~17.4 ms / iter)** + 1.93 % heap. Currently *pull-shaped* — at paint
+  time the system walks every renderer asking "what is your bounds?",
+  recursively allocating a fresh `BarBounds` / `BeatBounds` / `NoteBounds`
+  tree off coordinates that layout already computed.
+- **Hypothesis**: when layout finalises `staff.y`, `renderer.x/width/height`
+  it writes the same numbers into bounds slots already attached to the
+  renderer / voice-container / note. `buildBoundingsLookup` becomes
+  pointer-shuffling into the lookup's flat lists — no tree recursion, no
+  per-bar allocation. **This is NOT caching across resizes** (which EW-2
+  demoted because packing changes) — it's eliminating duplicate
+  computation within a single resize.
+- **Why this is fundamentally different from EW-2(b) pooling**: EW-2(b)
+  kept the pull-shaped allocation pattern and tried to replace `new` with
+  pool acquire. The pool's overhead (property chain, recycled-array
+  check, per-type reset) was net-negative vs V8's young-gen bump. DR-6
+  removes the allocation pattern entirely by piggy-backing on layout-
+  time data the renderer already has — no pool, no fresh constructions.
+- **Risk**: high — every `buildBoundingsLookup` override along the chain
+  plus the `BoundsLookup.finish()` shape would need to grow
+  `addBarBoundsRef(barBounds)`-style indirection. Cross-cutting refactor.
+- **Estimated payoff**: 5-8 ms / iter (2-3 %) on canon-resize-drag; alloc
+  drop ~1.18 MB / iter. Stacks with DR-5 (shared "end-of-finalize"
+  lifecycle hook) and with the "lazy build on first findBeat query"
+  variant from EW-2(a).
