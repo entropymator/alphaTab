@@ -9,13 +9,33 @@
 
 ## 1. Goal & framing
 
-### 1.1 What this is
+### 1.1 What we're trying to do, in plain English
 
-A **sub-slice of DR-1**. DR-1 is "Resize re-walks every bar even when only the viewport width changed" (HOTSPOTS.md:265). EW-9 Variant B (`bfcd943f`) landed the **`calculateOverflows` half** of DR-1 — `-9.69 ms ★` paired A/B at n=64.
+**Goal**: stop spending ~7 ms / iter on `MultiVoiceContainerGlyph.registerLayoutingInfo` during resize, by not redoing work whose result hasn't changed.
 
-This plan attacks the **remaining `registerLayoutingInfo` half** — the ~7 ms / iter `MultiVoiceContainerGlyph.registerLayoutingInfo` hotspot still un-captured because `StaffSystem.addMasterBarRenderers:293` explicitly resets `renderers.layoutingInfo.preBeatSize = 0` at the head of every resize cycle.
+`registerLayoutingInfo` is the call inside `BarRendererBase.reLayout` that pushes per-bar measurements — pre-beat block width, post-beat block width, beat spring constants — into a **per-masterbar broker** (`BarLayoutingInfo`). The broker accumulates `max-of` across all staves of the masterbar. Layout consumers later read the broker to decide how to distribute width across the bars of a system.
 
-### 1.2 Why this is NOT an EW candidate
+On resize this call re-runs for every bar on every width change. The values it pushes are derived from the bar's **glyph composition** (clef present? key signature width? beat count? grace notes?) — not from viewport width. So re-pushing the same numbers is wasted work.
+
+EW-9 Variant B already captured the bar-local overflow walk (`calculateOverflows`) at ★ −9.69 ms. EW-9's broader form tried to capture `registerLayoutingInfo` too, and got bitten by the broker reset at `StaffSystem.addMasterBarRenderers:293` (broker reads 0 → bars collapse, 7 visual fixtures broke). This plan exists to find a path through that reset.
+
+### 1.2 The architectural fact we have to design around
+
+The broker reset at `addMasterBarRenderers:293` **is load-bearing**, not defensive. Pre-beat glyph composition genuinely *does* change between layouts: when a bar wraps to/from `isFirstOfStaff`, its leading clef (and key signature, time signature, etc.) appears or disappears, and its `preBeatSize` shrinks or grows. Without the reset, a bar that used to be first-of-line keeps its stale-wider `preBeatSize`, the broker keeps the stale max, and downstream layout overcompensates.
+
+Post-beat composition has no analogue of "the clef disappears when the bar wraps" — that's why `postBeatSize` has no corresponding reset. The asymmetry is real and meaningful.
+
+So the design question is **not** "can we drop the reset?" The answer is no. The design question is:
+
+> The reset only matters when at least one stave's `(wasFirstOfStaff, isFirstOfStaff)` flipped. The vast majority of resize iterations on canon-resize-drag don't flip any bar's wrap state. Can we make the reset (and the subsequent `registerLayoutingInfo` work) skip those iterations?
+
+The three options in §4 are three different answers to that question.
+
+### 1.3 What this is in HOTSPOTS taxonomy
+
+A **sub-slice of DR-1**. DR-1 is "Resize re-walks every bar even when only the viewport width changed" (HOTSPOTS.md:265). EW-9 Variant B (`bfcd943f`) landed the **`calculateOverflows` half** of DR-1. This plan attacks the **`registerLayoutingInfo` half** still un-captured.
+
+### 1.4 Why this is NOT an EW candidate
 
 Per `AGENT_WORKFLOW.md`'s classification rule cited in HOTSPOTS.md: "Easy win = single file, no public API change, no semantic change."
 
@@ -27,7 +47,7 @@ This work fails all three:
 
 It belongs under **DR-1 — Major refactors**. The landed entry, if it lands, goes under a **new** "Major refactors — landed" section in HOTSPOTS.md (creating that header if it doesn't yet exist; see §12.4).
 
-### 1.3 Numerical envelope
+### 1.5 Numerical envelope
 
 | Quantity                                          | ms/iter | Source                                  |
 |---------------------------------------------------|--------:|-----------------------------------------|
@@ -38,7 +58,7 @@ It belongs under **DR-1 — Major refactors**. The landed entry, if it lands, go
 | `MultiVoiceContainerGlyph.registerLayoutingInfo` upper bound | ~7.0 | DR-1 quantification (HOTSPOTS.md:277-281) |
 | `BarRendererBase._registerLayoutingInfo` wrapper  | ~0.2    | EW-9 plan §2.2                          |
 
-### 1.4 Decision floor
+### 1.6 Decision floor
 
 Same shape as EW-9 §5.2:
 
@@ -47,7 +67,7 @@ Same shape as EW-9 §5.2:
 - **`~`** → drop to next option in §4 matrix.
 - **`·` or no significance** → falsify-and-stop; document in HOTSPOTS.md DR-1 that the `registerLayoutingInfo` slice is structurally blocked.
 
-### 1.5 Acknowledged outcome possibilities
+### 1.7 Acknowledged outcome possibilities
 
 This plan may **not** land. That is an acceptable outcome. Documented falsification of all three options in §4 demotes DR-1's `registerLayoutingInfo` slice to "structurally blocked at this codebase shape" and updates HOTSPOTS.md accordingly. See §13.
 
@@ -117,71 +137,79 @@ This was wrong because `addMasterBarRenderers:293` resets `preBeatSize = 0` BEFO
 
 ---
 
-## 3. Why the reset exists (history)
+## 3. Why the reset exists (load-bearing, not defensive)
 
-### 3.1 `git blame` result
+### 3.1 The real reason
+
+A bar's `preBeatSize` is the width of its **leading glyph block** — clef, key signature, time signature, accidentals, repeat-open bracket, etc. Most of those glyphs are only emitted when the bar is **first on its staff line** (`isFirstOfStaff === true`):
+
+- Clef and key signature: emitted on the first bar of each line.
+- Time signature: emitted on the first bar where the time signature changes (which includes every wrap that lands on a meter change).
+- Other "courtesy" glyphs follow the same line-leading semantics.
+
+So a single bar's `preBeatSize` is **not invariant** across layouts: a bar that was line-leading at width 1400 may not be at width 800, and vice versa. The `BarRendererBase.reLayout` chain already detects this — when `(wasFirstOfStaff !== isFirstOfStaff)`, it calls `recreatePreBeatGlyphs()` (line 915) and the bar's leading glyph composition rebuilds.
+
+The broker's `preBeatSize` accumulator is `max-of` across all staves of the masterbar. If the broker keeps the stale max from a previous layout where some stave was line-leading, the next layout (where that stave is mid-line) would read the stale-wider value and over-allocate space for the leading block. So the reset at `addMasterBarRenderers:293` zeroes the field every cycle and `_registerLayoutingInfo` re-accumulates the current cycle's max.
+
+`postBeatSize` (notes + stems + tie-out + barline) has **no analogue** of "the leading clef disappears when the bar wraps to mid-line". Post-beat composition is determined by the bar's musical content, not its position in the staff. That's why there is no `postBeatSize` reset — the asymmetry is intentional, not a bug.
+
+### 3.2 `git blame` corroboration
 
 ```
 a15680687 src/rendering/staves/StaveGroup.ts (Daniel Kuschny 2020-07-16 19:07:29 +0200 293)
     renderers.layoutingInfo.preBeatSize = 0;
 ```
 
-- Original author: Daniel Kuschny.
-- Original date: **2020-07-16** — 5+ years old at plan write time.
-- Original file: `StaveGroup.ts` (renamed to `StaffSystem.ts` in commit `5789b59d`, 2025-12-19, when monorepo restructuring moved the file under `packages/alphatab/`).
-- The reset has survived a major rename without revisiting; no commit since 2020 has touched this line specifically.
+5+ years old, no load-bearing changes since. The previous version of this plan §3 read the `git blame` antiquity as evidence the reset was defensive cruft. It isn't — it's load-bearing code that's correct enough to have never needed revisiting. The asymmetry with `postBeatSize` (no corresponding reset) is the strongest internal evidence: if the reset were merely defensive, the absence on the post-beat side would imply a latent bug; since the post-beat side is empirically correct, the asymmetry must reflect a real semantic difference. §3.1 names that difference.
 
-### 3.2 Speculation on intent (NOT verified)
+### 3.3 Working principle
 
-Plausible reasons the reset was added:
+**The reset cannot be removed unconditionally.** Any option in §4 must either:
 
-1. **Defensive zeroing for re-entry paths**: in 2020, the codebase may have had a code path that called `addMasterBarRenderers` on a freshly-constructed `MasterBarsRenderers` whose `BarLayoutingInfo` had stale `preBeatSize` from a previous layout attempt. Hard to verify without archeology against 2020-era resize paths.
+- Preserve the reset's effect on iterations where any bar's `(wasFirstOfStaff, isFirstOfStaff)` flipped — i.e. the reset (and the subsequent `_registerLayoutingInfo` re-accumulation) must still fire on those cycles; OR
+- Cache the per-stave contributions and replay them after the reset — letting the reset fire harmlessly while the broker is repopulated without redoing the glyph walk; OR
+- Cache the *result of the glyph walk* on the renderer side and short-circuit `MultiVoiceContainerGlyph.registerLayoutingInfo` itself when the bar's pre-beat composition is unchanged.
 
-2. **First-pass safety net**: if `BarLayoutingInfo` was at some point constructed with non-zero `preBeatSize`, the reset enforces a clean slate before max-of accumulation. The current `BarLayoutingInfo.ts:44` initializes `preBeatSize: number = 0;` — so the reset is redundant for the *initial* construction case. It only matters for the *re-add* (resize) case.
+### 3.4 The empirical question Phase 1 must answer
 
-3. **Inconsistent with `postBeatSize`**: the absence of a `postBeatSize = 0` reset on the same line is striking. Either:
-   - `postBeatSize` doesn't need it (the max-of accumulation handles re-add safely), in which case `preBeatSize` doesn't need it either (same accumulator shape, same write site, same lifecycle).
-   - OR a `postBeatSize` bug exists today and has gone unnoticed (low probability; visual tests would catch a misaligned postBeatSize as a Class B-shaped failure).
+Given the reset is load-bearing, the new design question is **how often does the wrap-flip actually happen during canon-resize-drag?** If wrap-flips are rare (most resize iterations don't flip any bar's wrap state), Option 1 (conditional reset gated on `recreatePreBeatGlyphs`) wins because the skip applies on most iterations. If wrap-flips are common (e.g. every system re-pack as widths change), the conditional reset fires too often to win — Option 2 / Option 3 (which work renderer-locally and don't care about the broker reset) become the right primaries.
 
-### 3.3 Working hypothesis
-
-The reset is **defensive zeroing without a load-bearing reason**, written before the current `_registerLayoutingInfo` max-of contract solidified, and surviving as dead-code-shaped-correctness ever since. Option 1 (lifting) is therefore *probably* safe — but Phase 1 instrumentation (§5) MUST verify this empirically before any source change.
-
-### 3.4 If Option 1 turns out to be unsafe
-
-If Phase 1 instrumentation shows `preBeatSize` varying between resize cycles in ways NOT explained by `Bar.voices[].beats[]` mutation, the reset has a load-bearing reason we haven't traced. In that case, document the reason in HOTSPOTS.md DR-1 and pivot to Option 2 (cache + replay).
+Phase 1 instrumentation (§5) now has a sharpened pass criterion: in addition to byte-identity of broker writes on stable bars, **count the number of iterations in which ≥ 1 renderer's `wasFirstOfStaff !== isFirstOfStaff`** across the 8 drag iterations × 12 widths. This is the deciding measurement for the option primary pick.
 
 ---
 
 ## 4. Option matrix
 
-Three options. The first is the cleanest; the others are explicit Phase 6 fallbacks.
+Three options. Each is a different answer to §3.4's question. The primary pick (§4.4) depends on the wrap-flip frequency Phase 1 measures.
 
-### 4.1 Option 1 — Lift the reset (per-MasterBarsRenderers invalidation gate)
+### 4.1 Option 1 — Conditional reset (gated on wrap-flips)
 
 **Shape sketch (no code)**:
 
-1. Add a `brokerNeedsReset` flag (or `brokerContentVersion: number`) to `MasterBarsRenderers`.
-2. Initial layout (`StaffSystem.addBars`) sets the flag `true` (or `version=0`) after constructing the broker.
-3. `addMasterBarRenderers` consults the flag: only reset `preBeatSize = 0` (and re-run `_registerLayoutingInfo` for every renderer) when the flag indicates the broker is stale. Else: skip the reset; the existing broker state is still correct.
-4. The flag flips back to `true` only when a mutating event occurs — for the resize path, **none of them do**. So after the initial layout sets the flag false, no resize cycle ever flips it true. The reset never fires on resize.
-5. Per-renderer EW-9 cache (`_layoutInvariantCached`) becomes redundant in tandem with this gate for the `_registerLayoutingInfo` work — but the cache flag still gates `calculateOverflows` (EW-9 Variant B). Both gates coexist.
+1. Add a `brokerNeedsReset` flag to `MasterBarsRenderers` (default `true`).
+2. After `BarLayoutingInfo` is constructed and the initial layout's `finish()` has run, set the flag `false`.
+3. Modify `BarRendererBase.reLayout` so that **whenever the `(wasFirstOfStaff !== isFirstOfStaff)` branch fires** (the same branch that already calls `recreatePreBeatGlyphs`), it sets `this.masterBarsRenderers.brokerNeedsReset = true`. This is the one place pre-beat composition is allowed to change.
+4. Modify `StaffSystem.addMasterBarRenderers:293` to make the reset conditional: `if (renderers.brokerNeedsReset) { renderers.layoutingInfo.preBeatSize = 0; }` — else: leave it.
+5. Modify `BarRendererBase._registerLayoutingInfo` so that when the flag is false, the body is a no-op for the `preBeatSize` write site (the renderer's `preBeatSize` contribution hasn't changed; max-of of the existing broker value with itself is a no-op).
+6. After the resize-cycle's loop over staves, set the flag back to false so subsequent iterations get the skip again.
+
+**The architectural fact this option is exploiting**: pre-beat composition can only change when `recreatePreBeatGlyphs` fires. Every other resize cycle leaves it untouched. So the broker's `preBeatSize` is stable IFF no bar in the masterbar flipped its wrap state this cycle.
 
 **Risk profile**:
 
-- **Cross-stave coverage**: PASSES if I1-I6 hold. The broker accumulation is idempotent; skipping all N renderers' `_registerLayoutingInfo` calls leaves the broker correct from the initial-layout pass.
-- **Bar content mutation**: covered by initial-layout-only set-true; if `ScoreRenderer.updateForBars` triggers a fresh layout, the broker is reconstructed.
-- **`recomputeSpringConstants` paths**: these don't touch `preBeatSize`/`postBeatSize`/`_beatSizes`; they only rewrite spring constants. Safe.
+- **Wrap-flip case**: handled by the §3.1 invariant. When ANY stave's bar flips wrap state, the broker is fully reset and all renderers re-register. Correct by construction.
+- **Cross-stave coverage**: when no wrap-flip occurred, every stave skips its `_registerLayoutingInfo` write together. The broker holds the prior cycle's max — which is correct because the prior cycle's max came from the same staves with the same pre-beat composition.
+- **Single-stave wrap-flip**: if stave A flips but stave B does not, the flag goes true, ALL staves re-register (B's contribution is re-pushed; max-of is idempotent so this is safe), and the broker is correctly re-maxed.
 
-**Blast radius**: 2-3 files (`StaffSystem.ts`, `MasterBarsRenderers.ts`, maybe `BarLayoutingInfo.ts` for a debug helper).
+**Blast radius**: 3 files (`StaffSystem.ts`, `MasterBarsRenderers.ts`, `BarRendererBase.ts`).
 
-**Dependency on EW-9**: independent of the EW-9 gate — but the EW-9 cache flag's `recreatePreBeatGlyphs` invalidation must NOT also reset the broker flag. They are separate concerns. (`_preBeatGlyphs.width` recomputation does change `preBeatSize` contribution → broker flag must invalidate when `_preBeatGlyphs.width` could differ.)
+**Dependency on EW-9**: independent. Coexists with the EW-9 `_layoutInvariantCached` flag (which gates `calculateOverflows`). The new flag is broker-side; the EW-9 flag is overflow-side. Document the two-flag separation.
 
-**Catch**: if `recreatePreBeatGlyphs` fires (i.e. `wasFirstOfStaff` flipped) on stave A, stave A's contribution to `preBeatSize` may change. The lifted gate must include `recreatePreBeatGlyphs` as an invalidator → flips broker flag back to true → next resize cycle's `addMasterBarRenderers` resets + re-registers.
+**Expected payoff**: ranges from 0 ms (every iteration flips at least one wrap → reset always fires) to ~7 ms (no iteration flips a wrap → reset never fires). **Phase 1 instrumentation must measure wrap-flip frequency to size this.** A canon-resize-drag where ~60-80 % of iterations have zero wrap-flips would give ~4-6 ms expected — borderline `★`.
 
-**Expected payoff**: full ~7 ms / iter on canon-resize-drag. Best case in the matrix.
+**Fallback**: if wrap-flips happen on most iterations during canon-resize-drag, Option 1 collapses to "the reset still fires often" and the perf win disappears. → Option 2.
 
-**Fallback**: if Phase 3 (perf verify) shows < 5 ms, the `recreatePreBeatGlyphs` invalidator is probably firing too often (the wasFirstOfStaff flip happens on every system re-pack). In that case → Option 2.
+**Anti-pattern (do NOT do this)**: lifting the reset *unconditionally*. That's exactly the EW-9 Phase 1 shape, and it broke 7 visual fixtures. The conditional gate is what makes Option 1 different.
 
 ### 4.2 Option 2 — Cache + replay
 
@@ -230,16 +258,24 @@ Three options. The first is the cleanest; the others are explicit Phase 6 fallba
 
 **Fallback**: if all three fail → documented falsification (§13).
 
-### 4.4 Primary pick
+### 4.4 Primary pick — chosen AFTER Phase 1 instrumentation
 
-**Option 1 (lifting the reset) is the primary**. Rationale:
+**Do not commit to an option before Phase 1 measures wrap-flip frequency.** The previous version of this section recommended Option 1 unconditionally on the assumption the reset was defensive — that assumption is wrong (see §3). The correct primary depends on what Phase 1 finds:
 
-- Cleanest semantics — one well-localised structural change at the system entry point.
-- Highest payoff potential — ~7 ms / iter.
-- Smallest source-line delta if the architecture supports it.
-- The history (§3) strongly suggests the reset is defensive without a load-bearing reason.
+| Wrap-flips per iteration (canon-resize-drag) | Primary | Rationale |
+| --- | --- | --- |
+| 0 most of the time (≤ 20 % of iterations have any flip) | **Option 1** | Conditional reset skips on ≥ 80 % of iterations; expected ≥ 5 ms. |
+| Mixed (~20-60 % of iterations flip ≥ 1 bar) | **Option 3** | Bypasses the reset entirely; per-renderer short-circuit doesn't care how often the wrap-flips fire. Each non-flipping renderer is O(1). |
+| Almost every iteration flips ≥ 1 bar | **Option 3** preferred, fallback to "stay with EW-9 Variant B; document falsification" | The broker reset fires too often for Option 1; cache+replay (Option 2) loses to a glyph-walk in this scenario; Option 3's O(1) cache hit is the only thing that can win. |
 
-**Phase 5 fallback order**: Option 1 → Option 2 → Option 3 → falsification (§13).
+Option 2 is the **structural fallback for any branch where Option 3 has correctness issues** (e.g. if the per-`MultiVoiceContainerGlyph` cache turns out to interact badly with `applyLayoutingInfo`'s post-layout `.y` mutations).
+
+**Phase 5 fallback order** is now Phase-1-dependent:
+
+- If Option 1 primary: Option 1 → Option 3 → Option 2 → falsification.
+- If Option 3 primary: Option 3 → Option 2 → Option 1 (conditional) → falsification.
+
+**Why this matters**: EW-9 Phase 1 burned hours on the wrong primary because the architectural model was wrong. The new Phase 1 (§5) is specifically designed to prevent that by measuring the deciding fact first.
 
 ---
 
@@ -249,17 +285,18 @@ Three options. The first is the cleanest; the others are explicit Phase 6 fallba
 
 ### 5.1 Goal
 
-Empirically prove (or disprove) the assumption underlying Option 1: *the values `_registerLayoutingInfo` writes to the broker are byte-identical across resize iterations on the same `Bar` content.*
+Two measurements, both required before any code change:
+
+1. **Stability**: confirm `_registerLayoutingInfo` writes are byte-identical across resize iterations *on bars whose wrap state did NOT flip this iteration*. If they aren't, there's a hidden write path beyond `recreatePreBeatGlyphs` and §3.1's invariant is incomplete.
+2. **Wrap-flip frequency**: count, per iteration of canon-resize-drag, how many bars had `(wasFirstOfStaff !== isFirstOfStaff)`. This is the deciding fact for §4.4's primary pick.
 
 ### 5.2 Instrumentation sketch
 
-In a temporary `BarRendererBase._registerLayoutingInfo` patch (do NOT commit to feature/perf):
+In a temporary `BarRendererBase` patch (do NOT commit to feature/perf):
 
-1. After each write, capture a snapshot tuple `(barId, staffId, _preBeatGlyphs.width, voiceContainer-derived sizes, _postBeatGlyphs.width)`.
-2. Compare against a prior-cycle snapshot stored on the renderer.
-3. On mismatch: `console.error` with the bar/staff identity and the diff. Use a global counter to limit log spam.
-
-Alternative: a `Profiler.snapshot`-side log (see `packages/bench/scripts/`) that emits the same tuple. Easier to grep over.
+1. In `_registerLayoutingInfo`, after the broker write, capture a tuple `(masterBarIdx, staffIdx, _preBeatGlyphs.width, _postBeatGlyphs.width, iteration, width)`. Compare against the prior-cycle tuple stored on the renderer; on mismatch, record `(stable | flipped-wrap | mystery-mismatch)`.
+2. In `reLayout`, on the `wasFirstOfStaff !== isFirstOfStaff` branch, increment a per-iteration wrap-flip counter on `ScoreRenderer` (or a module-global). Tag the bar's mismatch report with "flipped-wrap" so the categorisation in §5.5 can be automated.
+3. After each `driveOnce` (one iteration of 12 widths), emit a summary line: `[DR1] iter N: wrap-flips per width = [...], stable bars = K, mystery-mismatches = M`.
 
 ### 5.3 Bench protocol
 
@@ -268,23 +305,27 @@ cd packages/bench
 # build with the instrumentation patch applied
 npx vite build
 # run one trial of canon-resize-drag (8 iterations × 12 widths)
-node dist/run.mjs --only canon-resize-drag --trials 1 --label DR1-instrument-2026XXXX --save-baseline DR1-instrument
+node dist/run.mjs --only canon-resize-drag --trials 1 --label DR1-instrument-2026XXXX 2>&1 | tee runs/DR1-instrument-*.log
+# grep for the summary lines
+grep '^\[DR1\]' runs/DR1-instrument-*.log
 ```
 
 ### 5.4 Pass criterion
 
-- For ≥ 3 bars from `canon` (e.g. bars 1, 5, 13 — a first-of-staff, a multi-voice, a grace-note bar):
-  - The tuple at iteration 1 width 1 EQUALS the tuple at iteration 8 width 12 (and every cycle in between).
-  - "EQUALS" means byte-identical numeric values for `_preBeatGlyphs.width`, `_postBeatGlyphs.width`, and the broker's `preBeatSize`/`postBeatSize` AFTER the renderer's `_registerLayoutingInfo` write.
+- **Stability**: across the 8 iterations × 12 widths × ≥ 3 sampled bars, **mystery-mismatches must be 0**. Bars with "flipped-wrap" mismatches are expected and OK.
+- **Wrap-flip frequency**: categorise the 96 (iteration × width) cells by "did any bar in the score flip wrap state":
+  - **Low-flip regime**: ≤ 20 % of cells have any flip. → Option 1 primary.
+  - **Mixed regime**: 20-60 %. → Option 3 primary.
+  - **High-flip regime**: > 60 %. → Option 3 primary; consider declaring `registerLayoutingInfo` slice structurally blocked if even Option 3 doesn't clear σ.
 
 ### 5.5 Decision rule
 
-| Phase 1 result                                           | Action                                       |
-|----------------------------------------------------------|----------------------------------------------|
-| All tuples byte-identical                                | Option 1 viable. Proceed to Phase 2.         |
-| Values vary BUT only when `wasFirstOfStaff` flipped      | Option 1 still viable — gate on the flip event (§4.1). |
-| Values vary on cycles where `wasFirstOfStaff` did NOT flip | Option 1 is dead. There's a hidden write path. Trace it; document; proceed to Option 2. |
-| Per-beat sizes (`_beatSizes`) vary across cycles         | Option 1 still viable for preBeatSize lift, but Option 2/3 may be needed for the per-beat slice. |
+| Phase 1 result | Action |
+| --- | --- |
+| Stable + low-flip | **Option 1** (conditional reset) — proceed to §6 with Option 1's sketch. |
+| Stable + mixed/high-flip | **Option 3** (record-on-first-call cache) — proceed to §6 swapping in Option 3's sketch. |
+| Mystery-mismatch (≥ 1) | §3.1 invariant incomplete; trace the hidden write path before choosing an option. Document the new mutation source; revise §2.3 / §3 / §4 accordingly. |
+| Per-beat sizes (`_beatSizes`) vary across cycles on a non-flipping bar | Add Option-2-style per-beat cache to whichever primary is chosen. |
 
 ### 5.6 Phase 1 exit checklist
 
@@ -296,9 +337,9 @@ node dist/run.mjs --only canon-resize-drag --trials 1 --label DR1-instrument-202
 
 ---
 
-## 6. Phase 2 — implement primary option (Option 1)
+## 6. Phase 2 — implement the Phase-1-selected primary
 
-(Assumes Phase 1 passed. If Phase 1 chose Option 2/3, swap the section's content for the corresponding cache+replay sketch.)
+(Phase 1's §5.5 decision row determines which option's sketch §6.1 implements. The sketch below is **Option 1's** because that's the highest-impact path; if Phase 1 selected Option 3, replace §6.1 with the Option 3 sketch from §4.3 before proceeding.)
 
 ### 6.1 Concrete sketch — Option 1 lifting
 
