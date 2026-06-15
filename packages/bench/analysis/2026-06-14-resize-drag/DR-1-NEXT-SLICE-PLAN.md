@@ -988,9 +988,73 @@ Never:
 
 ---
 
-## 16. Execution outcome — to be filled in after Phase 5/6
+## 16. Execution outcome — falsified at Phase 0, 2026-06-15
 
-(Reserved. Per DR-1 broker-lifecycle §18 precedent: this section captures what was tried, what worked, what didn't, and the load-bearing structural facts for future plans. Must include diff-PNG-inspection notes for any Class E reclassifications.)
+**Status**: closed at Phase 0. No source change shipped. Plan §10 falsification path taken per user verdict.
+
+**Final HEAD when the round closed**: `2f5acb7f` (Phase 0 probe doc only).
+
+### 16.1 Phase 0 probe results
+
+Executor ran the 5 §5 probes against canon-resize-drag on a host-clean session. Full data in `DR1-NS-PHASE0-PROBES.md` and `DR1-NS-PHASE0-LOG.txt`.
+
+| Probe | Result | §5.8 threshold |
+| --- | --- | --- |
+| §5.1 stable-packing rate (single-prior predicate) | **0 / 143 cycles = 0.0 %** | < 20 % → §10 falsification |
+| §5.2 `mb.width` invariance under stable packing | NO DATA — no cycles were stable | n/a |
+| §5.3 per-system packed-width invariance | NO DATA — same reason | n/a |
+| §5.4 layout-rebuild cost (region L) | median 6.73 ms / iter | > 5 ms → upside is real if predicate hits |
+| §5.5 wrap-flips / cycle | median 160 (range 78-330) | high but inherent to drag scenario |
+
+The literal §3.2 single-prior predicate hits 0 / 143. The plan's §5.8 / §4.5 decision rule triggers §10 falsification.
+
+### 16.2 Side discovery — multi-entry width-keyed cache
+
+Phase 0 surfaced a structural fact the plan did not anticipate: **per-width packing is deterministic across the 8 iterations**. Each of the 12 distinct `maxWidth` values produces the same system count every time it appears (60, 67, 72, 82, 94, 112, 122, 145, 178, 167, 131, 116).
+
+A multi-entry `Map<maxWidth, packingFingerprint>` cache would hit ~96 % steady-state on canon-resize-drag. The executor surfaced this as an unauthorised Option A' variant.
+
+**The user rejected Option A' as Goodhart-bait.** Reasoning:
+
+- The 96 % hit rate is a bench artifact. canon-resize-drag cycles 12 exact widths × 8 iterations; after iteration 1, every width is a repeat.
+- In a real browser drag (monotonic pixel-by-pixel, e.g. 1400 → 1399 → 1398), widths don't repeat. Cache hit rate ≈ 0 %.
+- Multi-entry exact-width caching would help only on snap-resize / drag-back / panel-toggle — partial production value at best, with the bench number wildly inflated.
+- Shipping it would set a precedent for bench-fitting future rounds. Strong recommend against.
+
+### 16.3 Why the plan's premise didn't fit the bench corpus
+
+The plan §3.2 width-range predicate (`newWidth ∈ [lower_i, upper_i]` per system) IS production-honest — it generalises to continuous drag because it catches "this width happens to land in the same packing range as the previous one". But canon-resize-drag is **intentionally designed** to exercise the resize path with packing-changing transitions — the 12 widths span the full system-count range maximally. So the scenario has 0 % stable transitions by construction.
+
+The optimization is potentially valuable in production but **structurally unvalidatable on the current bench corpus**.
+
+### 16.4 Open paths NOT taken
+
+For future reference if the resize path becomes a priority again:
+
+- **Option B — add a new bench scenario** (`canon-resize-monotonic-fine`?) with widths in stable-packing zones (e.g. width sequence 1400, 1395, 1390, ... that produces many same-packing transitions). Then ship the §3.2 width-range predicate against the new scenario's baseline. ~30 lines of work in `scenarios.ts` to set up; the optimisation itself is the original plan.
+- **Option C — repack-but-don't-rebuild** (plan §4.3): re-runs the packer every cycle, reuses `RenderStaff` objects when membership matches. Bench-honest because it doesn't depend on width repetition. Smaller bench win (~1-2 ms) but generalises.
+
+Neither was attempted in this round.
+
+### 16.5 What's closed and what's still open in DR-1
+
+DR-1 as originally scoped (`Resize re-walks every bar even when only the viewport width changed`) had three sub-slices identified across rounds:
+
+| DR-1 sub-slice | Status | Commit |
+| --- | --- | --- |
+| Overflow / `calculateOverflows` skip | landed | `bfcd943f` (EW-9 Variant B) |
+| Broker-lifecycle / `_registerLayoutingInfo` walk-skip | landed | `eddf9bc1` |
+| **Stable-packing system-pack skip** | **closed (falsified)** | n/a |
+
+Total DR-1 paired A/B: -9.69 ms + -6.08 ms = **-15.77 ms / iter on canon-resize-drag** before this round; unchanged after.
+
+The ~7 ms estimated payoff of the stable-packing slice is structurally inaccessible at the current bench scope. The 14 ms "truly width-invariant" surface (`registerLayoutingInfo` 7.0 + `calculateOverflows` 3.1 + `_emitGroupOverflows` 2.4 + `_computeBeamingBounds` 2.9) is fully captured by the two landed slices.
+
+### 16.6 Process lesson (cite for future plans)
+
+- The executor halted correctly at the deviation moment per §11 / §17 protocol. The Phase 0 finding made the literal plan unviable, AND the agent recognised the alternative (multi-entry cache) was unauthorised. Surfacing the choice to the user instead of unilaterally swapping shapes was the right call.
+- The Goodhart-trap pattern (bench shows big win, production wouldn't see it) is a real risk for any cache-based optimisation against a scenario with structural artifacts (repeating widths, cycling iterations, fixed corpus). Future plans should explicitly call out cache-hit-rate-in-production vs cache-hit-rate-in-bench as separate quantities, and require both to clear the bar.
+- "Falsification is an acceptable outcome" was tested for the first time in this session. The session has shipped 4 landed rounds (DR-1 broker-lifecycle, EW-3, EW-10 Phase A, EW-11) and now one falsified one. That ratio is healthy — perf work where every round lands is suspicious.
 
 ---
 

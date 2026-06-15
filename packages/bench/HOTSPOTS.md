@@ -265,8 +265,11 @@ semantic contract change) and shipped.
   would erode the win, AND explicitly inspect visual diffs for "old
   behavior was wrong" before classifying them as regressions.
 - **DR-1 remainder**: the broker-lifecycle slice is captured. The
-  cross-bar content-version cache and system-skyline incremental update
-  sub-slices remain open under DR-1's deferred entry below.
+  stable-packing sub-slice (`DR-1-NEXT-SLICE-PLAN.md`) was attempted
+  at Phase 0 on 2026-06-15 and **falsified** — see the demoted entry
+  under DR-1 below. DR-1 is closed at this codebase shape with the
+  overflow slice (EW-9 Variant B) + broker-lifecycle slice already
+  shipped.
 - **Plan + evidence**: `packages/bench/analysis/2026-06-14-resize-drag/DR-1-BROKER-LIFECYCLE-PLAN.md` (see §15 execution outcome).
 - vitest: 1599/1599.
 
@@ -351,6 +354,41 @@ below remain the principal structural levers, with quantified upper bounds:
   `addMasterBarRenderers` resets `preBeatSize=0`; Variant B narrows to
   `calculateOverflows`-only and keeps the broker write always-on. Full
   content-version cache is the structural endgame.
+- **DR-1 stable-packing slice — falsified 2026-06-15** (plan
+  `DR-1-NEXT-SLICE-PLAN.md`, Phase 0 commit `2f5acb7f`). The third
+  DR-1 sub-slice (skip the `_systems=[]; createEmptyStaffSystem;
+  addBarRenderer × N` rebuild when bar-to-system membership is
+  stable across consecutive widths) was planned but its premise
+  doesn't fit any current bench scenario. Phase 0 measurements on
+  canon-resize-drag:
+  - Plan §3.2 single-prior stable-packing predicate: **0/143 cycles**.
+    Every width transition in the drag changes system count
+    (deterministic per width: 60, 67, 72, 82, 94, 112, 122, 145,
+    178, 167, 131, 116). The scenario is intentionally designed to
+    exercise the resize path with packing-changing transitions, so
+    a "stable packing" predicate has no headroom by construction.
+  - Layout-rebuild surface (region L) median 6.73 ms / iter — the
+    upside IS real if a predicate hits, but no scenario in the
+    corpus produces stable-packing cycles for it to hit.
+  - A multi-entry `Map<maxWidth, packingFingerprint>` cache would hit
+    ~96 % on canon-resize-drag because the bench cycles 12 exact
+    widths × 8 iterations — but that hit rate is a bench artifact.
+    In a real browser drag (monotonic pixel-by-pixel) widths don't
+    repeat, so the cache would help only on snap-resize / drag-back
+    / panel-toggle, NOT on continuous drag. Shipping it would be a
+    Goodhart's-law optimisation: bench-visible win without
+    proportional production value. Decided against per user verdict.
+  - **Demote**: do not retry this exact shape. A production-honest
+    width-range predicate (plan §3.2's intended form) would help
+    continuous drag in production but cannot be validated on the
+    current bench corpus. If the resize path becomes a priority
+    again, a new bench scenario with same-packing-zone width sequences
+    would be a prerequisite. Until then, DR-1 is **closed at this
+    codebase shape** with only the overflow slice (EW-9 Variant B)
+    and broker-lifecycle slice (eddf9bc1) shipped. ~14 ms / iter
+    truly-invariant DR-1 surface fully captured. The stable-packing
+    sub-slice's ~7 ms ceiling (the remaining DR-1 estimated payoff)
+    is structurally inaccessible at the current bench scope.
 
 ### DR-2. GC pressure 8-10 % of CPU across resize scenarios
 - **Observation**: GC is consistently the top self-time entry across all
