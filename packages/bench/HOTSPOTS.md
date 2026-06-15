@@ -203,6 +203,7 @@ shape carried.
 | EW-10 (Phase A only) | `244c8e0b` | canon-resize-drag | -4.14 ms (-2.7 % ★) at n=64 paired A/B vs `be8b724b` | 2026-06-14 | `SvgCanvas.fillRect` scale=1 fast path with manual `+` concat replacing the template literal. Per Phase 0 §8.1 instrumentation (114,307 fillRect calls / iter on canon-resize-drag, ~171 ns each, 100 % at scale=1 in the bench workload), eliminating the 4 `*scale` multiplies plus avoiding the template literal's number-formatting overhead clears 2σ. The scale!=1 branch keeps the original template literal so HiDPI rendering is unchanged. Phase B (`fillRectBatched` + `paintBackground`-end flush + paintStaffLines migration) was attempted in the executor's working tree and falsified — full record in `analysis/2026-06-14-resize-drag/EW-10-PLAN.md` §18. Phase B vs Phase A measured `·` Δ +1.80 ms (n=64 paired) and `·` Δ -0.07 ms at a v2 implementation — batching-buffer overhead eats the per-call savings on this workload. n=64 paired A/B (Phase A only): canon-resize-drag `★` Δ=-4.14 ms CI [-6.12, -2.26] z=2.75 43/64 wins. vitest 1599/1599. |
 | EW-3 (Option A) | `4f89adda` | canon-resize-drag | -4.09 ms (-2.5 % ★) at n=64 paired; -4.34 ms (-2.7 % ★) at n=128 paired vs `05ec1dbb` | 2026-06-14 | Layout-time gap descriptor cache + paint-time projection per plan §4 Option A. `TabBarRenderer.doLayout` builds packed per-bar arrays (`Uint32Array` bucket-end offsets, `Float32Array(2N)` for `relativeX`+`width`, `BeatContainerGlyphBase[]` for live `bg.x` lookup) bucketed by staff-line index. `paintStaffLines` is overridden in `TabBarRenderer` and reads the cache directly — skips the legacy virtual dispatch, the per-paint `Float32Array[][]` outer alloc, the per-gap `Float32Array(2)` alloc, AND the per-line `line.sort()` (gaps are already in beat-iteration / x-ascending order; rare grace-beat inversions take a slow path with insertion sort on a tiny segment). Phase 0 §6.2 verified Outcome B (widths and intra-bar offsets layout-stable; only `bg.x` shifts per resize) — algebraic foundation of the projection cache. Phase 0 §6.4 found `paintStaffLines` emit cost is 92.5 % of its self-time; Option A removed the remaining 14.8 % collectSpaces + 7.5 % pre-emit sort. Bundles plan options B (drop the no-op virtual stub: kept the override but the consumer no longer routes through it on the hot path), G (TabBarRenderer's `paintStaffLines` override is a `instanceof`-equivalent short-circuit at the V8 dispatch level), I (packed buffers replace `Float32Array[][]`). Cache invalidation follows the `_voiceWalkDone` lifecycle precedent — survives `afterReverted` (DR-1 §18 anti-pattern avoided), invalidated by `recreatePreBeatGlyphs` and `invalidateLayoutCache`. n=64 paired A/B vs `05ec1dbb`: canon-resize-drag `★` Δ=-4.09 ms CI [-5.93, -1.37] z=2.50 42/64 wins. n=128 confirmation: `★` Δ=-4.34 ms CI [-5.37, -3.02] z=4.95 92/128 wins. 5-trial session-paired multi-process diff: canon-resize-drag -2.94 ms (-1.3 % `·`), no `★` regression on any scenario. vitest 1599/1599. Full plan + Phase 0 probe findings + execution outcome in `analysis/2026-06-14-resize-drag/EW-3-PLAN.md` §13 and `EW-3-PHASE0-PROBES.md`. |
 | EW-11 | `e01ba2a2` | canon-resize-drag | -0.35 ms (-0.2 % `·`) at n=64; -2.45 ms (-1.5 % ★) at n=128 paired vs `5f7d425e` | 2026-06-14 | Extends EW-10 Phase A's scale=1 fast path + manual `+` concat pattern to 4 additional SvgCanvas emission methods bundled into one commit: `SvgCanvas.moveTo`, `SvgCanvas.lineTo`, `SvgCanvas.fillText` (always-emitted main attrs only; conditional color/text-anchor branches keep the template-literal form), `CssFontSvgCanvas._fillMusicFontSymbolText` (also folds `getSvgTextAlignment(TextAlign.Center)` to its constant `'middle'` return). Phase 0 (`ff8ccfb4`) confirmed 100 % scale=1 hit rate and 98.8 % relativeScale=1 on canon-resize-drag, matching EW-10's pattern. Output is byte-identical because `${x}` and `'' + x` both invoke `Number.prototype.toString` for numeric `x`. Each candidate individually is below σ; n=64 paired A/B comes in at `·` Δ=-0.35 ms but n=128 cleanly resolves `★` Δ=-2.45 ms CI [-3.66, -1.11] z=3.54 84/128 wins — above the 1 % σ floor (2.2 ms). vitest 1599/1599 with no visual diffs. Full plan + Phase 0 probes in `analysis/2026-06-14-resize-drag/EW-11-PLAN.md`. |
+| DR-3.A | (this commit) | canon-resize-drag | -2.34 ms (-1.5 % ★) at n=64 paired vs `2b742569` | 2026-06-15 | DR-3 round, after DR-3.B (centralized scale via root viewBox) **falsified at Phase 2 A/B** (n=128 Δ=-0.16 ms, CI=[-1.02, +0.90], `·`). Per plan §7.5 / §12.3, fell back to DR-3.A — template→concat completeness on the four open SvgCanvas emission methods that actually fire on canon-resize-drag: `beginGroup` (~38k calls/iter, pure template→concat, no `*scale` in body), `bezierCurveTo` (~3.4k calls/iter, scale=1 fast path with manual concat mirroring EW-11), `fill` (~15k calls/iter, template→concat on always-emitted prefix), `stroke` (~3k calls/iter, manual concat on prefix; the conditional stroke-width branch keeps template form). Five dead-on-canon-resize-drag open methods (`strokeRect`, `quadraticCurveTo`, `fillCircle`, `strokeCircle`, `beginRotate` per Phase 0a) are LEFT in template form — adding scale=1 branch overhead without Phase 0 evidence would be net-negative. n=64 paired vs `2b742569`: canon-resize-drag `★` Δ=-2.34 ms CI [-4.23, -1.04] z=3.00 44/64 wins. Cross-scenario at n=32: `canon-resize` -1.47 ms `★`, every other scenario `·` (no regression). vitest 1599/1599. DR-3.B falsification path + Phase 0 probe scripts + DR-3.B Phase 0b SVG capture outputs retained at `analysis/2026-06-14-resize-drag/dr3b-phase0/` for future research; full record in `DR-3-PHASE-0-PROBES.md` and `DR-3-OUTCOME.md`. |
 
 ## Major refactors — landed
 
@@ -424,7 +425,19 @@ below remain the principal structural levers, with quantified upper bounds:
   risk). Bundle these with a DR-1 layout-cache landing only — none are
   worth the risk alone.
 
-### DR-3. SvgCanvas string-concat paint API
+### DR-3. SvgCanvas string-concat paint API — partially captured
+- **Status (2026-06-15)**: DR-3 round closed. EW-10/EW-11 + DR-3.A captured
+  the bench-measurable portion (-2.34 ms paired on canon-resize-drag for
+  DR-3.A alone). DR-3.B (centralized scale via root `<svg>` viewBox)
+  **falsified at Phase 2 A/B** — see `DR-3-OUTCOME.md` for the full
+  postscript. The structural simplification is correct (Phase 0b
+  arithmetic equivalence verified on 3 fixtures × 3 scales) but the
+  bench-measurable Δ at scale=1 was below σ (-0.16 ms at n=128, CI=[-1.02,
+  +0.90]) because EW-10/EW-11's scale=1 fast paths had already absorbed
+  the per-emission-multiply cost on the bench corpus. The production
+  user at scale!=1 would see the full predicted 2-4 ms win, but bench
+  scope cannot ratify production-only optimisations per the user's
+  Goodhart-honesty filter and plan §7.5's explicit falsification path.
 - **Observation**: with the SVG engine, paint cost is no longer dominated
   by native calls (as it was with skia). Instead the cost is JS-side
   markup generation: string concatenation per glyph, attribute formatting,
@@ -447,6 +460,12 @@ below remain the principal structural levers, with quantified upper bounds:
 - **Estimated payoff**: 3-5 ms / iter on canon-resize-drag (1.3-2.1 %) for
   the buffer-batched fillRect alone; 10-20 % is plausible only if the
   paint API moves entirely to deferred-flush across rect + path + text.
+- **Open avenue (DR-3.B reconsideration)**: a future round with a bench
+  scenario that exercises `display.scale != 1` (HiDPI / user-zoom) would
+  let DR-3.B be ratified on its true target population. The Phase 0b
+  probe script (`packages/alphatab/scripts/dr3b-phase0-capture.ts`) is
+  reusable; the captured SVG outputs at `analysis/2026-06-14-resize-drag/dr3b-phase0/`
+  document what the centralized form looks like.
 
 ### DR-4. Polymorphic call sites everywhere
 - **Observation**: across the new SVG baseline, four separate functions
