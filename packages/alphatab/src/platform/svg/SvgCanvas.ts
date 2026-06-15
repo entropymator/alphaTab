@@ -37,7 +37,10 @@ export abstract class SvgCanvas implements ICanvas {
     }
 
     public beginGroup(identifier: string): void {
-        this.buffer += `<g class="${identifier}">`;
+        // DR-3.A — manual `+` concat. No `*scale` in the body, so this is a
+        // pure template→concat swap on the highest-volume open method
+        // (Phase 0a measured ~38k calls/iter on canon-resize-drag).
+        this.buffer += '<g class="' + identifier + '">';
     }
 
     public endGroup(): void {
@@ -128,9 +131,17 @@ export abstract class SvgCanvas implements ICanvas {
 
     public bezierCurveTo(cp1X: number, cp1Y: number, cp2X: number, cp2Y: number, x: number, y: number): void {
         this._currentPathIsEmpty = false;
-        this._currentPath += ` C${cp1X * this.scale},${cp1Y * this.scale},${cp2X * this.scale},${cp2Y * this.scale},${
-            x * this.scale
-        },${y * this.scale}`;
+        // DR-3.A — scale=1 fast path mirrors moveTo / lineTo / fillRect.
+        // Phase 0a found 3371 calls/iter on canon-resize-drag, all scale=1
+        // (ties / bend curves). Manual `+` concat skips the 6 *1 multiplies
+        // AND the template-literal IC overhead.
+        const s = this.scale;
+        if (s === 1) {
+            this._currentPath +=
+                ' C' + cp1X + ',' + cp1Y + ',' + cp2X + ',' + cp2Y + ',' + x + ',' + y;
+        } else {
+            this._currentPath += ` C${cp1X * s},${cp1Y * s},${cp2X * s},${cp2Y * s},${x * s},${y * s}`;
+        }
     }
 
     public fillCircle(x: number, y: number, radius: number): void {
@@ -161,9 +172,12 @@ export abstract class SvgCanvas implements ICanvas {
 
     public fill(): void {
         if (!this._currentPathIsEmpty) {
-            this.buffer += `<path d="${this._currentPath}"`;
+            // DR-3.A — template→concat. No `*scale` in the body; this is
+            // pure template-literal IC elimination on a hot path
+            // (Phase 0a: ~15k calls/iter on canon-resize-drag).
+            this.buffer += '<path d="' + this._currentPath + '"';
             if (this.color.rgba !== '#000000') {
-                this.buffer += ` fill="${this.color.rgba}"`;
+                this.buffer += ' fill="' + this.color.rgba + '"';
             }
             this.buffer += ' style="stroke: none"/>';
         }
@@ -173,7 +187,11 @@ export abstract class SvgCanvas implements ICanvas {
 
     public stroke(): void {
         if (!this._currentPathIsEmpty) {
-            let s: string = `<path d="${this._currentPath}" stroke="${this.color.rgba}"`;
+            // DR-3.A — manual concat on the always-emitted prefix. The
+            // conditional `stroke-width` branch keeps template form because
+            // it carries the `* this.scale` multiply that callers expect at
+            // scale!=1 (no fast-path attempted here — the branch is rare).
+            let s: string = '<path d="' + this._currentPath + '" stroke="' + this.color.rgba + '"';
             if (this.lineWidth !== 1 || this.scale !== 1) {
                 s += ` stroke-width="${this.lineWidth * this.scale}"`;
             }
