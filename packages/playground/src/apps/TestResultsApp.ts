@@ -1,8 +1,8 @@
+import { Settings } from '@coderline/alphatab';
 import { ByteBuffer } from '@coderline/alphatab/io/ByteBuffer';
 import { ZipReader } from '@coderline/alphatab/zip/ZipReader';
 import { NavMenu } from '../components/NavMenu';
-import { type Mountable, css, html, injectStyles, parseHtml } from '../util/Dom';
-import { Settings } from '@coderline/alphatab';
+import { css, html, injectStyles, type Mountable, parseHtml } from '../util/Dom';
 
 injectStyles(
     'TestResultsApp',
@@ -40,8 +40,7 @@ injectStyles(
         vertical-align: top;
     }
     .at-test-comparer .expected,
-    .at-test-comparer .actual,
-    .at-test-comparer .diff {
+    .at-test-comparer .actual {
         grid-column: 1;
         grid-row: 1;
         align-self: start;
@@ -56,16 +55,8 @@ injectStyles(
     .at-test-comparer .actual {
         clip-path: inset(0 0 0 50%);
     }
-    .at-test-comparer .diff {
-        display: none;
-    }
-    .at-test-card.show-diff .at-test-comparer .expected,
-    .at-test-card.show-diff .at-test-comparer .actual,
-    .at-test-card.show-diff .at-test-comparer .slider-handle { display: none; }
-    .at-test-card.show-diff .at-test-comparer .diff { display: block; }
     .at-test-card.accepted .expected,
-    .at-test-card.accepted .actual,
-    .at-test-card.accepted .diff { border-color: green; }
+    .at-test-card.accepted .actual { border-color: green; }
     body.hide-accepted .at-test-card.accepted { display: none; }
 
     .at-test-comparer .slider-handle {
@@ -172,7 +163,6 @@ injectStyles(
 interface TestResult {
     originalFile: string;
     newFile: string | Uint8Array;
-    diffFile: string | Uint8Array;
     accepted?: true;
 }
 
@@ -287,13 +277,11 @@ export class TestResultsApp implements Mountable {
             <div class="at-test-card">
                 <h5 class="at-test-card-title">${result.originalFile}</h5>
                 <div class="at-test-controls">
-                    <label><input type="checkbox" class="diff-toggle" /> Show Diff</label>
                     <button type="button" class="btn accept">Accept</button>
                 </div>
                 <div class="at-test-comparer">
                     <img class="expected" alt="expected" src="${expectedSrc}" loading="lazy" decoding="async" />
                     <img class="actual" alt="actual" src="${actualSrc}" loading="lazy" decoding="async" />
-                    <img class="diff" alt="diff" loading="lazy" decoding="async" />
                     <div class="slider-handle"></div>
                 </div>
             </div>
@@ -301,7 +289,6 @@ export class TestResultsApp implements Mountable {
         const comparer = card.querySelector<HTMLElement>('.at-test-comparer')!;
         const actual = comparer.querySelector<HTMLImageElement>('.actual')!;
         const expected = comparer.querySelector<HTMLImageElement>('.expected')!;
-        const diffImg = comparer.querySelector<HTMLImageElement>('.diff')!;
         const handle = comparer.querySelector<HTMLElement>('.slider-handle')!;
 
         let fraction = 0.5;
@@ -334,18 +321,6 @@ export class TestResultsApp implements Mountable {
             fraction = x / rect.width;
             applyClip();
         });
-
-        card.querySelector<HTMLInputElement>('.diff-toggle')!.onchange = e => {
-            const show = (e.target as HTMLInputElement).checked;
-            card.classList.toggle('show-diff', show);
-            if (show && !diffImg.src) {
-                const src = this.toSrc(result.diffFile);
-                if (src) {
-                    diffImg.src = src;
-                }
-            }
-        };
-
         const acceptBtn = card.querySelector<HTMLButtonElement>('.accept')!;
         acceptBtn.onclick = async () => {
             acceptBtn.disabled = true;
@@ -404,15 +379,13 @@ export class TestResultsApp implements Mountable {
                     continue;
                 }
                 const path = entry.fullName.startsWith('test-data/') ? entry.fullName : `test-data/${entry.fullName}`;
-                const key = `${path.replace('.diff.png', '').replace('.new.png', '')}.png`;
+                const key = `${path.replace('.new.png', '')}.png`;
                 let result = grouped.get(key);
                 if (!result) {
-                    result = { originalFile: key, newFile: '', diffFile: '' };
+                    result = { originalFile: key, newFile: '' };
                     grouped.set(key, result);
                 }
-                if (entry.fullName.endsWith('.diff.png')) {
-                    result.diffFile = entry.data;
-                } else if (entry.fullName.endsWith('.new.png')) {
+                if (entry.fullName.endsWith('.new.png')) {
                     result.newFile = entry.data;
                 }
             }

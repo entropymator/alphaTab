@@ -2,13 +2,13 @@ import type { EventEmitterOfT } from '@coderline/alphatab/EventEmitter';
 import { Logger } from '@coderline/alphatab/Logger';
 import { ScoreSubElement } from '@coderline/alphatab/model/Score';
 import { type ICanvas, TextAlign } from '@coderline/alphatab/platform/ICanvas';
+import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 import type { TextGlyph } from '@coderline/alphatab/rendering/glyphs/TextGlyph';
 import type { RenderHints } from '@coderline/alphatab/rendering/IScoreRenderer';
 import { ScoreLayout } from '@coderline/alphatab/rendering/layout/ScoreLayout';
 import { RenderFinishedEventArgs } from '@coderline/alphatab/rendering/RenderFinishedEventArgs';
 import type { MasterBarsRenderers } from '@coderline/alphatab/rendering/staves/MasterBarsRenderers';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
-import type { RenderingResources } from '@coderline/alphatab/RenderingResources';
 
 /**
  * Base layout for page and parchment style layouts where we have an endless
@@ -19,6 +19,10 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
     private _systems: StaffSystem[] = [];
     private _allMasterBarRenderers: MasterBarsRenderers[] = [];
     private _barsFromPreviousSystem: MasterBarsRenderers[] = [];
+
+    public override get systems(): StaffSystem[] {
+        return this._systems;
+    }
 
     private _reuseViewPort: boolean = false;
 
@@ -335,10 +339,12 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
                     system.y = y;
                 }
             }
-            system.isLast = this.lastBarIndex === system.lastBarIndex;
-            // don't forget to finish the last system
-            this._fitSystem(system);
-            y += this._paintSystem(system, oldHeight);
+            if (system.masterBarsRenderers.length > 0) {
+                system.isLast = this.lastBarIndex === system.lastBarIndex;
+                this._systems.push(system);
+                this._fitSystem(system);
+                y += this._paintSystem(system, oldHeight);
+            }
         }
         return y;
     }
@@ -462,15 +468,14 @@ export abstract class VerticalLayoutBase extends ScoreLayout {
         const distributable = Math.max(0, staffWidth - system.totalFixedOverhead);
         const contentShare = weightTotal > 0 ? distributable / weightTotal : 0;
 
-        for (const s of system.allStaves) {
-            s.resetSharedLayoutData();
+        system.resetAllStavesSharedLayoutData();
 
+        for (const s of system.allStaves) {
             let w = 0;
             for (let i = 0; i < s.barRenderers.length; i++) {
                 const renderer = s.barRenderers[i];
                 const mb = system.masterBarsRenderers[i];
                 renderer.x = w;
-                renderer.y = s.topPadding + s.topOverflow;
 
                 const weight = shouldApplyBarScale ? system.getBarDisplayScale(renderer) : mb.maxContentWidth;
                 const actualBarWidth = mb.maxFixedOverhead + weight * contentShare;

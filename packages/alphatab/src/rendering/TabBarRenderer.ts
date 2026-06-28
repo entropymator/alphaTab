@@ -6,6 +6,11 @@ import type { Voice } from '@coderline/alphatab/model/Voice';
 import { TabRhythmMode } from '@coderline/alphatab/NotationSettings';
 import type { ICanvas } from '@coderline/alphatab/platform/ICanvas';
 import { NoteYPosition } from '@coderline/alphatab/rendering/BarRendererBase';
+import { BeatXPosition } from '@coderline/alphatab/rendering/BeatXPosition';
+import {
+    BeatContainerGlyph,
+    type BeatContainerGlyphBase
+} from '@coderline/alphatab/rendering/glyphs/BeatContainerGlyph';
 import { SpacingGlyph } from '@coderline/alphatab/rendering/glyphs/SpacingGlyph';
 import { TabBeatContainerGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatContainerGlyph';
 import type { TabBeatGlyph } from '@coderline/alphatab/rendering/glyphs/TabBeatGlyph';
@@ -135,6 +140,33 @@ export class TabBarRenderer extends LineBarRenderer {
             if (this._hasTuplets) {
                 this.registerOverflowBottom(this.settings.notation.rhythmHeight + this.tupletSize);
             }
+        }
+    }
+
+    public override emitBeatSkyline(beatContainer: BeatContainerGlyphBase): void {
+        if (!(beatContainer instanceof BeatContainerGlyph)) {
+            return;
+        }
+        // Per-beat half-line overflow, not bar-wide. Strings are 1-indexed: top = tuning.length, bottom = 1.
+        const beat = beatContainer.beat;
+        const stringCount = this.bar.staff.tuning.length;
+        const hasTop = beat.maxStringNote !== null && beat.maxStringNote.string === stringCount;
+        const hasBottom = beat.minStringNote !== null && beat.minStringNote.string === 1;
+        if (!hasTop && !hasBottom) {
+            return;
+        }
+        const base = this.voiceContainer.x + beatContainer.x;
+        const xStart = base + beatContainer.getBeatX(BeatXPosition.PreNotes, false);
+        const xEnd = base + beatContainer.getBeatX(BeatXPosition.PostNotes, false);
+        if (xEnd <= xStart) {
+            return;
+        }
+        const halfLine = this.lineSpacing / 2;
+        if (hasTop) {
+            this.insertSkylineTop(xStart, xEnd, halfLine);
+        }
+        if (hasBottom) {
+            this.insertSkylineBottom(xStart, xEnd, halfLine);
         }
     }
 
@@ -319,6 +351,25 @@ export class TabBarRenderer extends LineBarRenderer {
         }
         if (this.rhythmMode !== TabRhythmMode.Hidden) {
             this.calculateBeamingOverflows(rendererTop, rendererBottom);
+        }
+    }
+
+    protected override emitHelperSkyline(h: BeamingHelper): void {
+        if (this.rhythmMode === TabRhythmMode.Hidden) {
+            return;
+        }
+        super.emitHelperSkyline(h);
+        if (h.hasTuplet) {
+            // Tuplets can span multiple helpers — emit once per group, from its first beat.
+            const group = h.beats[0].tupletGroup!;
+            if (group.beats.length > 0 && group.beats[0] === h.beats[0]) {
+                const tupletHeight = this.settings.notation.rhythmHeight + this.tupletSize;
+                const xStart = this.getBeatX(group.beats[0], BeatXPosition.PreNotes);
+                const xEnd = this.getBeatX(group.beats[group.beats.length - 1], BeatXPosition.PostNotes);
+                if (xEnd > xStart) {
+                    this.insertSkylineBottom(xStart, xEnd, tupletHeight);
+                }
+            }
         }
     }
 }
