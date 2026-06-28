@@ -11,6 +11,7 @@ import {
 import { EffectSystemPlacement } from '@coderline/alphatab/rendering/EffectSystemPlacement';
 import { StaffSystemSkyline } from '@coderline/alphatab/rendering/skyline/StaffSystemSkyline';
 import type { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
+import { type IStaffDisplayContext, StaffDisplayResolver } from '@coderline/alphatab/rendering/staves/StaffDisplayResolver';
 import type { StaffSystem } from '@coderline/alphatab/rendering/staves/StaffSystem';
 import type { StaffTrackGroup } from '@coderline/alphatab/rendering/staves/StaffTrackGroup';
 
@@ -19,7 +20,7 @@ import type { StaffTrackGroup } from '@coderline/alphatab/rendering/staves/Staff
  * It stores BarRenderer instances created from a given factory.
  * @internal
  */
-export class RenderStaff {
+export class RenderStaff implements IStaffDisplayContext {
     private _factory: BarRendererFactory;
     private _sharedLayoutData: Map<string, unknown> = new Map();
 
@@ -53,6 +54,28 @@ export class RenderStaff {
 
     public get staffId(): string {
         return this._factory.staffId;
+    }
+
+    public get cascadePriority(): number {
+        return this._factory.cascadePriority;
+    }
+
+    private _isCascadePrimary: boolean = false;
+    private _isCascadePrimaryComputed: boolean = false;
+    public get isCascadePrimary(): boolean {
+        if (!this._isCascadePrimaryComputed) {
+            this._isCascadePrimary = StaffDisplayResolver.computeCascadePrimary(this);
+            this._isCascadePrimaryComputed = true;
+        }
+        return this._isCascadePrimary;
+    }
+
+    public get systemIndex(): number {
+        return this.system.index;
+    }
+
+    public get cascadeSiblings(): Iterable<IStaffDisplayContext> {
+        return this.staffTrackGroup.staves;
     }
 
     /**

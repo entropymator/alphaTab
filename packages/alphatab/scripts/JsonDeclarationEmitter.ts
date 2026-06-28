@@ -147,7 +147,7 @@ function createJsonMember(
 
 function createJsonMembers(
     program: ts.Program,
-    input: ts.ClassDeclaration,
+    input: ts.ClassDeclaration | ts.InterfaceDeclaration,
     importer: (name: string, module: string) => void
 ): ts.TypeElement[] {
     const hasMatchingSetter = (name: string): boolean =>
