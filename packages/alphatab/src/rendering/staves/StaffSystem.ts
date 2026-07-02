@@ -6,7 +6,8 @@ import {
     BracketExtendMode,
     TrackNameMode,
     TrackNameOrientation,
-    TrackNamePolicy
+    TrackNamePolicy,
+    TuningDisplayMode
 } from '@coderline/alphatab/model/RenderStylesheet';
 import { SimileMark } from '@coderline/alphatab/model/SimileMark';
 import { type Track, TrackSubElement } from '@coderline/alphatab/model/Track';
@@ -17,6 +18,8 @@ import type { RenderingResources } from '@coderline/alphatab/RenderingResources'
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
 import type { LineBarRenderer } from '@coderline/alphatab/rendering/LineBarRenderer';
 import type { ScoreLayout } from '@coderline/alphatab/rendering/layout/ScoreLayout';
+import { TabBarRenderer } from '@coderline/alphatab/rendering/TabBarRenderer';
+import { InlineTuningGlyph } from '@coderline/alphatab/rendering/glyphs/InlineTuningGlyph';
 import { BarLayoutingInfo } from '@coderline/alphatab/rendering/staves/BarLayoutingInfo';
 import { MasterBarsRenderers } from '@coderline/alphatab/rendering/staves/MasterBarsRenderers';
 import type { RenderStaff } from '@coderline/alphatab/rendering/staves/RenderStaff';
@@ -182,6 +185,8 @@ export class StaffSystem {
 
     private _brackets: SystemBracket[] = [];
     private _staffToBracket = new Map<RenderStaff, SystemBracket>();
+    private _inlineTuningGlyphs: InlineTuningGlyph[] = [];
+    private _inlineTuningWidth = 0;
     private _contentHeight = 0;
 
     private _hasSystemSeparator = false;
@@ -722,6 +727,9 @@ export class StaffSystem {
             }
         }
 
+        this._createInlineTuningGlyphs();
+        this.accoladeWidth += this._inlineTuningWidth;
+
         let currentY: number = 0;
         for (const staff of this.allStaves) {
             staff.y = currentY;
@@ -767,6 +775,67 @@ export class StaffSystem {
             fingerprint = fingerprint * 2 + (s.isVisible ? 1 : 0);
         }
         return fingerprint;
+    }
+
+    private _createInlineTuningGlyphs(): void {
+        this._inlineTuningGlyphs = [];
+        this._inlineTuningWidth = 0;
+
+        const score = this.layout.renderer.score!;
+        if (
+            this.index !== 0 ||
+            !this.layout.renderer.settings.notation.isNotationElementVisible(NotationElement.GuitarTuning) ||
+            !score.stylesheet.globalDisplayTuning ||
+            score.stylesheet.tuningDisplayMode !== TuningDisplayMode.Staff
+        ) {
+            return;
+        }
+
+        for (const staff of this.allStaves) {
+            if (!this._shouldCreateInlineTuningGlyph(staff)) {
+                continue;
+            }
+
+            const glyph = new InlineTuningGlyph(staff);
+            glyph.renderer = staff.barRenderers[0];
+            glyph.doLayout();
+            this._inlineTuningGlyphs.push(glyph);
+            this._inlineTuningWidth = Math.max(this._inlineTuningWidth, glyph.width);
+        }
+    }
+
+    private _shouldCreateInlineTuningGlyph(staff: RenderStaff): boolean {
+        const score = this.layout.renderer.score!;
+        if (!staff.isVisible || staff.staffId !== TabBarRenderer.StaffId) {
+            return false;
+        }
+
+        const modelStaff = staff.modelStaff;
+        if (
+            modelStaff.isPercussion ||
+            !modelStaff.isStringed ||
+            !modelStaff.showTablature ||
+            modelStaff.stringTuning.tunings.length === 0
+        ) {
+            return false;
+        }
+
+        const perTrackDisplayTuning = score.stylesheet.perTrackDisplayTuning;
+        return (
+            !perTrackDisplayTuning ||
+            !perTrackDisplayTuning.has(modelStaff.track.index) ||
+            perTrackDisplayTuning.get(modelStaff.track.index) !== false
+        );
+    }
+
+    private _getInlineTuningWidthForTrackGroup(group: StaffTrackGroup): number {
+        let width = 0;
+        for (const glyph of this._inlineTuningGlyphs) {
+            if (glyph.staff.staffTrackGroup === group) {
+                width = Math.max(width, glyph.width);
+            }
+        }
+        return width;
     }
 
     private _getStaffTrackGroup(track: Track): StaffTrackGroup | null {
@@ -947,6 +1016,7 @@ export class StaffSystem {
                                     g.staves[0].x -
                                     // left side of the bracket
                                     settings.display.accoladeBarPaddingRight -
+                                    this._getInlineTuningWidthForTrackGroup(g) -
                                     (g.bracket?.width ?? 0) -
                                     // padding between label and bracket
                                     settings.display.systemLabelPaddingRight;
@@ -982,6 +1052,8 @@ export class StaffSystem {
                 }
             }
 
+            this._paintInlineTunings(cx, cy, canvas);
+
             const needsSystemBarLine = !this.layout.renderer.score!.stylesheet.extendBarLines;
             if (this.allStaves.length > 0 && needsSystemBarLine) {
                 let previousStaffInBracket: RenderStaff | null = null;
@@ -1014,6 +1086,19 @@ export class StaffSystem {
             //
             // Draw brackets
             this._paintBrackets(cx, cy, canvas);
+        }
+    }
+
+    private _paintInlineTunings(cx: number, cy: number, canvas: ICanvas): void {
+        const accoladeBarPaddingRight = this.layout.renderer.settings.display.accoladeBarPaddingRight;
+        for (const glyph of this._inlineTuningGlyphs) {
+            // Place labels between the track name and the bracket:
+            // shift the glyph's anchor left by the bracket's paint area
+            // (accolade bar padding + bracket width) so the tuning sits on the
+            // outside of the bracket rather than inside it.
+            const bracket = this._staffToBracket.has(glyph.staff) ? this._staffToBracket.get(glyph.staff)! : undefined;
+            const bracketOffset = bracket && bracket.width > 0 ? accoladeBarPaddingRight + bracket.width : 0;
+            glyph.paint(cx + glyph.staff.x - bracketOffset, cy + glyph.staff.y, canvas);
         }
     }
 
