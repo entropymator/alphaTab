@@ -633,8 +633,8 @@ export class AlphaTexAstNodePlugin implements PrettyFormatNewPlugin {
                 if (note.noteValue) {
                     children.push(['noteValue', note.noteValue]);
                 }
-                if (note.noteStringDot) {
-                    children.push(['noteStringDot', note.noteStringDot]);
+                if (note.noteStringSeparator) {
+                    children.push(['noteStringSeparator', note.noteStringSeparator]);
                 }
                 if (note.noteString) {
                     children.push(['noteString', note.noteString]);
@@ -873,7 +873,7 @@ export class ScoreSerializerPlugin implements PrettyFormatNewPlugin {
                             isEqual = (v as string) === (dv as string);
                             break;
                         case 'number':
-                            isEqual = (v as number) === (dv as number);
+                            isEqual = (v as number) === (dv as number) || (Number.isNaN(v as number) && Number.isNaN(dv as number));
                             break;
                         case 'bigint':
                             isEqual = (v as bigint) === (dv as bigint);

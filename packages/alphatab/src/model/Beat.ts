@@ -427,15 +427,15 @@ export class Beat {
 
     /**
      * Gets or sets the chromatic tone value (0–11) of the pitch at which this rest should be displayed.
-     * A value of -1 means use the default position formula.
+     * A value of NaN means use the default position formula.
      */
-    public restDisplayTone: number = -1;
+    public restDisplayTone: number = Number.NaN;
 
     /**
      * Gets or sets the octave at which this rest should be displayed.
-     * Only relevant when {@link restDisplayTone} is set. -1 means use the default position formula.
+     * Only relevant when {@link restDisplayTone} is set. NaN means use the default position formula.
      */
-    public restDisplayOctave: number = -1;
+    public restDisplayOctave: number = Number.NaN;
 
     /**
      * Gets or sets the brush type applied to the notes of this beat.
@@ -823,7 +823,7 @@ export class Beat {
         note.beat = this;
         note.index = this.notes.length;
         this.notes.push(note);
-        if (note.isStringed) {
+        if (note.string >= 0 ) {
             this.noteStringLookup.set(note.string, note);
         }
     }
@@ -832,7 +832,7 @@ export class Beat {
         const index: number = this.notes.indexOf(note);
         if (index >= 0) {
             this.notes.splice(index, 1);
-            if (note.isStringed) {
+            if (note.string >= 0) {
                 this.noteStringLookup.delete(note.string);
             }
         }

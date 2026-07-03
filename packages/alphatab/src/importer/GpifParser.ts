@@ -606,8 +606,6 @@ export class GpifParser {
 
         const track: Track = new Track();
         track.ensureStaveCount(1);
-        const staff: Staff = track.staves[0];
-        staff.showStandardNotation = true;
         const trackId: string = node.getAttribute('id');
 
         for (const c of node.childElements()) {
@@ -979,10 +977,6 @@ export class GpifParser {
                     }
                 }
 
-                if (!staff.isPercussion) {
-                    staff.showTablature = true;
-                }
-
                 break;
             case 'DiagramCollection':
             case 'ChordCollection':
@@ -1161,8 +1155,6 @@ export class GpifParser {
                 }
                 for (const staff of track.staves) {
                     staff.stringTuning.tunings = tuning;
-                    staff.showStandardNotation = true;
-                    staff.showTablature = true;
                 }
                 break;
             case 'DiagramCollection':
@@ -2437,7 +2429,7 @@ export class GpifParser {
                         case 'Octave':
                             note.octave = GpifParser._parseIntSafe(c.findChildElement('Number')?.innerText, 0);
                             // when exporting GP6 from GP7 the tone might be missing
-                            if (note.tone === -1) {
+                            if (Number.isNaN(note.tone)) {
                                 note.tone = 0;
                             }
                             break;
@@ -2779,12 +2771,10 @@ export class GpifParser {
                                                 for (const noteId of this._notesOfBeat.get(beatId)!) {
                                                     if (noteId !== GpifParser._invalidId) {
                                                         const note = NoteCloner.clone(this._noteById.get(noteId)!);
-                                                        // reset midi value for non-percussion staves
                                                         if (staff.isPercussion) {
-                                                            note.fret = -1;
-                                                            note.string = -1;
+                                                            note.fret = Number.NaN;
                                                         } else {
-                                                            note.percussionArticulation = -1;
+                                                            note.percussionArticulation = Number.NaN;
                                                         }
                                                         beat.addNote(note);
                                                         if (this._tappedNotes.has(noteId)) {

@@ -2,7 +2,7 @@ import type { Bar } from '@coderline/alphatab/model/Bar';
 import type { Staff } from '@coderline/alphatab/model/Staff';
 import type { Track } from '@coderline/alphatab/model/Track';
 import type { BarRendererBase } from '@coderline/alphatab/rendering/BarRendererBase';
-import { BarRendererFactory, type EffectBandInfo } from '@coderline/alphatab/rendering/BarRendererFactory';
+import { BarRendererFactory } from '@coderline/alphatab/rendering/BarRendererFactory';
 import type { ScoreRenderer } from '@coderline/alphatab/rendering/ScoreRenderer';
 import { TabBarRenderer } from '@coderline/alphatab/rendering/TabBarRenderer';
 
@@ -17,11 +17,6 @@ export class TabBarRendererFactory extends BarRendererFactory {
 
     public override get cascadePriority(): number {
         return 1;
-    }
-
-    public constructor(effectBands: EffectBandInfo[]) {
-        super(effectBands);
-        this.hideOnPercussionTrack = true;
     }
 
     public override canCreate(track: Track, staff: Staff): boolean {
