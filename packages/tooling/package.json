@@ -1,6 +1,6 @@
 {
     "name": "@coderline/alphatab-tooling",
-    "version": "1.8.3",
+    "version": "1.8.4",
     "type": "module",
     "description": "Additional build tooling for alphaTab like common build configurations",
     "private": true,

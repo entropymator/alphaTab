@@ -1,6 +1,6 @@
 {
     "name": "@coderline/alphatab-webpack",
-    "version": "1.8.3",
+    "version": "1.8.4",
     "description": "A plugin for WebPack to bundle alphaTab into your webapps.",
     "keywords": [
         "guitar",
