@@ -1,4 +1,6 @@
 dev-server.*.log
-certs/
+certs/*.pem
+certs/*.crt
+certs/*.key
 dist/
 node_modules/
