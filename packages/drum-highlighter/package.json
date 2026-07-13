@@ -1,0 +1,26 @@
+{
+    "name": "@coderline/alphatab-drum-highlighter",
+    "version": "0.1.0",
+    "description": "AlphaTab drum score highlighter prototype",
+    "private": true,
+    "type": "module",
+    "dependencies": {
+        "@coderline/alphatab": "*",
+        "@coderline/alphatab-vite": "*",
+        "three": "^0.185.1"
+    },
+    "scripts": {
+        "build": "vite build && node scripts/writeAssetManifest.mjs",
+        "dev": "vite",
+        "preview": "vite preview --host 0.0.0.0",
+        "preview:https": "node scripts/previewHttps.mjs",
+        "typecheck": "tsc --noEmit",
+        "verify:pov": "node scripts/verifyPovCanvas.mjs"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.61.1",
+        "@types/three": "^0.185.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.1.0"
+    }
+}
